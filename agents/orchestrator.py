@@ -166,10 +166,10 @@ def render_plan(p: ExecutionPlan) -> str:
     if b.flow_type == "winback":
         d = b.warehouse_dialect
         L += ["", f"The daily job ({d}), in `cohort/job/`: create the ledger once (`ledger_{d}.sql`); then each day queue who is due "
-                  f"(`queue_{d}.sql`), push every pending row (`pending_{d}.sql` into tools/event_payloads.py), and mark them pushed "
-                  f"(`mark_{d}.sql`) only when every request succeeded. Each lapse sits in the ledger once, so nobody enters twice; "
-                  f"a failed push stays pending and goes out on the next run. `cohort/entry_{d}.sql` shows who is due without "
-                  f"queuing; other dialects and the history query are in `cohort/`.", ""]
+                  f"(`queue_{d}.sql`), push every pending row (`pending_{d}.sql` into tools/event_payloads.py), and after each request "
+                  f"succeeds mark the rows it carried (`mark_{d}.sql`, one row at a time). Each lapse sits in the ledger once, so nobody "
+                  f"enters twice; a failed push stays pending and goes out on the next run. `cohort/entry_{d}.sql` shows who is due "
+                  f"without queuing; other dialects and the history query are in `cohort/`.", ""]
     else:
         L += ["", f"The trigger is the live {b.qualifying_event.event} event. `cohort/entry_{b.warehouse_dialect}.sql` backfills and audits it; "
                   f"the history query (`cohort/history_*.sql`) measured the volume and unaided rate above.", ""]

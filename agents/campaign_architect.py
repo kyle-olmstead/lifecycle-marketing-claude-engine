@@ -290,10 +290,14 @@ def build_steps(brief: Brief, cohort: CohortDefinition, touches: List[Touch], sp
     core = brief.core_conversion_event.detail()
     out = []
     if brief.flow_type == "winback":
-        push = ("fire one Journey Builder API Event per row (entry source for the journey), carrying in_holdout" if brief.platform == "sfmc" else
-                f"push one {cohort.trigger_event} event per row with tools/event_payloads.py ({brief.platform})")
-        out.append(f"Schedule the cohort entry query ({brief.warehouse_dialect}) to run daily after the warehouse load, and {push}. "
-                   f"Holdout members are pushed too.")
+        d = brief.warehouse_dialect
+        push = ("fire one Journey Builder API Event per row (the journey's entry source), carrying in_holdout" if brief.platform == "sfmc" else
+                f"send one {cohort.trigger_event} event per row with tools/event_payloads.py ({brief.platform})")
+        out.append(f"Create the ledger once (cohort/job/ledger_{d}.sql). Then schedule the daily job after the warehouse load: "
+                   f"run cohort/job/queue_{d}.sql; read the rows from cohort/job/pending_{d}.sql and {push}, holdout members "
+                   f"included; after each request succeeds, run cohort/job/mark_{d}.sql for every row it carried. Rows whose request "
+                   f"failed stay pending and go out on the next run. Do not push from cohort/entry_{d}.sql: it does not write the "
+                   f"ledger, so the same lapse would go out on several days.")
     else:
         q = brief.qualifying_event.event
         out.append(f"Confirm {q} reaches {PLATFORM_LABEL[brief.platform]} in real time; it is the trigger. Add two properties to it where it "

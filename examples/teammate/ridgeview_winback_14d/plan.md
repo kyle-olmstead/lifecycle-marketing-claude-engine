@@ -1,6 +1,6 @@
 # Win-back: Ridgeview, 14 days since the core action (created a report)
 
-**Status: READY WITH ASSUMPTIONS** | Customer.io | generated 2026-10-20T23:27:40+00:00 | run adff70101e29 | LMM Engine 2.1.0
+**Status: READY WITH ASSUMPTIONS** | Customer.io | generated 2026-10-20T23:37:08+00:00 | run 5ed4d993c35f | LMM Engine 2.1.0
 
 ## In one paragraph
 
@@ -39,7 +39,7 @@ People who completed onboarding and then went 14 days without the core action (c
 | lcm_flow_entries | object | unknown |  | the ledger (outbox) of entries; create it once with cohort/job/ledger_<dialect>.sql |
 | lcm_sunset | attribute | unknown |  | suppression flag the sunset step writes; create the property in the platform before launch |
 
-The daily job (postgres), in `cohort/job/`: create the ledger once (`ledger_postgres.sql`); then each day queue who is due (`queue_postgres.sql`), push every pending row (`pending_postgres.sql` into tools/event_payloads.py), and mark them pushed (`mark_postgres.sql`) only when every request succeeded. Each lapse sits in the ledger once, so nobody enters twice; a failed push stays pending and goes out on the next run. `cohort/entry_postgres.sql` shows who is due without queuing; other dialects and the history query are in `cohort/`.
+The daily job (postgres), in `cohort/job/`: create the ledger once (`ledger_postgres.sql`); then each day queue who is due (`queue_postgres.sql`), push every pending row (`pending_postgres.sql` into tools/event_payloads.py), and after each request succeeds mark the rows it carried (`mark_postgres.sql`, one row at a time). Each lapse sits in the ledger once, so nobody enters twice; a failed push stays pending and goes out on the next run. `cohort/entry_postgres.sql` shows who is due without queuing; other dialects and the history query are in `cohort/`.
 
 ## The flow
 
@@ -69,7 +69,7 @@ Every step: has not done feature_used where feature = reports since entering; ca
 
 ## Build it in Customer.io
 
-1. Schedule the cohort entry query (postgres) to run daily after the warehouse load, and push one core_action_lapsed_14d event per row with tools/event_payloads.py (customerio). Holdout members are pushed too.
+1. Create the ledger once (cohort/job/ledger_postgres.sql). Then schedule the daily job after the warehouse load: run cohort/job/queue_postgres.sql; read the rows from cohort/job/pending_postgres.sql and send one core_action_lapsed_14d event per row with tools/event_payloads.py (customerio), holdout members included; after each request succeeds, run cohort/job/mark_postgres.sql for every row it carried. Rows whose request failed stay pending and go out on the next run. Do not push from cohort/entry_postgres.sql: it does not write the ledger, so the same lapse would go out on several days.
 2. Create an event-triggered campaign and leave every message in Draft until it is approved. Trigger: core_action_lapsed_14d.
 3. Entry filters (checked once at entry): completed onboarding (onboarding_step_completed where step_index = 3) at least once.
 4. Checked before every step (Exit condition (conversion goal, exit on conversion)): has not done feature_used where feature = reports since entering; can receive email marketing (subscribed, not bounced, not sunset-suppressed).

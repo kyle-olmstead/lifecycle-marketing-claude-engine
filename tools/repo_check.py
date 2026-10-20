@@ -120,7 +120,7 @@ def check(verbose: bool = False) -> Tuple[List[str], Dict[str, int]]:
             counts["sql_parsed"] += 1
             if not ok:
                 errors.append(f"{rel}: does not parse as {dialect}: {msg}")
-            elif dialect == "postgres":
+            elif dialect == "postgres" and "-- no-run" not in text:
                 run_sql(text, rel)
         elif path.suffix == ".json":
             try:

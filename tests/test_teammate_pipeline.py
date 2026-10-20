@@ -113,6 +113,11 @@ def test_activation_flow():
     assert "re-entry off" in p.cohort.platform_pattern and p.cohort.trigger_payload_example == {}
 
 
+def test_winback_build_step_one_runs_the_outbox(plan):
+    step = plan.flow.build_steps[0]
+    assert "queue_postgres.sql" in step and "pending_postgres.sql" in step and "mark_postgres.sql" in step
+
+
 def test_red_gate_blocks_and_amber_limits_to_engaged():
     red = orchestrator.run(load_brief(EXAMPLE).model_copy(update={"sending_gate": "RED"}), copy_mode="offline")
     assert red.qa.status == "BLOCKED"

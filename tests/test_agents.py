@@ -51,6 +51,8 @@ def test_the_spec_sentence_parses_and_records_every_assumption():
     ("Bring back users who haven't created a report in 14 days, new dashboard feature launched", {"flow_type": "winback"}),
     ("Users who haven't logged in since their trial ended 2 weeks ago", {"flow_type": "winback", "churn_threshold_days": 14}),
     ("Customers who have not ordered yet after signing up: 3 emails", {"flow_type": "activation", "touches": 3}),
+    ("Send new customers who haven't placed a second order in 30 days a 3-email series, Klaviyo",
+     {"flow_type": "winback", "churn_threshold_days": 30, "platform": "klaviyo"}),
     ("win back customers who haven't purchased in 2 months via Braze push", {"churn_threshold_days": 60, "platform": "braze", "push": True}),
     ("Reactivate users inactive for three weeks, 20% holdout, HubSpot", {"churn_threshold_days": 21, "holdout_pct": 20.0, "platform": "hubspot"}),
 ])
@@ -153,6 +155,21 @@ def test_entry_query_matches_an_independent_computation(brief, con):
     assert total >= 20, "the fixture dates must exercise the query"
 
 
+def _mark(con, brief, rows):
+    for r in rows:
+        con.execute(cohort_analyst.mark_sql(brief, "duckdb"), {"user_id": r["user_id"], "anchor_date": str(r["anchor_date"])})
+
+
+def test_mark_touches_only_the_rows_it_is_given(brief):
+    con = cohort_analyst.connect(str(FIX))
+    cohort_analyst._rows(con, cohort_analyst.queue_sql(brief, "duckdb", "2026-10-17"))
+    first = cohort_analyst._rows(con, cohort_analyst.pending_sql(brief, "duckdb", "2026-10-17"))
+    cohort_analyst._rows(con, cohort_analyst.queue_sql(brief, "duckdb", "2026-10-18"))   # an overlapping run queues more
+    _mark(con, brief, first)
+    left = {r["user_id"] for r in cohort_analyst._rows(con, cohort_analyst.pending_sql(brief, "duckdb", "2026-10-18"))}
+    assert first and left and not left & {r["user_id"] for r in first}, "rows queued by the overlapping run stay pending"
+
+
 def test_daily_job_pushes_each_lapse_once_retries_failures_and_catches_up(brief):
     con = cohort_analyst.connect(str(FIX))
     pushed = []
@@ -164,8 +181,9 @@ def test_daily_job_pushes_each_lapse_once_retries_failures_and_catches_up(brief)
             if day.day % 7 == 0:   # the push fails: nothing is marked, the rows stay pending
                 day += timedelta(days=1)
                 continue
-            pushed += [(r["user_id"], r["anchor_date"]) for r in rows]
-            cohort_analyst._rows(con, cohort_analyst.mark_sql(brief, "duckdb"))
+            ok = rows if day.day % 5 else rows[1:]       # some days one request fails: that row stays pending
+            pushed += [(r["user_id"], r["anchor_date"]) for r in ok]
+            _mark(con, brief, ok)
         day += timedelta(days=1)
     assert len(pushed) == len(set(pushed)) > 20, "no lapse is pushed twice"
     expected = set()
@@ -193,7 +211,7 @@ def test_a_late_event_is_queued_later_not_lost(brief, tmp_path):
                      if u not in queued)
     con.execute("INSERT INTO track_events VALUES ('late_0001', ?, NULL, 'feature_used', TIMESTAMP '2026-10-05 12:00:00', "
                 "'{\"feature\":\"reports\"}')", [late_user])
-    cohort_analyst._rows(con, cohort_analyst.mark_sql(brief, "duckdb"))
+    _mark(con, brief, cohort_analyst._rows(con, cohort_analyst.pending_sql(brief, "duckdb", "2026-10-18")))
     assert late_user not in {r[0] for r in con.execute("SELECT user_id FROM lcm_flow_entries").fetchall()}
     cohort_analyst._rows(con, cohort_analyst.queue_sql(brief, "duckdb", "2026-10-19"))
     assert late_user in {r["user_id"] for r in cohort_analyst._rows(con, cohort_analyst.pending_sql(brief, "duckdb", "2026-10-19"))}

@@ -97,7 +97,8 @@ def test_postgres_daily_job_round_trip(pg):
     pending = pg(cohort_analyst.pending_sql(b, "postgres", "2026-10-18"))
     assert {(r["user_id"], r["anchor_date"]) for r in pending} == {(r["user_id"], r["anchor_date"]) for r in due}
     assert pg(cohort_analyst.entry_sql(b, "postgres", "2026-10-18")) == [], "queued lapses are not due again"
-    pg.run(cohort_analyst.mark_sql(b, "postgres"))
+    for r in pending:
+        pg.run(cohort_analyst.mark_sql(b, "postgres").replace(":user_id", f"'{r['user_id']}'").replace(":anchor_date", f"'{r['anchor_date']}'"))
     assert pg(cohort_analyst.pending_sql(b, "postgres", "2026-10-18")) == []
     assert all(r["status"] == "pushed" for r in pg("SELECT status FROM lcm_flow_entries"))
     pg.run("DELETE FROM lcm_flow_entries")

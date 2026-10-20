@@ -50,7 +50,7 @@ sequenceDiagram
     Job->>WH: 1. cohort/job/queue_<dialect>.sql<br/>due lapses into lcm_flow_entries as pending
     WH->>Job: 2. cohort/job/pending_<dialect>.sql<br/>every pending row, including earlier failures
     Job->>ESP: one core_action_lapsed_<n>d event per row,<br/>with in_holdout and holdout_bucket (tools/event_payloads.py)
-    Job->>WH: 3. cohort/job/mark_<dialect>.sql, only when every push succeeded
+    Job->>WH: 3. cohort/job/mark_<dialect>.sql for each row whose request succeeded
     ESP->>ESP: first step: in_holdout? yes: exit. no: continue
     ESP->>ESP: every step: exit on the core event (with its property filter)
 ```
@@ -59,11 +59,14 @@ A lapse is identified by the person and its **anchor date** (their last core act
 qualification if none since). The ledger table `lcm_flow_entries` is an outbox: the queue step
 evaluates who is due and writes them as pending in one statement (anchors `n` to `n + 3` calendar
 days before the run date, not already in the ledger), the job pushes every pending row, and the mark
-step sets them to pushed once every request succeeded. So each lapse enters at most once; a missed
-run catches up for three days; a failed push stays pending and goes out on the next run; and a core
-event loaded late simply moves that person's anchor, so they are queued on a later run rather than
-recorded without a push. The event id is the lapse key, so platforms that deduplicate on it (Klaviyo
-`unique_id`, HubSpot `uuid`, Customer.io `messageId`) drop a repeat after a partial failure. Holdout
+step marks each row pushed, by its key, once the request carrying it succeeded. So each lapse enters
+at most once; a missed run catches up for three days; a failed push stays pending and goes out on the
+next run; rows read by an overlapping run are never marked by mistake; and a core event loaded late
+simply moves that person's anchor, so they are queued on a later run rather than recorded without a
+push. The one gap: a request that succeeded but whose mark failed is sent again. Platforms that
+deduplicate on the event id, which is the lapse key (Klaviyo `unique_id`, HubSpot `uuid`,
+Customer.io `messageId`), drop that repeat; Braze and Salesforce Marketing Cloud do not, so the job
+should mark immediately after each request there. Holdout
 members are pushed and exit at the first step, so both arms are the same population when they
 diverge. `cohort/entry_<dialect>.sql` shows who is due without queuing anything.
 

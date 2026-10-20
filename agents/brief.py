@@ -81,7 +81,8 @@ def parse_text(text: str, product_name: Optional[str] = None, overrides: Optiona
     # flow type: explicit lapse words win; then "haven't ... since" (a lapse); then explicit new-user words; then
     # "haven't ... yet" (not done it for the first time); then any negation or "in N days" (a lapse)
     neg = r"(haven't|have not|hasn't|has not)"
-    if any(w in low for w in WINBACK_WORDS) or re.search(neg + r".*\bsince\b", low):
+    repeat = r"second (order|purchase)|(order|ordered|buy|bought|purchase|purchased) again|repeat (order|purchase)|reorder"
+    if any(w in low for w in WINBACK_WORDS) or re.search(neg + r".*\bsince\b", low) or re.search(repeat, low):
         data["flow_type"] = "winback"
     elif any(w in low for w in ACTIVATION_WORDS):
         data["flow_type"] = "activation"

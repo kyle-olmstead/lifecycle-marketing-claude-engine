@@ -261,12 +261,23 @@ def pending_sql(brief: Brief, dialect_name: str, as_of: Optional[str] = None) ->
             f"WHERE l.flow = '{brief.slug}' AND l.status = 'pending'\nORDER BY l.anchor_date, l.user_id\n")
 
 
+MARK_PARAMS = {"postgres": (":user_id", "CAST(:anchor_date AS DATE)"), "snowflake": (":user_id", "CAST(:anchor_date AS DATE)"),
+               "bigquery": ("@user_id", "@anchor_date"), "duckdb": ("$user_id", "CAST($anchor_date AS DATE)")}
+
+
 def mark_sql(brief: Brief, dialect_name: str) -> str:
-    """Step 3: after every request in step 2 succeeded. On a partial failure, skip it: the next run pushes the pending rows
-    again, and the event id is the lapse key, so Klaviyo, HubSpot and Customer.io drop the repeats."""
-    return (f"-- dialect: {dialect_name}\n-- Daily step 3 of 3 for {brief.slug}: run only when every push in step 2 succeeded.\n"
+    """Step 3: once per pushed row, right after the request carrying it succeeded (for a Braze batch, each row in it).
+    Only those keys are marked, so a row read by an overlapping run, or one whose request failed, stays pending and goes out
+    on the next run. A row is pushed twice only if its request succeeded and its mark then failed: Klaviyo, HubSpot and
+    Customer.io drop that repeat (the event id is the lapse key); Braze and Salesforce Marketing Cloud do not."""
+    uid, anchor = MARK_PARAMS[dialect_name]
+    bind = ("BigQuery query parameters @user_id (STRING) and @anchor_date (DATE)" if dialect_name == "bigquery" else
+            "named parameters :user_id and :anchor_date (SQLAlchemy text() binds :name in every dialect)" if dialect_name != "duckdb" else
+            "DuckDB parameters $user_id and $anchor_date")
+    return (f"-- dialect: {dialect_name}\n-- no-run: needs bound parameters\n"
+            f"-- Daily step 3 of 3 for {brief.slug}: once per row whose push succeeded. Bind {bind}.\n"
             f"UPDATE {LEDGER} SET status = 'pushed', pushed_at = {_now(dialect_name)}\n"
-            f"WHERE flow = '{brief.slug}' AND status = 'pending'\n")
+            f"WHERE flow = '{brief.slug}' AND status = 'pending' AND user_id = {uid} AND anchor_date = {anchor}\n")
 
 
 def daily_job_sql(brief: Brief, dialect_name: str) -> Dict[str, str]:
