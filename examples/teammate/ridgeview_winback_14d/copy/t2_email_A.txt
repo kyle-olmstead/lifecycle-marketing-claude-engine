@@ -1,0 +1,11 @@
+If you got stuck, this is usually where
+
+Hi {{ customer.first_name | default: "there" }}, when people stop using Ridgeview after the first few weeks, it is usually one step: [the most common blocker from support tickets or the leak map].
+
+[The shortest path past it, in one or two sentences]. If that is not it, reply to this email and a person will help.
+
+Try the shortcut: https://app.ridgeview.example/reports/new?utm_source=lifecycle&utm_medium=email&utm_campaign=ridgeview_winback_14d&utm_content=t2_email
+
+Dana Ortiz at Ridgeview
+100 Example Way, Suite 400, Springfield, OR 97477
+Unsubscribe: {% unsubscribe_url %}

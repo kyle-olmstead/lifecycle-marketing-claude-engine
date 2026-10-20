@@ -1,0 +1,47 @@
+# Campaign brief for the LMM Engine teammate.
+#
+# Fill in the three REQUIRED lines, delete what you do not know, and run:
+#   python3 -m agents.orchestrator plan --brief briefs/my_brief.yaml
+#
+# Anything you leave out gets a sensible default, and the plan lists every default under
+# "Confirm before you build" so nothing is quietly invented. Event names must match your tracking
+# plan exactly (snake_case, past tense: signed_up, feature_used, order_completed).
+
+# ---------------------------------------------------------------- REQUIRED
+product_name: Acme                     # what customers call your product
+core_conversion_event:                 # the one action that means a user is getting value
+  event: feature_used                  #   the event name in your data
+  where: {feature: reports}            #   optional: narrow it by a property (delete the line if not needed)
+  label: created a report              #   how you would say it to a colleague
+churn_threshold_days: 14               # days without the core action before someone enters a win-back flow
+
+# ---------------------------------------------------------------- THE FLOW
+flow_type: winback                     # winback (bring lapsed users back) or activation (get new users to value)
+goal: Bring back users who finished onboarding but stopped creating reports
+qualifying_event:                      # who is eligible at all
+  event: onboarding_step_completed
+  where: {step_index: 3}               #   e.g. the final onboarding step
+  label: completed onboarding
+touches: 5                             # how many messages at most (1 to 8)
+channels: [email, in_app]              # any of: email, sms, push, in_app (email is always included)
+platform: customerio                   # klaviyo, hubspot, braze, customerio or sfmc
+business_model: saas                   # saas, subscription, ecommerce, marketplace, services or sales_led_b2b
+
+# ---------------------------------------------------------------- MEASUREMENT
+holdout_pct: 15                        # share of entrants who get nothing, so you can prove the flow worked
+randomization_unit: user               # user, or account when several people share one account
+monthly_entrants:                      # how many people cross the threshold each month (leave blank to estimate from data)
+baseline_conversion_rate:              # share who come back on their own with no flow, e.g. 0.12 (blank to estimate)
+min_detectable_lift: 0.20              # the smallest relative lift worth acting on (0.20 = 20%)
+outcome_window_days:                   # how long to watch each entrant for the core action (default: 2 x threshold, at least 30)
+
+# ---------------------------------------------------------------- SENDING RULES
+sending_gate:                          # GREEN, AMBER or RED from the deliverability check; blank means engaged-only
+offer_policy: no discounts or offers   # what the copy may offer; anything else is blocked
+frequency_cap_per_week: 3              # lifecycle messages per person per week, across flows
+send_hour_local: 10                    # hour of day to send, recipient local time
+sender_name: Dana at Acme              # a person usually beats a brand name
+postal_address:                        # printed in every email footer where the platform has no address token
+brand_voice: plain, specific, second person, no exclamation marks
+copy_variants: 2                       # copy variants per touch (1 to 4)
+warehouse_dialect: postgres            # postgres, snowflake or bigquery: the SQL the plan writes for you

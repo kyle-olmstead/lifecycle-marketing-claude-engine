@@ -253,6 +253,7 @@ are proceeding on (the evidence), and do not reconcile silently.
 | test sizing, MDE, or whether a test can read | `modules/05_experimentation_and_analytics/prompts/ab_power_calculator.md` |
 | what a flow actually drove (holdout readout, attributed vs incremental) | `modules/05_experimentation_and_analytics/prompts/holdout_incrementality_analyzer.md` |
 | a test backlog or hypothesis review | `modules/05_experimentation_and_analytics/frameworks/test_hypothesis_matrix.md` |
+| a whole campaign from one brief (cohort, flow, copy and holdout together), or the daily cohort health check | the teammate: `agents/orchestrator.py` and `agents/cohort_analyst.py` (skill `lifecycle-teammate`); it runs the modules above as code and checks the result |
 </module_router>
 
 <tools>

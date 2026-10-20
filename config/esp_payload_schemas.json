@@ -1,0 +1,515 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kyle-olmstead/lifecycle-marketing-claude-engine/config/esp_payload_schemas.json",
+  "title": "LMM Engine ESP trigger-event request bodies",
+  "description": "Request bodies for pushing one custom event per flow entrant into an ESP, as tools/event_payloads.py builds them and scripts/campaign_simulator.py --payloads checks them. One $defs entry per endpoint; x-endpoint records the method, URL, authentication, limits and the documentation each was read from on 2026-10-20. Limits a JSON Schema cannot express (bytes per payload, objects summed across arrays) are stated in x-endpoint and enforced by tools/event_payloads.py. Vendors change versions and limits; re-check before a production sync.",
+  "type": "object",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/klaviyo_create_event"
+    },
+    {
+      "$ref": "#/$defs/hubspot_send_events"
+    },
+    {
+      "$ref": "#/$defs/hubspot_send_events_batch"
+    },
+    {
+      "$ref": "#/$defs/braze_users_track"
+    },
+    {
+      "$ref": "#/$defs/customerio_pipelines_track"
+    },
+    {
+      "$ref": "#/$defs/customerio_track_v1"
+    }
+  ],
+  "$defs": {
+    "klaviyo_create_event": {
+      "x-endpoint": {
+        "method": "POST",
+        "url": "https://a.klaviyo.com/api/events",
+        "headers": {
+          "Authorization": "Klaviyo-API-Key <private key>",
+          "revision": "2026-10-15",
+          "Content-Type": "application/vnd.api+json"
+        },
+        "scope": "events:write",
+        "idempotency": "attributes.unique_id",
+        "bulk": "POST https://a.klaviyo.com/api/event-bulk-create-jobs (data.type event-bulk-create-job): up to 1,000 events, 5 MB per request; a repeated unique_id rejects the whole request",
+        "docs": [
+          "https://developers.klaviyo.com/en/reference/create_event",
+          "https://developers.klaviyo.com/en/reference/bulk_create_events"
+        ],
+        "checked": "2026-10-20"
+      },
+      "type": "object",
+      "required": [
+        "data"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "type": "object",
+          "required": [
+            "type",
+            "attributes"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "event"
+            },
+            "attributes": {
+              "type": "object",
+              "required": [
+                "properties",
+                "metric",
+                "profile"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "properties": {
+                  "type": "object"
+                },
+                "time": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "value": {
+                  "type": "number"
+                },
+                "value_currency": {
+                  "type": "string",
+                  "pattern": "^[A-Z]{3}$"
+                },
+                "unique_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "metric": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "type",
+                        "attributes"
+                      ],
+                      "properties": {
+                        "type": {
+                          "const": "metric"
+                        },
+                        "attributes": {
+                          "type": "object",
+                          "required": [
+                            "name"
+                          ],
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "profile": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "type",
+                        "attributes"
+                      ],
+                      "properties": {
+                        "type": {
+                          "const": "profile"
+                        },
+                        "attributes": {
+                          "type": "object",
+                          "properties": {
+                            "email": {
+                              "type": "string",
+                              "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+                            },
+                            "phone_number": {
+                              "type": "string"
+                            },
+                            "external_id": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "anyOf": [
+                            {
+                              "required": [
+                                "email"
+                              ]
+                            },
+                            {
+                              "required": [
+                                "phone_number"
+                              ]
+                            },
+                            {
+                              "required": [
+                                "external_id"
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "hubspot_send_events": {
+      "x-endpoint": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/events/2026-09/send",
+        "headers": {
+          "Authorization": "Bearer <private app token>"
+        },
+        "scope": "analytics.behavioral_events.send",
+        "success": "204 No Content",
+        "versioning": "date-versioned since 2026: new versions each March and September, current for 6 months, unsupported 18 months after release; /events/v3/send is still documented as legacy with no announced sunset",
+        "docs": [
+          "https://developers.hubspot.com/docs/api-reference/latest/events/send-event-data/guide",
+          "https://developers.hubspot.com/docs/developer-tooling/platform/versioning"
+        ],
+        "checked": "2026-10-20"
+      },
+      "type": "object",
+      "required": [
+        "eventName",
+        "properties"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "eventName": {
+          "type": "string",
+          "pattern": "^pe\\d+_[a-z0-9_]+$",
+          "description": "pe<hub id>_<event internal name>"
+        },
+        "email": {
+          "type": "string",
+          "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+        },
+        "objectId": {
+          "type": "string"
+        },
+        "utk": {
+          "type": "string"
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "uuid": {
+          "type": "string",
+          "minLength": 1
+        },
+        "properties": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "email"
+          ]
+        },
+        {
+          "required": [
+            "objectId"
+          ]
+        },
+        {
+          "required": [
+            "utk"
+          ]
+        }
+      ]
+    },
+    "hubspot_send_events_batch": {
+      "x-endpoint": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/events/2026-09/send/batch",
+        "limits": "up to 500 inputs per request",
+        "docs": [
+          "https://developers.hubspot.com/docs/api-reference/latest/events/send-event-data/guide"
+        ],
+        "checked": "2026-10-20"
+      },
+      "type": "object",
+      "required": [
+        "inputs"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 500,
+          "items": {
+            "$ref": "#/$defs/hubspot_send_events"
+          }
+        }
+      }
+    },
+    "braze_users_track": {
+      "x-endpoint": {
+        "method": "POST",
+        "url": "https://rest.<instance>.braze.com/users/track",
+        "headers": {
+          "Authorization": "Bearer <REST API key with users.track>"
+        },
+        "limits": "75 objects per request in total across attributes, events and purchases; nested event properties up to 100 KB; time and event_name are reserved property keys",
+        "docs": [
+          "https://www.braze.com/docs/api/endpoints/user_data/post_user_track/",
+          "https://www.braze.com/docs/api/objects_filters/event_object/"
+        ],
+        "checked": "2026-10-20"
+      },
+      "type": "object",
+      "anyOf": [
+        {
+          "required": [
+            "events"
+          ]
+        },
+        {
+          "required": [
+            "attributes"
+          ]
+        },
+        {
+          "required": [
+            "purchases"
+          ]
+        }
+      ],
+      "properties": {
+        "events": {
+          "type": "array",
+          "maxItems": 75,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "time"
+            ],
+            "properties": {
+              "external_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "user_alias": {
+                "type": "object"
+              },
+              "braze_id": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              },
+              "phone": {
+                "type": "string"
+              },
+              "app_id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "time": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "properties": {
+                "type": "object",
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "time"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "event_name"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "_update_existing_only": {
+                "type": "boolean"
+              }
+            },
+            "oneOf": [
+              {
+                "required": [
+                  "external_id"
+                ]
+              },
+              {
+                "required": [
+                  "user_alias"
+                ]
+              },
+              {
+                "required": [
+                  "braze_id"
+                ]
+              },
+              {
+                "required": [
+                  "email"
+                ]
+              },
+              {
+                "required": [
+                  "phone"
+                ]
+              }
+            ]
+          }
+        },
+        "attributes": {
+          "type": "array",
+          "maxItems": 75
+        },
+        "purchases": {
+          "type": "array",
+          "maxItems": 75
+        }
+      }
+    },
+    "customerio_pipelines_track": {
+      "x-endpoint": {
+        "method": "POST",
+        "url": "https://cdp.customer.io/v1/track (EU: https://cdp-eu.customer.io/v1/track)",
+        "headers": {
+          "Authorization": "Basic base64(<pipelines API key>:)"
+        },
+        "recommended": "Customer.io recommends the Pipelines API over the Track API v1",
+        "limits": "32 KB per call, 500 KB per batch",
+        "idempotency": "messageId",
+        "docs": [
+          "https://docs.customer.io/integrations/api/cdp/",
+          "https://docs.customer.io/integrations/data-in/connections/http-api.md"
+        ],
+        "checked": "2026-10-20"
+      },
+      "type": "object",
+      "required": [
+        "event"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "userId"
+          ]
+        },
+        {
+          "required": [
+            "anonymousId"
+          ]
+        }
+      ],
+      "properties": {
+        "userId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "anonymousId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "event": {
+          "type": "string",
+          "minLength": 1
+        },
+        "properties": {
+          "type": "object"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "messageId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "context": {
+          "type": "object"
+        }
+      }
+    },
+    "customerio_track_v1": {
+      "x-endpoint": {
+        "method": "POST",
+        "url": "https://track.customer.io/api/v1/customers/{identifier}/events (EU: track-eu.customer.io)",
+        "headers": {
+          "Authorization": "Basic base64(<site id>:<API key>)"
+        },
+        "identifier": "id, email or cio_id (not phone)",
+        "limits": "event name up to 100 bytes; data up to 100,000 bytes",
+        "idempotency": "id (a ULID)",
+        "docs": [
+          "https://docs.customer.io/integrations/api/track/"
+        ],
+        "checked": "2026-10-20"
+      },
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "data": {
+          "type": "object"
+        },
+        "timestamp": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "id": {
+          "type": "string"
+        },
+        "type": {
+          "const": "event"
+        }
+      }
+    }
+  }
+}

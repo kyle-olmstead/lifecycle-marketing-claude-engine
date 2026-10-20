@@ -1,0 +1,11 @@
+Everything is still set up
+
+Hi {{ customer.first_name | default: "there" }}, your data sources are still connected and your last work is saved.
+
+Most people who come back start with the same thing they did last time: they create a report. It takes a few minutes, and the setup is already done.
+
+Open where you left off: https://app.ridgeview.example/reports/new?utm_source=lifecycle&utm_medium=email&utm_campaign=ridgeview_winback_14d&utm_content=t1_email
+
+Dana Ortiz at Ridgeview
+100 Example Way, Suite 400, Springfield, OR 97477
+Unsubscribe: {% unsubscribe_url %}

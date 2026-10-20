@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "flow": "Win-back: Ridgeview, 14 days since the core action (created a report)",
+  "core_event": "feature_used",
+  "goal_event": "feature_used",
+  "holdout_pct": 15.0,
+  "frequency_cap_per_week": 3,
+  "send_hour_local": 10,
+  "quiet_hours_local": [
+    21,
+    8
+  ],
+  "in_app_display_days": 3,
+  "max_touches": 5,
+  "engaged_only": false,
+  "steps": {
+    "holdout_split": {
+      "branch": {
+        "holdout": true
+      }
+    },
+    "t1_email": {
+      "condition": null
+    },
+    "t2_email": {
+      "condition": null
+    },
+    "t3_in_app": {
+      "condition": null
+    },
+    "t4_email": {
+      "condition": null
+    },
+    "t5_email": {
+      "condition": null
+    },
+    "sunset": {
+      "condition": {
+        "all": [
+          {
+            "not": {
+              "event_since_entry": "message_clicked"
+            }
+          },
+          {
+            "not": {
+              "event_since_entry": "feature_used"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

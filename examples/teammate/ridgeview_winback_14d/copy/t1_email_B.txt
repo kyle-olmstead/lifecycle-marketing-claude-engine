@@ -1,0 +1,11 @@
+It has been 14 days
+
+Hi {{ customer.first_name | default: "there" }}, the last time you created a report in Ridgeview was 14 days ago.
+
+If something got in the way, reply and tell me what it was. If you just got busy, the button below takes you straight back.
+
+Go back to Ridgeview: https://app.ridgeview.example/reports/new?utm_source=lifecycle&utm_medium=email&utm_campaign=ridgeview_winback_14d&utm_content=t1_email
+
+Dana Ortiz at Ridgeview
+100 Example Way, Suite 400, Springfield, OR 97477
+Unsubscribe: {% unsubscribe_url %}

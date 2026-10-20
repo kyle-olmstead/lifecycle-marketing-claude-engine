@@ -1,4 +1,4 @@
-# LMM Engine (lifecycle-marketing-claude-engine) v2.0
+# LMM Engine (lifecycle-marketing-claude-engine) v2.1
 
 **An operating layer for enterprise lifecycle marketing on Claude.** Claude works as two senior
 people at once: a principal lifecycle growth strategist and a senior CRM systems and data engineer.
@@ -12,14 +12,19 @@ segment math, experiment statistics, template and SQL syntax.
 - It checks the sending gate before it designs anything that sends, verifies data before it writes
   a segment, and sizes the holdout before a flow ships. It reports what a flow actually drove
   (incremental), not only what the platform credits it with (attributed).
+- **New in 2.1, the teammate:** describe a campaign in one sentence ("a 5-touch win-back for users
+  who completed onboarding but haven't created a report in 14 days") and get a build-ready plan: the
+  cohort SQL, a multi-channel flow that has been simulated, linted copy, and a holdout with its read
+  date. Every assumption it made is listed for you to confirm. [Quickstart](docs/quickstart_for_marketers.md).
 - Every SQL, template and JSON example in this repository is checked in CI against the rules the
   engine imposes on Claude. Free and open source (Apache 2.0).
 
 | If you are | Start with | Time |
 |---|---|---|
 | a lifecycle or CRM manager | [Install](#4-install), then say *"set up the lifecycle engine"*, then *"check our deliverability"* | 15 minutes |
+| a marketer with a campaign to plan | [Quickstart for marketers](docs/quickstart_for_marketers.md), then type your brief | 10 minutes |
 | a marketing leader | [What it does](#1-what-it-does-in-plain-english) and [What is verified](#8-what-is-verified-and-what-is-not) | 5 minutes |
-| a data or marketing engineer | [Repository architecture](#5-repository-architecture), then `docs/ARCHITECTURE.md` and `tools/` | as long as you like |
+| a data or marketing engineer | [Repository architecture](#5-repository-architecture), then `docs/ARCHITECTURE.md`, `docs/architectural_overview.md` and `tools/` | as long as you like |
 
 ---
 
@@ -39,6 +44,13 @@ segment math, experiment statistics, template and SQL syntax.
    Snowflake, BigQuery or PostgreSQL, with export payloads for Klaviyo and HubSpot.
 5. **Tells you what worked.** Test sizing before launch, and readouts that report attributed revenue,
    incremental revenue and the gap between them, with honest labels when a sample is too small.
+6. **Plans a whole campaign from one brief (new in 2.1).** Four agents in sequence: a cohort analyst
+   (who enters, on which events, with the SQL and the data checked), a campaign architect (the
+   multi-channel logic tree with waits, consent, exits and a sunset), a copywriter (variants per
+   message, rendered in your platform's template language and linted), and an experimentation agent
+   (a persistent holdout, 15% by default, sized with its read date). A QA pass simulates the flow
+   with synthetic customers before anyone builds it. A daily audit at 05:00 UTC checks the cohort's
+   health and logs it to Google Sheets.
 
 **What it will never do:** recommend more volume on a damaged sender, warm a domain with people who
 never engage, write fake urgency or invented personalization, report attributed revenue as if it were
@@ -82,6 +94,17 @@ $ python3 tools/stats.py incrementality examples/stats/winback_readout.json --ma
   Gap:            $26,020
 ```
 
+```text
+$ python3 -m agents.orchestrator plan --brief briefs/examples/winback_14d.yaml --data tests/fixtures
+READY WITH ASSUMPTIONS: Win-back: Ridgeview, 14 days since the core action (created a report)
+  WARN  copy: t2_email: 2 variant(s) pass lint and guardrails (offline); contains [bracketed] fill-ins: ...
+  WARN  holdout read: directional only: not inside 12 months at this volume (it would take about 187 months): ...
+plan: out/ridgeview_winback_14d/plan.md
+```
+
+The full output for that brief is in [`examples/teammate/ridgeview_winback_14d/`](examples/teammate/ridgeview_winback_14d/plan.md).
+The fixture company is small, and the plan says plainly that its holdout cannot read inside a year.
+
 ## 4. Install
 
 You need a paid Claude plan. It works best in **Claude Code** or the **Claude desktop app with a
@@ -110,6 +133,17 @@ then the module prompt for the job, into any Claude conversation.
 pip install -r requirements.txt
 pytest -q && python3 tools/repo_check.py
 ```
+
+**Run the teammate** (same install):
+
+```text
+python3 -m agents.orchestrator plan --text "Build a 5-touch win-back flow for users who completed onboarding but haven't created a report in 14 days" --product Acme
+python3 -m agents.orchestrator plan --brief briefs/brief_template.yaml --data <folder with users, orders, track_events exports>
+python3 -m agents.cohort_analyst audit --brief briefs/examples/winback_14d.yaml --data tests/fixtures --out out/audit
+```
+
+With the plugin, just describe the campaign; the `lifecycle-teammate` skill runs these for you.
+For Claude Desktop without the plugin, add the local MCP server in `config/mcp_server_config.json`.
 
 ## 5. Repository architecture
 
@@ -160,8 +194,25 @@ lifecycle-marketing-claude-engine/
 │       └── frameworks/
 │           └── test_hypothesis_matrix.md
 ├── .claude-plugin/                          plugin and marketplace manifests                [added]
-├── skills/                                  six plugin skills that route to the modules     [added]
+├── skills/                                  seven plugin skills that route to the modules   [added]
 ├── tools/                                   deterministic tools (below)                     [added]
+├── agents/                                  the teammate: orchestrator and four agents      [2.1]
+│   ├── orchestrator.py                      brief to plan: Analyst, Architect, Copywriter, Experiment, QA
+│   ├── cohort_analyst.py                    entry cohort, SQL in four dialects, daily health audit
+│   ├── campaign_architect.py                multi-channel logic tree as a flow spec
+│   ├── copywriter.py                        variants, rendered per dialect and linted
+│   ├── experimentation_agent.py             persistent holdout, sizing, read date
+│   └── models.py, brief.py, guardrails.py, sql_dialects.py
+├── briefs/brief_template.yaml               the campaign brief a marketer fills in          [2.1]
+├── config/
+│   ├── mcp_server_config.json               local and remote MCP servers for live data      [2.1]
+│   └── esp_payload_schemas.json             trigger-event request bodies per ESP            [2.1]
+├── scripts/
+│   ├── campaign_simulator.py                dry-run: structure, synthetic journeys, payloads [2.1]
+│   ├── webhook_parser.py                    Segment and GA4 ingest to canonical events      [2.1]
+│   ├── sheets_sync.py                       plans and audits to Google Sheets               [2.1]
+│   └── mcp_server.py                        the teammate as MCP tools                       [2.1]
+├── .github/workflows/daily_cohort_audit.yml 05:00 UTC cohort health check                   [2.1]
 ├── schemas/flow_spec.schema.json            machine-readable flow specification             [added]
 ├── examples/                                fictional worked-example inputs                 [added]
 ├── tests/                                   pytest suite and DuckDB fixtures                [added]
@@ -186,6 +237,7 @@ beyond it, to make the engine installable as a Claude plugin and testable in CI.
 | `tools/sql_check.py` | parse in a named dialect; run PostgreSQL on the fixtures |
 | `tools/sms.py` | GSM-7 versus UCS-2 encoding and segment counts, with the characters that forced the switch |
 | `tools/payloads.py` | Klaviyo bulk-import and HubSpot batch-upsert bodies within vendor limits |
+| `tools/event_payloads.py` | trigger-event requests for Klaviyo, HubSpot, Braze and Customer.io, within vendor limits (2.1) |
 | `tools/repo_check.py` | runs every check above on every example in the repository |
 
 ## 6. The modules
@@ -251,6 +303,10 @@ Details, and the paths for tools without a connector: [`CONNECTORS.md`](CONNECTO
 | every Liquid, Klaviyo and HubL example parses (python-liquid, Django, Jinja2); AMPscript examples pass structural checks | rendering inside each ESP |
 | sample sizes match the standard two-proportion formula; Newcombe intervals and chi-square tails match reference values checked against statsmodels and scipy when written | the suite pins those values; it does not import either library |
 | every flow spec validates against the flow schema; every example event validates (and every invalid one is rejected) against the tracking plan | your platform's own validation |
+| the teammate's entry query selects the same people as an independent Python computation on 40 dates; its Snowflake and BigQuery versions return the same rows when transpiled to DuckDB; its PostgreSQL version runs on a real PostgreSQL 16 in CI | a live Snowflake or BigQuery run |
+| every generated flow passes the simulator: holdout gets nothing, no send without consent, nothing after the core action, frequency cap, send hour, quiet hours; the simulator catches each of those defects when they are injected | your platform's own flow engine |
+| every rendered template lints in its dialect for all five platforms; trigger payloads validate against schemas written from vendor documentation (2026-10-20) | a live send or API call |
+| the Claude copy path (structured output, repair round, fallback) against a stub client | a live Claude API call in CI |
 | the repository contains no em dashes (house style) | taste |
 
 Platform endpoints, limits and rules were read from vendor documentation in October 2026. They

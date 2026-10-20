@@ -41,6 +41,18 @@ plan. Run `lifecycle-setup` for the truth about your workspace.*
 3. **Add a custom connector.** Your Claude admin can add a custom MCP connector for the tool's API;
    setup detects custom connectors the same way it detects directory ones.
 
+## MCP servers and event ingest (2.1)
+
+- `config/mcp_server_config.json` lists the vendor-run MCP servers checked on 2026-10-20: local
+  servers for Klaviyo and BigQuery (MCP Toolbox) you add to Claude Desktop's config, and remote ones
+  for HubSpot, Klaviyo, Braze, Customer.io, BigQuery, Snowflake and Google Sheets that you add as
+  custom connectors. Snowflake-Labs/mcp and Braze's earlier local server are deprecated by their
+  vendors; the file points to the replacements.
+- It also carries the teammate's own local server (`scripts/mcp_server.py`), for Claude Desktop
+  without the plugin.
+- Segment and GA4 have no connector: send their events to `scripts/webhook_parser.py`, which writes
+  the canonical `track_events` rows the cohort queries read, or use GA4's BigQuery export.
+
 ## Safety
 
 - Read before ask: with a connector, the engine pulls before it asks you, and labels what it read.

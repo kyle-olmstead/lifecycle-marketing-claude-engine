@@ -9,7 +9,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
-      - name: Unit tests (tools, schemas, SQL on DuckDB fixtures, dialect equivalence)
+      - name: Unit tests (tools, schemas, SQL on DuckDB fixtures, dialect equivalence, teammate agents)
         run: pytest -q
       - name: Every example in the repository passes its own syntax rules
         run: python tools/repo_check.py
@@ -18,3 +18,33 @@ jobs:
           python tools/deliverability.py analyze examples/deliverability/incident.json --markdown > /dev/null
           python tools/stats.py incrementality examples/stats/winback_readout.json --markdown > /dev/null
           python tools/template_lint.py --dialect customerio --email modules/03_copywriting_and_multichannel/templates/modular_email_components.html > /dev/null
+      - name: Teammate plans the worked example offline, and the plan passes its own simulation
+        run: |
+          python -m agents.orchestrator plan --brief briefs/examples/winback_14d.yaml --data tests/fixtures --copy-mode offline --out out
+          python scripts/campaign_simulator.py out/ridgeview_winback_14d/flow_spec.json
+          for f in examples/flows/*.json; do python scripts/campaign_simulator.py "$f" > /dev/null; done
+      - name: Daily audit runs in demo mode
+        run: |
+          python -m agents.cohort_analyst audit --brief briefs/examples/winback_14d.yaml --data tests/fixtures --out out/audit > /dev/null
+          python scripts/sheets_sync.py --audit out/audit/audit.json --dry-run --out out/sheets > /dev/null
+
+  postgres:
+    # Runs the PostgreSQL-dialect cohort queries on a real PostgreSQL and compares them with DuckDB.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      LCM_PG: "host=localhost port=5432 user=postgres password=postgres dbname=postgres"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: pytest -q tests/test_postgres.py

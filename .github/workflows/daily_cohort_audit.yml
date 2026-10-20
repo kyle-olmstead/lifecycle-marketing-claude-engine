@@ -1,0 +1,139 @@
+# Daily cohort health check at 05:00 UTC.
+#
+# Runs the Cohort Analyst's audit for one brief, posts the result to the run summary, logs it to a
+# Google Sheet, and opens (or updates) an issue when it finds an anomaly. Configure it in the
+# repository's Settings, Secrets and variables, Actions. With nothing configured it runs on the demo
+# fixtures, so the workflow stays green and shows what the output looks like.
+#
+# Variables (vars.*)
+#   LCM_BRIEF                       brief to audit (default briefs/examples/winback_14d.yaml)
+#   LCM_BQ_PROJECT, LCM_BQ_DATASET  BigQuery mode: the audit SQL runs in your warehouse; the dataset
+#                                   holds users, orders and track_events (or views with those names)
+#   GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT
+#                                   keyless auth to Google Cloud for BigQuery mode (Workload Identity Federation)
+#   LCM_DATA_URL                    file mode instead: an https URL prefix serving users, orders and
+#                                   track_events as .parquet or .csv (for example signed exports)
+#   LCM_SHEET_ID                    the Google Sheet to log to
+#   LCM_FAIL_ON_ANOMALY             'true' to fail the run when an anomaly is found
+# Secrets (secrets.*)
+#   GOOGLE_SERVICE_ACCOUNT_JSON     service-account key with Editor access to the sheet
+#
+# Scheduled workflows in a public repository pause after 60 days without repository activity;
+# GitHub emails the owner, and one click re-enables them.
+
+name: daily cohort audit
+
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+    inputs:
+      brief:
+        description: "Brief to audit"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  issues: write
+  id-token: write
+
+concurrency:
+  group: daily-cohort-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LCM_BRIEF: ${{ inputs.brief || vars.LCM_BRIEF || 'briefs/examples/winback_14d.yaml' }}
+      LCM_BQ_PROJECT: ${{ vars.LCM_BQ_PROJECT }}
+      LCM_BQ_DATASET: ${{ vars.LCM_BQ_DATASET }}
+      LCM_DATA_URL: ${{ vars.LCM_DATA_URL }}
+      LCM_SHEET_ID: ${{ vars.LCM_SHEET_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Choose the data source
+        run: |
+          if [ -n "$LCM_BQ_PROJECT" ]; then echo "LCM_MODE=bigquery" >> "$GITHUB_ENV"
+          elif [ -n "$LCM_DATA_URL" ]; then echo "LCM_MODE=url" >> "$GITHUB_ENV"
+          else echo "LCM_MODE=demo" >> "$GITHUB_ENV"; fi
+
+      - name: Authenticate to Google Cloud
+        if: env.LCM_MODE == 'bigquery'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up the bq command line
+        if: env.LCM_MODE == 'bigquery'
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Run the audit queries in BigQuery
+        if: env.LCM_MODE == 'bigquery'
+        run: |
+          python -m agents.cohort_analyst audit-sql --brief "$LCM_BRIEF" --dialect bigquery --out out/audit_sql
+          mkdir -p out/audit_results
+          for q in daily snapshot funnel; do
+            bq query --project_id="$LCM_BQ_PROJECT" --dataset_id="$LCM_BQ_PROJECT:$LCM_BQ_DATASET" \
+              --use_legacy_sql=false --format=json --max_rows=100000 "$(cat out/audit_sql/$q.sql)" > "out/audit_results/$q.json"
+          done
+
+      - name: Audit cohort health
+        run: |
+          case "$LCM_MODE" in
+            bigquery) SRC=(--from-results out/audit_results) ;;
+            url)      SRC=(--data "$LCM_DATA_URL") ;;
+            *)        SRC=(--data tests/fixtures) ;;
+          esac
+          python -m agents.cohort_analyst audit --brief "$LCM_BRIEF" "${SRC[@]}" --out out/audit
+          {
+            echo "Data source: $LCM_MODE"
+            echo
+            cat out/audit/audit.md
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "LCM_STATUS=$(python -c 'import json; print(json.load(open("out/audit/audit.json"))["status"])')" >> "$GITHUB_ENV"
+
+      - name: Log to Google Sheets
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: python scripts/sheets_sync.py --audit out/audit/audit.json --out out/sheets
+
+      - name: Open or update an anomaly issue
+        if: env.LCM_STATUS == 'anomaly' && env.LCM_MODE != 'demo'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          AS_OF=$(python -c 'import json; print(json.load(open("out/audit/audit.json"))["as_of"])')
+          FLOW=$(python -c 'import json; print(json.load(open("out/audit/audit.json"))["flow"])')
+          TITLE="Cohort anomaly: $FLOW"
+          gh label create cohort-anomaly --color B60205 --description "Daily cohort audit finding" --force
+          NUMBER=$(gh issue list --label cohort-anomaly --state open --search "in:title \"$TITLE\"" --json number --jq '.[0].number')
+          { echo "Audit for $AS_OF ([run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID))"; echo; cat out/audit/audit.md; } > body.md
+          if [ -n "$NUMBER" ]; then gh issue comment "$NUMBER" --body-file body.md
+          else gh issue create --title "$TITLE" --label cohort-anomaly --body-file body.md; fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cohort-audit-${{ github.run_id }}
+          path: |
+            out/audit
+            out/sheets
+          retention-days: 30
+
+      - name: Fail on anomaly when asked
+        if: env.LCM_STATUS == 'anomaly' && vars.LCM_FAIL_ON_ANOMALY == 'true'
+        run: |
+          echo "::error::cohort anomaly found; see the run summary"
+          exit 1

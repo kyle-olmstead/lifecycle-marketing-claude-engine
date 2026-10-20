@@ -73,6 +73,8 @@ def run(sql: str, con=None) -> Tuple[List[str], List[tuple]]:
         compat = sql
         for pg, duck in PG_TO_DUCKDB.items():
             compat = re.sub(r"\b" + pg + r"\s*\(", duck + "(", compat, flags=re.I)
+        # PostgreSQL's hex-to-integer idiom ('x' || hex)::bit(n)::int, used by the teammate's holdout bucket
+        compat = re.sub(r"\('x' \|\| (substr\(md5\(.+?\), 1, 7\))\)::bit\(28\)::int", r"CAST('0x' || \1 AS INTEGER)", compat, flags=re.I)
         try:
             cur = con.execute(compat)
         except Exception:

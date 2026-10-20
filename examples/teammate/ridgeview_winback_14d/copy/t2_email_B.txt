@@ -1,0 +1,11 @@
+Start from a template
+
+Hi {{ customer.first_name | default: "there" }}, starting from a blank page is the slowest part.
+
+[Name the template or starter that fits their use case] is ready in your account. Open it, change two things, and you are done.
+
+Open the template: https://app.ridgeview.example/reports/new?utm_source=lifecycle&utm_medium=email&utm_campaign=ridgeview_winback_14d&utm_content=t2_email
+
+Dana Ortiz at Ridgeview
+100 Example Way, Suite 400, Springfield, OR 97477
+Unsubscribe: {% unsubscribe_url %}

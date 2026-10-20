@@ -43,6 +43,7 @@ flowchart TB
 | Tools | `tools/*.py` | Deterministic computation, standard library plus a few parsers. No network, no API keys. |
 | Contracts | `schemas/`, `modules/02_*/schemas/` | JSON Schemas for event payloads and flow specifications, so outputs can be validated by machine. |
 | Checks | `tools/repo_check.py`, `tests/`, `.github/workflows/ci.yml` | Every SQL, template, JSON and XML example in the repository is checked against the rules the engine imposes on Claude. |
+| Teammate (2.1) | `agents/`, `scripts/`, `config/`, `briefs/` | One brief in, a checked plan out: four agents run the modules as code, a simulator dry-runs the flow, and a daily audit watches the cohort. See [`architectural_overview.md`](architectural_overview.md). |
 
 ## 2. Module dependencies
 
@@ -112,3 +113,11 @@ engine labels such output "unchecked".
 - **A new platform dialect**: add it to `tools/template_lint.py` with a real parser where one
   exists, a fallback rule, and its unsubscribe and address tokens; then add a column to the dialect
   tables in `docs/LIQUID_CHEATSHEET.md` and the copy prompts.
+
+## 7. The teammate (2.1)
+
+The teammate runs the modules as code for one campaign at a time: the cohort analyst applies module
+04's data discipline, the campaign architect module 02's flow rules, the copywriter module 03's copy
+rules through the template linter, and the experimentation agent module 05's sizing through
+`tools/stats.py`. Its pipeline, contracts, verification and extension points are in
+[`architectural_overview.md`](architectural_overview.md).

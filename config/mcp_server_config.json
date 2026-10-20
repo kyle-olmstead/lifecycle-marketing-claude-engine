@@ -1,0 +1,93 @@
+{
+  "_readme": [
+    "Model Context Protocol servers for the LMM Engine teammate, checked against vendor documentation on 2026-10-20.",
+    "mcpServers: local servers. Copy the entries you need into claude_desktop_config.json (Claude Desktop: Settings, Developer, Edit Config) or into .mcp.json for Claude Code, replace every REPLACE_WITH value, and restart.",
+    "remoteConnectors: vendor-hosted servers. These are not added through the config file: in Claude, open Settings, Connectors, Add custom connector, paste the URL and sign in. Many are already in Claude's connector directory; prefer the directory listing where it exists.",
+    "Secrets: keep keys out of this repository. Give every server the narrowest key it needs, read-only where the vendor offers it.",
+    "The teammate itself never writes to a platform. Platform writes, when you ask Claude for them, happen through these servers with your approval of each change."
+  ],
+  "mcpServers": {
+    "lcm-teammate": {
+      "command": "python3",
+      "args": ["REPLACE_WITH_ABSOLUTE_PATH/lifecycle-marketing-claude-engine/scripts/mcp_server.py"],
+      "env": {
+        "LCM_OUT_DIR": "REPLACE_WITH_ABSOLUTE_PATH/lcm-plans",
+        "ANTHROPIC_API_KEY": "REPLACE_WITH_KEY_OR_DELETE_THIS_LINE_FOR_OFFLINE_COPY"
+      }
+    },
+    "klaviyo": {
+      "command": "uvx",
+      "args": ["klaviyo-mcp-server@latest"],
+      "env": {
+        "PRIVATE_API_KEY": "REPLACE_WITH_KLAVIYO_PRIVATE_KEY",
+        "READ_ONLY": "true",
+        "ALLOW_USER_GENERATED_CONTENT": "false"
+      }
+    },
+    "bigquery": {
+      "command": "npx",
+      "args": ["-y", "@toolbox-sdk/server", "--prebuilt", "bigquery", "--stdio"],
+      "env": {
+        "BIGQUERY_PROJECT": "REPLACE_WITH_GCP_PROJECT_ID"
+      }
+    }
+  },
+  "remoteConnectors": [
+    {
+      "name": "HubSpot",
+      "url": "https://mcp.hubspot.com",
+      "auth": "OAuth",
+      "use": "contacts, companies, lists, workflows and email performance; property writes with approval",
+      "docs": "https://developers.hubspot.com/docs/build-with-ai/remote-mcp-server"
+    },
+    {
+      "name": "Klaviyo (remote)",
+      "url": "https://mcp.klaviyo.com/mcp",
+      "auth": "OAuth",
+      "use": "the hosted alternative to the local klaviyo server above; use one, not both",
+      "docs": "https://developers.klaviyo.com/en/docs/connect_to_the_klaviyo_mcp_server"
+    },
+    {
+      "name": "Braze",
+      "url": "https://mcp.braze.com/mcp",
+      "url_eu": "https://mcp.braze.eu/mcp",
+      "auth": "OAuth",
+      "use": "Canvases, campaigns, segments and performance; the earlier local Braze server is deprecated",
+      "docs": "https://www.braze.com/docs/developer_guide/mcp_server/"
+    },
+    {
+      "name": "Customer.io",
+      "url": "https://mcp.customer.io/mcp",
+      "url_eu": "https://mcp-eu.customer.io/mcp",
+      "auth": "OAuth",
+      "use": "campaigns, segments, people and message metrics",
+      "docs": "https://docs.customer.io/ai/mcp-server"
+    },
+    {
+      "name": "BigQuery (Google managed)",
+      "url": "https://bigquery.googleapis.com/mcp",
+      "auth": "Google OAuth and IAM",
+      "use": "run the cohort and audit queries against the warehouse; the local bigquery server above is the alternative",
+      "docs": "https://docs.cloud.google.com/bigquery/docs/use-bigquery-mcp"
+    },
+    {
+      "name": "Snowflake (Snowflake managed)",
+      "url": "https://REPLACE_WITH_ACCOUNT.snowflakecomputing.com/api/v2/databases/REPLACE_DB/schemas/REPLACE_SCHEMA/mcp-servers/REPLACE_NAME",
+      "auth": "Snowflake OAuth or a programmatic access token",
+      "use": "run the cohort and audit queries; create the server first with CREATE MCP SERVER. Snowflake-Labs/mcp is deprecated",
+      "docs": "https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-mcp"
+    },
+    {
+      "name": "Google Sheets (developer preview)",
+      "url": "https://sheetsmcp.googleapis.com/mcp/v1",
+      "auth": "Google OAuth with your own OAuth client; enable sheetsmcp.googleapis.com; Claude's redirect URI is https://claude.ai/api/mcp/auth_callback",
+      "use": "read the reporting sheet that scripts/sheets_sync.py writes",
+      "docs": "https://developers.google.com/workspace/sheets/api/guides/configure-mcp-server"
+    }
+  ],
+  "noOfficialServer": {
+    "Salesforce Marketing Cloud": "no vendor MCP server found; paste exports, or go through the warehouse (CONNECTORS.md)",
+    "Segment and RudderStack": "send events to scripts/webhook_parser.py or sync them to the warehouse",
+    "Google Analytics 4": "export to BigQuery and use the BigQuery server, or forward Measurement Protocol events to scripts/webhook_parser.py"
+  }
+}

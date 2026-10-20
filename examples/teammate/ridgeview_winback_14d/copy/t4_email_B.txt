@@ -1,0 +1,11 @@
+What active teams are doing
+
+Hi {{ customer.first_name | default: "there" }}, last week [number from your data] teams used Ridgeview to create a report.
+
+The most common reason: [the outcome they get, in one sentence].
+
+Do it now: https://app.ridgeview.example/reports/new?utm_source=lifecycle&utm_medium=email&utm_campaign=ridgeview_winback_14d&utm_content=t4_email
+
+Dana Ortiz at Ridgeview
+100 Example Way, Suite 400, Springfield, OR 97477
+Unsubscribe: {% unsubscribe_url %}

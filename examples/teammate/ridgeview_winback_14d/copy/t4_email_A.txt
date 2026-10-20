@@ -1,0 +1,11 @@
+A weekly routine that sticks
+
+Hi {{ customer.first_name | default: "there" }}, [a real customer or team like theirs] uses Ridgeview every [day of week] to [specific outcome with a number].
+
+The routine is short: they create a report, share it, and move on. You can copy it as is.
+
+Copy the routine: https://app.ridgeview.example/reports/new?utm_source=lifecycle&utm_medium=email&utm_campaign=ridgeview_winback_14d&utm_content=t4_email
+
+Dana Ortiz at Ridgeview
+100 Example Way, Suite 400, Springfield, OR 97477
+Unsubscribe: {% unsubscribe_url %}

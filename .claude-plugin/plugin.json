@@ -1,7 +1,7 @@
 {
   "name": "lifecycle-engine",
-  "version": "2.0.0",
-  "description": "A lifecycle marketing operating layer for Claude: deliverability diagnosis and sending gates, behavioral activation and win-back flows, copy in the right template dialect for Braze, Customer.io, Klaviyo, HubSpot and Salesforce Marketing Cloud, warehouse SQL for RFM, LTV and retention in Snowflake, BigQuery and PostgreSQL, and experiment sizing and holdout readouts that separate attributed from incremental revenue.",
+  "version": "2.1.0",
+  "description": "A lifecycle marketing operating layer for Claude: deliverability diagnosis and sending gates, behavioral activation and win-back flows, copy in the right template dialect for Braze, Customer.io, Klaviyo, HubSpot and Salesforce Marketing Cloud, warehouse SQL for RFM, LTV and retention in Snowflake, BigQuery and PostgreSQL, and experiment sizing and holdout readouts that separate attributed from incremental revenue. New in 2.1: a teammate that turns a plain-English campaign brief into a build-ready plan (cohort SQL, a simulated multi-channel flow, linted copy and a sized holdout), plus a daily cohort health audit logged to Google Sheets.",
   "author": {
     "name": "Kyle Olmstead",
     "url": "https://github.com/kyle-olmstead"
@@ -24,6 +24,9 @@
     "holdout",
     "incrementality",
     "onboarding",
-    "win-back"
+    "win-back",
+    "campaign-brief",
+    "cohort-analysis",
+    "multi-agent"
   ]
 }

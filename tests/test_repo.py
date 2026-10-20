@@ -29,6 +29,22 @@ TREE = [
 ]
 
 
+TEAMMATE_TREE = [
+    ".github/workflows/daily_cohort_audit.yml",
+    "agents/orchestrator.py", "agents/cohort_analyst.py", "agents/campaign_architect.py", "agents/experimentation_agent.py",
+    "agents/copywriter.py", "agents/models.py", "agents/brief.py", "agents/guardrails.py", "agents/sql_dialects.py",
+    "config/mcp_server_config.json", "config/esp_payload_schemas.json",
+    "scripts/sheets_sync.py", "scripts/webhook_parser.py", "scripts/campaign_simulator.py", "scripts/mcp_server.py",
+    "docs/quickstart_for_marketers.md", "docs/architectural_overview.md",
+    "briefs/brief_template.yaml", "skills/lifecycle-teammate/SKILL.md", "tools/event_payloads.py",
+]
+
+
+def test_the_teammate_tree_exists():
+    missing = [p for p in TEAMMATE_TREE if not (ROOT / p).is_file()]
+    assert not missing, missing
+
+
 def test_the_specified_tree_exists():
     missing = [p for p in TREE if not (ROOT / p).is_file()]
     assert not missing, missing

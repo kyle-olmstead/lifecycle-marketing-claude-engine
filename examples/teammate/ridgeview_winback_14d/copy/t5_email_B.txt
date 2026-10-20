@@ -1,0 +1,11 @@
+Pausing your emails
+
+Hi {{ customer.first_name | default: "there" }}, since you have not used Ridgeview lately, we plan to stop sending you these emails in two weeks.
+
+Want to keep them? One click does it. Either way, your account stays open.
+
+Keep my emails: https://app.ridgeview.example/reports/new?utm_source=lifecycle&utm_medium=email&utm_campaign=ridgeview_winback_14d&utm_content=t5_email
+
+Dana Ortiz at Ridgeview
+100 Example Way, Suite 400, Springfield, OR 97477
+Unsubscribe: {% unsubscribe_url %}

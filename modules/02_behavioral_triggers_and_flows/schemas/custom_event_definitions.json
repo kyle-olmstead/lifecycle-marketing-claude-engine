@@ -475,7 +475,7 @@
         "price": {
           "type": "number",
           "minimum": 0,
-          "multipleOf": 0.01
+          "description": "currency units; round to cents upstream. Not enforced with multipleOf 0.01, which rejects values such as 19.99 under binary floating point"
         },
         "currency": {
           "type": "string",
@@ -499,7 +499,7 @@
         "value": {
           "type": "number",
           "minimum": 0,
-          "multipleOf": 0.01
+          "description": "currency units; round to cents upstream. Not enforced with multipleOf 0.01, which rejects values such as 19.99 under binary floating point"
         },
         "currency": {
           "type": "string",
@@ -529,7 +529,7 @@
         "net_amount": {
           "type": "number",
           "minimum": 0,
-          "multipleOf": 0.01
+          "description": "currency units; round to cents upstream. Not enforced with multipleOf 0.01, which rejects values such as 19.99 under binary floating point"
         },
         "currency": {
           "type": "string",
@@ -579,7 +579,7 @@
         "mrr": {
           "type": "number",
           "minimum": 0,
-          "multipleOf": 0.01
+          "description": "currency units; round to cents upstream. Not enforced with multipleOf 0.01, which rejects values such as 19.99 under binary floating point"
         },
         "currency": {
           "type": "string",
@@ -698,7 +698,7 @@
         "price": {
           "type": "number",
           "minimum": 0,
-          "multipleOf": 0.01
+          "description": "currency units; round to cents upstream. Not enforced with multipleOf 0.01, which rejects values such as 19.99 under binary floating point"
         }
       }
     }
