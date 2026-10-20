@@ -32,13 +32,14 @@ def design(brief: Brief, cohort: CohortDefinition) -> ExperimentDesign:
     pct = brief.holdout_pct
     share = pct / 100
     salt = brief.slug
-    w = brief.outcome_window_days or 30
+    from agents.campaign_architect import outcome_window
+    w = outcome_window(brief)
     core = brief.core_conversion_event
     assignment_sql = {d: f"{dialect(d).holdout_bucket('user_id', salt)} < {pct:g}" for d in ("postgres", "snowflake", "bigquery")}
     rule = (f"persistent, by {brief.randomization_unit}: bucket = first 7 hex digits of md5(user_id || ':{salt}') mod 100; "
             f"bucket < {pct:g} is the holdout. Computed in the daily entry query and pushed on the trigger event as in_holdout; "
             f"holdout members enter, then exit at holdout_split, so both arms are the same population")
-    primary = (f"{core.describe()} ({core.event}) within {w} days of entry, treatment vs holdout, both arms counted from their entry date")
+    primary = (f"{core.describe()} ({core.detail()}) within {w} days of entry, treatment vs holdout, both arms counted from their entry date")
     entries, base = cohort.monthly_entrants.value, cohort.baseline_conversion_rate.value
     e_label, b_label = cohort.monthly_entrants.label, cohort.baseline_conversion_rate.label
     feas = None
@@ -99,7 +100,7 @@ def design(brief: Brief, cohort: CohortDefinition) -> ExperimentDesign:
         holdout_pct=pct, unit=brief.randomization_unit, salt=salt, assignment_sql=assignment_sql, assignment_rule=rule,
         primary_metric=primary, outcome_window_days=w, read=read, sizing=sizing, read_after=read_after,
         feasibility=feas, mde_by_horizon=mde_rows, sensitivity=grid,
-        decision_rule=(f"Keep the flow when the 95% interval for (treatment minus holdout) {core.event} rate lies above zero and the guardrails "
+        decision_rule=(f"Keep the flow when the 95% interval for (treatment minus holdout) rate of {core.detail()} lies above zero and the guardrails "
                        f"hold. If it spans zero at the planned read, report it as inconclusive: keep the holdout running or change the flow. "
                        f"Report attributed, incremental and the gap together (tools/stats.py incrementality)."),
         srm_rule=(f"At every look, test the split against {100 - pct:g}/{pct:g} (tools/stats.py readout --expected-holdout {share:g}). "

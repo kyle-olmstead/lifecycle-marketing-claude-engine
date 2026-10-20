@@ -51,15 +51,29 @@ STALE_AFTER_DAYS = 2
 PLATFORM_PATTERNS = {
     "klaviyo": "Metric-triggered flow on the pushed {trigger} event. Flow filter (every step): has not done {core} since starting this flow. "
                "Holdout: conditional split on the event property in_holdout.",
-    "hubspot": "Contact-based workflow enrolled on the custom event {trigger} (re-enrollment on, so a person can lapse again later). "
+    "hubspot": "Contact-based workflow enrolled on the custom event {trigger}, with re-enrollment on so a person who lapses again re-enters. "
                "Goal criteria: {core} occurred after enrollment. Holdout: if/then branch on the event property in_holdout.",
-    "braze": "Canvas with action-based entry on the custom event {trigger}. Exit criteria: performs {core}. "
-             "Holdout: Audience Paths on the event property in_holdout (use Canvas entry properties).",
+    "braze": "Canvas with action-based entry on the custom event {trigger}, re-eligibility on. Exit criteria: performs {core}. "
+             "Holdout: Audience Paths on the event property in_holdout (Canvas entry properties).",
     "customerio": "Event-triggered campaign on {trigger}, re-entry allowed. Exit: performs {core} (conversion goal with exit on conversion). "
                   "Holdout: True/False branch on the event attribute in_holdout.",
     "sfmc": "Journey Builder with an API Event entry fed by the daily job. Goal and exit criteria: {core} recorded in the data extension. "
             "Holdout: Decision Split on in_holdout from the entry event.",
 }
+ACTIVATION_PATTERNS = {
+    "klaviyo": "Metric-triggered flow on {trigger}{filter}. Flow filter (every step): has not done {core} since starting this flow. "
+               "Holdout: conditional split on the trigger event's in_holdout property.",
+    "hubspot": "Contact-based workflow enrolled on the {trigger} event{filter}, re-enrollment off. Goal criteria: {core}. "
+               "Holdout: if/then branch on in_holdout (copied from the event to a contact property at enrollment).",
+    "braze": "Canvas with action-based entry on {trigger}{filter}, re-eligibility off. Exit criteria: performs {core}. "
+             "Holdout: Audience Paths on the in_holdout entry property.",
+    "customerio": "Event-triggered campaign on {trigger}{filter}, re-entry off. Exit: performs {core} (conversion goal with exit on conversion). "
+                  "Holdout: True/False branch on the event attribute in_holdout.",
+    "sfmc": "Journey Builder with an API Event entry on {trigger}{filter}. Goal and exit criteria: {core}. "
+            "Holdout: Decision Split on in_holdout from the entry event.",
+}
+CATCH_UP_DAYS = 3
+LEDGER = "lcm_flow_entries"
 
 
 # ----------------------------------------------------------------------------------------------
@@ -67,7 +81,10 @@ PLATFORM_PATTERNS = {
 # ----------------------------------------------------------------------------------------------
 
 def connect(data: Optional[str]):
-    """DuckDB over the canonical tables, from a folder or URL prefix holding users, orders and track_events (.csv or .parquet)."""
+    """DuckDB over the canonical tables, from a folder or URL prefix holding users, orders and track_events (.parquet or .csv).
+
+    For each table, .parquet is tried first, then .csv. orders and the entry ledger are optional: a product without orders
+    has an empty orders table, and a first run has an empty ledger."""
     import duckdb
     if data is None:
         return None
@@ -76,28 +93,23 @@ def connect(data: Optional[str]):
     if remote:
         con.execute("INSTALL httpfs; LOAD httpfs;")
     base = data.rstrip("/")
-    for table in TABLES:
-        cols = sql_check.TABLE_DDL[table]
+    for table, cols in sql_check.TABLE_DDL.items():
         con.execute(f"CREATE TABLE {table} ({cols})")
-        candidates = [f"{base}/{table}.parquet", f"{base}/{table}.csv"]
-        source = None
-        for c in candidates:
-            if remote or Path(c).exists():
-                source = c
-                if not remote:
-                    break
-        if source is None:
-            if table == "orders":
-                continue  # a product without orders: the table stays empty
-            raise FileNotFoundError(f"{data}: no {table}.csv or {table}.parquet")
-        reader = f"read_parquet('{source}')" if source.endswith(".parquet") else f"read_csv('{source}', header=true, all_varchar=true, nullstr='')"
-        try:
-            con.execute(f"INSERT INTO {table} SELECT * FROM {reader}")
-        except Exception as e:  # noqa: BLE001
-            if remote and source.endswith(".parquet"):
-                con.execute(f"INSERT INTO {table} SELECT * FROM read_csv('{base}/{table}.csv', header=true, all_varchar=true, nullstr='')")
-            else:
-                raise RuntimeError(f"could not load {source} into {table} ({sql_check.TABLE_DDL[table]}): {e}") from e
+        errors = []
+        loaded = False
+        for source in (f"{base}/{table}.parquet", f"{base}/{table}.csv"):
+            if not remote and not Path(source).exists():
+                continue
+            reader = (f"read_parquet('{source}')" if source.endswith(".parquet") else
+                      f"read_csv('{source}', header=true, all_varchar=true, nullstr='')")
+            try:
+                con.execute(f"INSERT INTO {table} SELECT * FROM {reader}")
+                loaded = True
+                break
+            except Exception as e:  # noqa: BLE001
+                errors.append(f"{source}: {str(e).splitlines()[0]}")
+        if not loaded and table not in ("orders",) + sql_check.OPTIONAL_TABLES:
+            raise FileNotFoundError(f"{data}: could not load {table} from .parquet or .csv ({'; '.join(errors) or 'no file'})")
     return con
 
 
@@ -167,40 +179,69 @@ anchored AS (
 )"""
 
 
-def entry_sql(brief: Brief, dialect_name: str, as_of: Optional[str] = None) -> str:
+def _window(brief: Brief) -> int:
+    from agents.campaign_architect import outcome_window
+    return outcome_window(brief)
+
+
+def entry_sql(brief: Brief, dialect_name: str, as_of: Optional[str] = None, catch_up: int = CATCH_UP_DAYS, order: bool = True) -> str:
+    """One row per person to push on the run date. Each entry is keyed by (flow, user_id, anchor_date), and the ledger
+    lcm_flow_entries holds the keys already pushed, so a late or missed run catches up for `catch_up` days without
+    pushing anyone twice. Record pushed rows with record_sql()."""
     D = dialect(dialect_name)
     a = _as_of_expr(D, as_of)
     salt = brief.slug
     pct = brief.holdout_pct
     n = brief.churn_threshold_days
+    bucket = D.holdout_bucket("u.user_id", salt)
     header = (f"-- dialect: {dialect_name}\n"
-              f"-- {brief.product_name}, {brief.flow_type} flow: one row per person entering on the run date ({'the literal as-of date' if as_of else 'today'}).\n"
-              f"-- Qualifying: {brief.qualifying_event.describe()}. Core action: {brief.core_conversion_event.describe()}.\n")
-    if brief.flow_type == "activation":
-        return (header +
-                f"-- Entry: qualified on the run date and has not yet done the core action. Usually triggered natively by the ESP on the\n"
-                f"-- signup event; this query backfills and audits that trigger.\n"
-                f"WITH {_ctes(D, brief, a)}\n"
-                f"SELECT u.user_id, u.email, a.qualified_at,\n"
-                f"       u.email_consent_at IS NOT NULL AS email_consent,\n"
-                f"       u.sms_consent_at IS NOT NULL AS sms_consent,\n"
-                f"       {D.holdout_bucket('u.user_id', salt)} AS holdout_bucket,\n"
-                f"       {D.holdout_bucket('u.user_id', salt)} < {pct:g} AS in_holdout\n"
-                f"FROM anchored a\nJOIN users u ON u.user_id = a.user_id\n"
-                f"WHERE {D.to_date('a.qualified_at')} = {a} AND a.last_core_at IS NULL\nORDER BY u.user_id\n")
-    return (header +
-            f"-- Entry: the last core action (or qualification, if none since) was exactly {n} days before the run date, so each\n"
-            f"-- lapse enters once. The ESP applies consent and suppression; this query only decides who crossed the threshold.\n"
-            f"-- Holdout: holdout_bucket < {pct:g} (salt '{salt}'); identical in every dialect and in agents/sql_dialects.holdout_bucket.\n"
-            f"WITH {_ctes(D, brief, a)}\n"
-            f"SELECT u.user_id, u.email, a.qualified_at, a.last_core_at,\n"
+              f"-- {brief.product_name}, {brief.flow_type} flow: who to push on the run date ({'the literal as-of date' if as_of else 'today'}).\n"
+              f"-- Qualifying: {brief.qualifying_event.describe()} ({brief.qualifying_event.detail()}). "
+              f"Core action: {brief.core_conversion_event.describe()} ({brief.core_conversion_event.detail()}).\n")
+    tail = "ORDER BY u.user_id\n" if order else ""
+    ledger = (f"LEFT JOIN {LEDGER} l ON l.flow = '{salt}' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date\n")
+    cols = (f"SELECT u.user_id, u.email, a.qualified_at, a.last_core_at, a.anchor_date,\n"
             f"       {D.days_between(a, 'a.anchor_date')} AS days_inactive,\n"
             f"       u.email_consent_at IS NOT NULL AS email_consent,\n"
             f"       u.sms_consent_at IS NOT NULL AS sms_consent,\n"
-            f"       {D.holdout_bucket('u.user_id', salt)} AS holdout_bucket,\n"
-            f"       {D.holdout_bucket('u.user_id', salt)} < {pct:g} AS in_holdout\n"
-            f"FROM anchored a\nJOIN users u ON u.user_id = a.user_id\n"
-            f"WHERE a.anchor_date = {D.add_days(a, -n)}\nORDER BY u.user_id\n")
+            f"       {bucket} AS holdout_bucket,\n"
+            f"       {bucket} < {pct:g} AS in_holdout\n")
+    if brief.flow_type == "activation":
+        return (header +
+                f"-- Entry: qualified within the last {catch_up + 1} days and has not done the core action. The live trigger is the ESP's own\n"
+                f"-- {brief.qualifying_event.event} event; this query backfills and audits it, keyed on the qualification date.\n"
+                f"WITH {_ctes(D, brief, a)}\n" + cols +
+                f"FROM anchored a\nJOIN users u ON u.user_id = a.user_id\n" + ledger +
+                f"WHERE {D.to_date('a.qualified_at')} BETWEEN {D.add_days(a, -catch_up)} AND {a} AND a.last_core_at IS NULL\n"
+                f"  AND l.user_id IS NULL\n" + tail)
+    return (header +
+            f"-- Entry: {n} calendar days or more since the last core action (or since qualifying, if none since): the anchor date is\n"
+            f"-- between {n} and {n + catch_up} days before the run date, and this lapse (user, anchor date) is not yet in {LEDGER}.\n"
+            f"-- A missed run catches up for {catch_up} days. The ESP applies consent and suppression; this query decides who crossed.\n"
+            f"-- Holdout: holdout_bucket < {pct:g} (salt '{salt}'); identical in every dialect and in agents/sql_dialects.holdout_bucket.\n"
+            f"WITH {_ctes(D, brief, a)}\n" + cols +
+            f"FROM anchored a\nJOIN users u ON u.user_id = a.user_id\n" + ledger +
+            f"WHERE a.anchor_date BETWEEN {D.add_days(a, -(n + catch_up))} AND {D.add_days(a, -n)}\n"
+            f"  AND l.user_id IS NULL\n" + tail)
+
+
+def ledger_ddl(dialect_name: str) -> str:
+    text, ts, boolean = ("STRING", "TIMESTAMP", "BOOL") if dialect_name == "bigquery" else ("VARCHAR", "TIMESTAMP", "BOOLEAN")
+    key = "" if dialect_name == "bigquery" else ",\n  PRIMARY KEY (flow, user_id, anchor_date)"
+    return (f"-- dialect: {dialect_name}\n-- Ledger of flow entries already pushed to the ESP. Create once; the entry query excludes what is here.\n"
+            f"CREATE TABLE IF NOT EXISTS {LEDGER} (\n  flow {text} NOT NULL,\n  user_id {text} NOT NULL,\n  anchor_date DATE NOT NULL,\n"
+            f"  pushed_at {ts} NOT NULL,\n  in_holdout {boolean} NOT NULL{key}\n)\n")
+
+
+def record_sql(brief: Brief, dialect_name: str, as_of: Optional[str] = None) -> str:
+    """Run right after a successful push: writes the pushed entries to the ledger. If the push failed part way, record only the
+    rows whose requests succeeded instead."""
+    D = dialect(dialect_name)
+    now = {"snowflake": "CURRENT_TIMESTAMP()", "bigquery": "CURRENT_TIMESTAMP()"}.get(dialect_name, "CURRENT_TIMESTAMP")
+    body = "\n".join(line for line in entry_sql(brief, dialect_name, as_of, order=False).splitlines() if not line.startswith("--"))
+    return (f"-- dialect: {dialect_name}\n-- Record today's pushed entries for {brief.slug} in {LEDGER}. Run after the push succeeds.\n"
+            f"INSERT INTO {LEDGER} (flow, user_id, anchor_date, pushed_at, in_holdout)\n"
+            f"SELECT '{brief.slug}', e.user_id, e.anchor_date, {now}, e.in_holdout\nFROM (\n{body}\n) e\n")
 
 
 def _lapses_ctes(D: Dialect, brief: Brief, a: str) -> str:
@@ -225,18 +266,53 @@ lapses AS (
 )"""
 
 
+def _month(dialect_name: str, expr: str) -> str:
+    return {"postgres": f"DATE_TRUNC('month', {expr})", "duckdb": f"date_trunc('month', {expr})",
+            "snowflake": f"DATE_TRUNC('month', {expr})", "bigquery": f"DATE_TRUNC({expr}, MONTH)"}[dialect_name]
+
+
+def _new_qualifiers_ctes(D: Dialect, brief: Brief, a: str) -> str:
+    """Activation: people who qualified, minus those who had already done the core action, with their first core action after."""
+    c = brief.core_conversion_event
+    return f"""{_ctes(D, brief, a)},
+core_after AS (
+  SELECT q.user_id,
+         MIN(CASE WHEN s.event_at >= q.qualified_at THEN s.event_at END) AS first_core_at,
+         MAX(CASE WHEN s.event_at < q.qualified_at THEN 1 ELSE 0 END) AS core_before
+  FROM qualified q
+  JOIN ({_source(D, c, 'ce2')}) s ON s.user_id = q.user_id
+  GROUP BY q.user_id
+),
+newcomers AS (
+  SELECT q.user_id, {D.to_date('q.qualified_at')} AS entered_on, {D.to_date('ca.first_core_at')} AS first_core_on
+  FROM qualified q
+  LEFT JOIN core_after ca ON ca.user_id = q.user_id
+  WHERE COALESCE(ca.core_before, 0) = 0
+)"""
+
+
 def history_sql(brief: Brief, dialect_name: str, as_of: Optional[str] = None) -> str:
-    """Threshold crossings by month, and how many came back within the outcome window with no flow."""
+    """Entrants by month, and the share who did the core action within the outcome window with no flow running.
+    Win-back: threshold crossings and their natural return. Activation: new qualifiers and their unaided activation."""
     D = dialect(dialect_name)
     a = _as_of_expr(D, as_of)
-    w = brief.outcome_window_days
-    month = {"postgres": "DATE_TRUNC('month', l.crossed_on)", "duckdb": "date_trunc('month', l.crossed_on)",
-             "snowflake": "DATE_TRUNC('month', l.crossed_on)", "bigquery": "DATE_TRUNC(l.crossed_on, MONTH)"}[dialect_name]
+    w = _window(brief)
+    if brief.flow_type == "activation":
+        return (f"-- dialect: {dialect_name}\n"
+                f"-- {brief.product_name}: new qualifiers by month (would-be entrants), and the unaided activation rate: the share of\n"
+                f"-- matured qualifiers (at least {w} days ago) who did the core action within {w} days, with no flow running.\n"
+                f"WITH {_new_qualifiers_ctes(D, brief, a)}\n"
+                f"SELECT {D.to_date(_month(dialect_name, 'n.entered_on'))} AS month,\n"
+                f"       COUNT(*) AS entrants,\n"
+                f"       SUM(CASE WHEN n.entered_on <= {D.add_days(a, -w)} THEN 1 ELSE 0 END) AS matured,\n"
+                f"       SUM(CASE WHEN n.entered_on <= {D.add_days(a, -w)} AND n.first_core_on IS NOT NULL\n"
+                f"                 AND n.first_core_on <= {D.add_days('n.entered_on', w)} THEN 1 ELSE 0 END) AS returned\n"
+                f"FROM newcomers n\nGROUP BY 1\nORDER BY 1\n")
     return (f"-- dialect: {dialect_name}\n"
             f"-- {brief.product_name}: threshold crossings by month (would-be entrants) and the natural return rate: the share of\n"
             f"-- matured crossings (at least {w} days old) whose next core action came within {w} days, with no flow running.\n"
             f"WITH {_lapses_ctes(D, brief, a)}\n"
-            f"SELECT {D.to_date(month)} AS month,\n"
+            f"SELECT {D.to_date(_month(dialect_name, 'l.crossed_on'))} AS month,\n"
             f"       COUNT(*) AS entrants,\n"
             f"       SUM(CASE WHEN l.crossed_on <= {D.add_days(a, -w)} THEN 1 ELSE 0 END) AS matured,\n"
             f"       SUM(CASE WHEN l.crossed_on <= {D.add_days(a, -w)} AND l.next_d IS NOT NULL\n"
@@ -253,8 +329,16 @@ def audit_sql(brief: Brief, dialect_name: str, as_of: Optional[str] = None, look
     half = max(1, math.ceil(n / 2))
     in_window = lambda col: f"{D.to_date(col)} BETWEEN {start} AND {a}"  # noqa: E731
     c = brief.core_conversion_event
+    if brief.flow_type == "activation":
+        ctes = _new_qualifiers_ctes(D, brief, a)
+        entries = (f"SELECT n.entered_on AS day, 'new_qualifiers' AS metric, COUNT(*) AS value\n"
+                   f"FROM newcomers n WHERE n.entered_on BETWEEN {start} AND {a} GROUP BY 1\n")
+    else:
+        ctes = _lapses_ctes(D, brief, a)
+        entries = (f"SELECT l.crossed_on AS day, 'threshold_crossings' AS metric, COUNT(*) AS value\n"
+                   f"FROM lapses l WHERE l.crossed_on BETWEEN {start} AND {a} GROUP BY 1\n")
     daily = (f"-- dialect: {dialect_name}\n-- daily series for the audit, long format: day, metric, value\n"
-             f"WITH {_lapses_ctes(D, brief, a)}\n"
+             f"WITH {ctes}\n"
              f"SELECT {D.to_date('t.event_at')} AS day, 'signups' AS metric, COUNT(DISTINCT t.user_id) AS value\n"
              f"FROM track_events t WHERE t.event_name = 'signed_up' AND {in_window('t.event_at')} GROUP BY 1\n"
              f"UNION ALL\n"
@@ -266,9 +350,7 @@ def audit_sql(brief: Brief, dialect_name: str, as_of: Optional[str] = None, look
              f"UNION ALL\n"
              f"SELECT {D.to_date('o.order_at')} AS day, 'orders' AS metric, COUNT(*) AS value\n"
              f"FROM orders o WHERE o.status = 'completed' AND {in_window('o.order_at')} GROUP BY 1\n"
-             f"UNION ALL\n"
-             f"SELECT l.crossed_on AS day, 'threshold_crossings' AS metric, COUNT(*) AS value\n"
-             f"FROM lapses l WHERE l.crossed_on BETWEEN {start} AND {a} GROUP BY 1\n"
+             f"UNION ALL\n" + entries +
              f"ORDER BY 1, 2\n")
     snapshot = (f"-- dialect: {dialect_name}\n-- the qualified base on the as-of date, by days since the last core action\n"
                 f"WITH {_ctes(D, brief, a)}\n"
@@ -361,8 +443,14 @@ def _dependencies(brief: Brief, con) -> List[DataDependency]:
         deps.append(DataDependency(name="session_started", kind="event", status="unknown" if con is None else
                                    ("verified" if con.execute("SELECT COUNT(*) FROM track_events WHERE event_name='session_started'").fetchone()[0] else "blocked"),
                                    note="in-app messages show at the next session"))
-    deps.append(DataDependency(name="in_holdout", kind="attribute", status="unknown",
-                               note="set by the daily entry job on the pushed event; schedule the job before launch"))
+    if brief.flow_type == "winback":
+        deps.append(DataDependency(name="in_holdout", kind="attribute", status="unknown",
+                                   note="set by the daily entry job on the pushed event; schedule the job before launch"))
+        deps.append(DataDependency(name=LEDGER, kind="object", status="unknown",
+                                   note="the ledger of entries already pushed; create it once with cohort/ledger_<dialect>.sql"))
+    else:
+        deps.append(DataDependency(name="in_holdout", kind="attribute", status="unknown",
+                                   note=f"a property on the {brief.qualifying_event.event} event, added where it is sent (formula in the build steps)"))
     deps.append(DataDependency(name="lcm_sunset", kind="attribute", status="unknown",
                                note="suppression flag the sunset step writes; create the property in the platform before launch"))
     return deps
@@ -377,17 +465,19 @@ def _estimates(brief: Brief, con, as_of: date, label: str) -> Tuple[Estimate, Es
     rows = _rows(con, history_sql(brief, "duckdb", as_of.isoformat()))
     this_month = as_of.replace(day=1)
     complete = [r for r in rows if r["month"] < this_month][-3:]
-    entrants = Estimate(value=None, label="UNKNOWN", basis="no complete month of crossings in the data")
+    unit, did = (("threshold crossings", "came back") if brief.flow_type == "winback" else
+                 ("new qualifiers", f"went on to {brief.core_conversion_event.do}"))
+    entrants = Estimate(value=None, label="UNKNOWN", basis=f"no complete month of {unit} in the data")
     if complete:
         avg = sum(r["entrants"] for r in complete) / len(complete)
         entrants = Estimate(value=round(avg, 1), label=label if label != "LIVE PULL" else "ESTIMATE",
-                            basis=f"mean threshold crossings over {len(complete)} complete month(s) to {complete[-1]['month']:%Y-%m}")
+                            basis=f"mean {unit} over {len(complete)} complete month(s) to {complete[-1]['month']:%Y-%m}")
     matured = sum(int(r["matured"] or 0) for r in rows[-6:])
     returned = sum(int(r["returned"] or 0) for r in rows[-6:])
-    baseline = Estimate(value=None, label="UNKNOWN", basis=f"only {matured} matured crossings; at least 30 are needed")
+    baseline = Estimate(value=None, label="UNKNOWN", basis=f"only {matured} matured {unit}; at least 30 are needed")
     if matured >= 30:
         baseline = Estimate(value=round(returned / matured, 4), label=label if label != "LIVE PULL" else "ESTIMATE",
-                            basis=f"{returned} of {matured} matured crossings came back within {brief.outcome_window_days} days with no flow")
+                            basis=f"{returned} of {matured} matured {unit} {did} within {_window(brief)} days with no flow")
     if brief.monthly_entrants is not None:
         entrants = Estimate(value=brief.monthly_entrants, label="SUPPLIED", basis=f"from the brief (data says {entrants.value})")
     if brief.baseline_conversion_rate is not None:
@@ -409,6 +499,7 @@ def define(brief: Brief, data: Optional[str] = None, as_of: Optional[str] = None
     hist = {d: history_sql(brief, d) for d in ("postgres", "snowflake", "bigquery")}
     checks = {f"entry {k}": v for k, v in check_sql(sql).items()}
     checks.update({f"history {k}": v for k, v in check_sql(hist).items()})
+    checks.update({f"record {k}": v for k, v in check_sql({d: record_sql(brief, d) for d in ("postgres", "snowflake", "bigquery")}).items()})
     entrants_today = None
     if con is not None:
         try:
@@ -423,23 +514,35 @@ def define(brief: Brief, data: Optional[str] = None, as_of: Optional[str] = None
         plain = (f"People who {q.describe()} and then went {n} days without the core action ({c.describe()}). "
                  f"They enter on day {n}, once per lapse, and leave the moment they do the core action again.")
         entry = [f"{q.describe()} ({q.detail()}) at least once (evaluated at entry)",
-                 f"{n} full days without the core action ({c.detail()}), measured from their own last one, or from qualifying if they never did it",
-                 "enters on the day the threshold is crossed; one entry per lapse"]
+                 f"{n} or more calendar days since the core action ({c.detail()}), counted from their own last one, or from qualifying "
+                 f"if they never did it",
+                 f"enters on the first daily run after crossing; a missed run catches up for {CATCH_UP_DAYS} days; the ledger "
+                 f"{LEDGER} makes it one entry per lapse"]
         exit_rule = f"leaves the moment they {c.do} again (checked before every step)"
     else:
         plain = f"People who {q.describe()} and have not yet done the core action ({c.describe()}). They leave the moment they do it."
         entry = [f"{q.describe()} ({q.detail()}): the flow trigger", f"has not yet done {c.detail()}"]
         exit_rule = f"leaves the moment they {c.do}"
     exclusions = ["no consent for any channel in the flow", "on the platform's suppression list", "internal or test account"]
-    pattern = PLATFORM_PATTERNS[brief.platform].format(trigger=trigger, core=c.event)
-    example = {} if brief.platform == "sfmc" else event_payloads.build(brief.platform, {"user_id": "u_0002", "email": "u_0002@example.test", "event": trigger,
-                                                    "properties": {"days_inactive": n, "in_holdout": False, "holdout_bucket": 42, "flow": brief.slug},
-                                                    "occurred_at": f"{(as_of_date or date(2026, 10, 18)).isoformat()}T05:00:00Z",
-                                                    "event_id": f"{brief.slug}:u_0002:{(as_of_date or date(2026, 10, 18)).isoformat()}"})
+    if brief.flow_type == "winback":
+        pattern = PLATFORM_PATTERNS[brief.platform].format(trigger=trigger, core=c.detail())
+    else:
+        filt = (" (trigger filter: " + ", ".join(f"{k} = {v}" for k, v in q.where.items()) + ")") if q.where else ""
+        pattern = ACTIVATION_PATTERNS[brief.platform].format(trigger=trigger, filter=filt, core=c.detail())
+    example: Dict[str, Any] = {}
+    if brief.flow_type == "winback" and brief.platform != "sfmc":   # activation is triggered natively; nothing is pushed
+        day = (as_of_date or date(2026, 10, 18))
+        anchor = (day - timedelta(days=n)).isoformat()
+        example = event_payloads.build(brief.platform, {
+            "user_id": "u_0002", "email": "u_0002@example.test", "event": trigger,
+            "properties": {"days_inactive": n, "in_holdout": False, "holdout_bucket": 42, "flow": brief.slug, "anchor_date": anchor},
+            "occurred_at": f"{day.isoformat()}T05:00:00Z", "event_id": f"{brief.slug}:u_0002:{anchor}"})
     return CohortDefinition(
         name=f"{PLATFORM_LABEL[brief.platform]} {brief.flow_type} cohort: {brief.product_name}",
         plain_english=plain, trigger_event=trigger, entry_rules=entry, exclusions=exclusions, exit_rule=exit_rule,
         platform_pattern=pattern, sql=sql, history_sql=hist, sql_checks=checks,
+        ledger_sql={d: ledger_ddl(d) for d in ("postgres", "snowflake", "bigquery")},
+        record_sql={d: record_sql(brief, d) for d in ("postgres", "snowflake", "bigquery")},
         data_dependencies=_dependencies(brief, con), monthly_entrants=monthly, baseline_conversion_rate=baseline,
         entrants_on_as_of=entrants_today, as_of=as_of_date.isoformat() if as_of_date else None,
         trigger_payload_example=example)
@@ -512,7 +615,8 @@ def audit(brief: Brief, data: Optional[str] = None, results: Optional[Path] = No
         q = audit_sql(brief, "duckdb", as_of_date.isoformat())
         daily, snap, funnel = _rows(con, q["daily"]), _rows(con, q["snapshot"]), _rows(con, q["funnel"])
 
-    series: Dict[str, Dict[date, float]] = {m: {} for m in ("signups", "active_users", "core_action_users", "orders", "threshold_crossings")}
+    entries_metric = "threshold_crossings" if brief.flow_type == "winback" else "new_qualifiers"
+    series: Dict[str, Dict[date, float]] = {m: {} for m in ("signups", "active_users", "core_action_users", "orders", entries_metric)}
     for r in daily:
         series.setdefault(r["metric"], {})[_to_date(r["day"])] = float(r["value"])
     metrics = detect(series, as_of_date)

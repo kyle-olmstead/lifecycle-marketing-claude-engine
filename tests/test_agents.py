@@ -8,7 +8,7 @@ import pytest
 import sqlglot
 
 from tests.conftest import ROOT
-from agents import cohort_analyst, experimentation_agent, guardrails
+from agents import campaign_architect, cohort_analyst, experimentation_agent, guardrails
 from agents.brief import load_brief, parse_text, to_yaml
 from agents.models import Brief, EventMatch, base_form
 from agents.sql_dialects import dialect, holdout_bucket
@@ -44,12 +44,17 @@ def test_the_spec_sentence_parses_and_records_every_assumption():
 
 
 @pytest.mark.parametrize("text,expect", [
-    ("3-step welcome series for new signups who haven't connected data, in Klaviyo with SMS", {"touches": 3, "platform": "klaviyo", "sms": True}),
+    ("3-step welcome series for new signups who haven't connected a data source yet. Klaviyo, email and SMS.",
+     {"flow_type": "activation", "touches": 3, "platform": "klaviyo", "sms": True}),
+    ("Activation flow: new signups who have not created a report", {"flow_type": "activation"}),
+    ("nudge new users who haven't invited a teammate yet", {"flow_type": "activation"}),
     ("win back customers who haven't purchased in 2 months via Braze push", {"churn_threshold_days": 60, "platform": "braze", "push": True}),
     ("Reactivate users inactive for three weeks, 20% holdout, HubSpot", {"churn_threshold_days": 21, "holdout_pct": 20.0, "platform": "hubspot"}),
 ])
 def test_sentence_variants(text, expect):
     b = parse_text(text, "Acme")
+    if b.flow_type == "activation":
+        assert b.qualifying_event.event == "signed_up"
     for k, v in expect.items():
         if k in ("sms", "push"):
             assert k in b.channels
@@ -84,18 +89,34 @@ def test_email_is_always_a_channel():
         Brief(product_name="A", channels=["sms"])
 
 
-@pytest.mark.parametrize("label,expect", [("created a report", "create a report"), ("placed an order", "place an order"),
-                                          ("logged in", "log in"), ("used the product", "use the product"), ("bought again", "buy again")])
+@pytest.mark.parametrize("label,expect", [
+    ("created a report", "create a report"), ("placed an order", "place an order"), ("logged in", "log in"),
+    ("used the product", "use the product"), ("bought again", "buy again"), ("scheduled a report", "schedule a report"),
+    ("visited the app", "visit the app"), ("upgraded", "upgrade"), ("submitted a form", "submit a form"),
+    ("connected a data source", "connect a data source"), ("invited a teammate", "invite a teammate"), ("added a seat", "add a seat"),
+    ("shared a dashboard", "share a dashboard"), ("booked a call", "book a call"), ("typed a note", "type a note"),
+    ("enabled sync", "enable sync"), ("opened the app", "open the app"), ("applied a filter", "apply a filter"),
+    ("entered data", "enter data"), ("configured an alert", "configure an alert"), ("treated", "treat"), ("filed a ticket", "file a ticket"),
+])
 def test_base_form(label, expect):
     assert base_form(label) == expect
+
+
+def test_send_hour_inside_quiet_hours_is_rejected():
+    with pytest.raises(ValueError, match="quiet hours"):
+        Brief(product_name="A", send_hour_local=7, quiet_hours="22:00 to 08:00")
+    assert Brief(product_name="A", send_hour_local=7, quiet_hours="22:00 to 06:00").send_hour_local == 7
+    with pytest.raises(ValueError, match="quiet_hours must read"):
+        Brief(product_name="A", quiet_hours="evenings")
 
 
 # ----------------------------------------------------------------------------------------------
 # cohort SQL: semantics against an independent computation, and the same answer in every dialect
 # ----------------------------------------------------------------------------------------------
 
-def _independent_entrants(as_of: date, n: int):
-    """Who should enter on as_of, computed from the CSVs in plain Python (no SQL)."""
+def _independent_entrants(as_of: date, n: int, catch_up: int = cohort_analyst.CATCH_UP_DAYS, ledger=frozenset()):
+    """Who should be pushed on as_of, computed from the CSVs in plain Python (no SQL): the anchor date (last core action,
+    or qualification) is n to n + catch_up days back, and that lapse is not already in the ledger."""
     qualified, last_core = {}, {}
     for r in csv.DictReader((FIX / "track_events.csv").open()):
         if not r["user_id"]:
@@ -111,8 +132,8 @@ def _independent_entrants(as_of: date, n: int):
     out = set()
     for u, q in qualified.items():
         anchor = max(last_core.get(u, q), q).date()
-        if anchor == as_of - timedelta(days=n):
-            out.add(u)
+        if as_of - timedelta(days=n + catch_up) <= anchor <= as_of - timedelta(days=n) and (u, anchor) not in ledger:
+            out.add((u, anchor))
     return out
 
 
@@ -123,10 +144,32 @@ def test_entry_query_matches_an_independent_computation(brief, con):
     total = 0
     for d in AS_OF_DATES:
         rows = cohort_analyst._rows(con, cohort_analyst.entry_sql(brief, "duckdb", d.isoformat()))
-        assert {r["user_id"] for r in rows} == _independent_entrants(d, 14), d
-        assert all(r["days_inactive"] == 14 for r in rows)
+        assert {(r["user_id"], r["anchor_date"]) for r in rows} == _independent_entrants(d, 14), d
+        assert all(14 <= r["days_inactive"] <= 14 + cohort_analyst.CATCH_UP_DAYS for r in rows)
         total += len(rows)
     assert total >= 20, "the fixture dates must exercise the query"
+
+
+def test_daily_runs_with_the_ledger_push_each_lapse_once_and_catch_up(brief):
+    con = cohort_analyst.connect(str(FIX))
+    pushed = []
+    day = date(2026, 6, 1)
+    while day <= date(2026, 10, 18):
+        if day.day % 9 != 0:   # some days the job does not run at all
+            rows = cohort_analyst._rows(con, cohort_analyst.entry_sql(brief, "duckdb", day.isoformat()))
+            pushed += [(r["user_id"], r["anchor_date"]) for r in rows]
+            cohort_analyst._rows(con, cohort_analyst.record_sql(brief, "duckdb", day.isoformat()))
+        day += timedelta(days=1)
+    assert len(pushed) == len(set(pushed)) > 20, "no lapse is pushed twice"
+    expected = set()
+    day = date(2026, 6, 1)
+    while day <= date(2026, 10, 18):
+        expected |= {x for x in _independent_entrants(day, 14, catch_up=0) if x[1] >= date(2026, 6, 1) - timedelta(days=14)}
+        day += timedelta(days=1)
+    caught = {x for x in expected if x[1] + timedelta(days=14 + cohort_analyst.CATCH_UP_DAYS) <= date(2026, 10, 18)}
+    assert caught <= set(pushed), "every lapse is pushed within the catch-up window, even across skipped runs"
+    ledger = con.execute("SELECT COUNT(*), COUNT(DISTINCT user_id || CAST(anchor_date AS VARCHAR)) FROM lcm_flow_entries").fetchone()
+    assert ledger[0] == ledger[1] == len(pushed)
 
 
 def _to_duckdb(sql: str, d: str) -> str:
@@ -165,7 +208,8 @@ def test_warehouse_dialects_return_the_same_rows(brief, con, d):
 
 @pytest.mark.parametrize("d", ["postgres", "snowflake", "bigquery"])
 def test_every_generated_query_parses(brief, d):
-    sqls = [cohort_analyst.entry_sql(brief, d), cohort_analyst.history_sql(brief, d), *cohort_analyst.audit_sql(brief, d).values()]
+    sqls = [cohort_analyst.entry_sql(brief, d), cohort_analyst.history_sql(brief, d), cohort_analyst.record_sql(brief, d),
+            cohort_analyst.ledger_ddl(d), *cohort_analyst.audit_sql(brief, d).values()]
     for sql in sqls:
         ok, msg = __import__("tools.sql_check", fromlist=["parse"]).parse(sql, d)
         assert ok, msg
@@ -195,6 +239,14 @@ def test_define_on_fixtures_verifies_dependencies_and_estimates(brief):
     assert c.monthly_entrants.label == "DEMO DATA" and c.monthly_entrants.value > 0
     assert 0 < c.baseline_conversion_rate.value < 1
     assert c.as_of == "2026-10-18" and c.entrants_on_as_of == len(_independent_entrants(date(2026, 10, 18), 14))
+
+
+def test_activation_volume_counts_new_qualifiers(brief):
+    a = brief.model_copy(update={"flow_type": "activation", "qualifying_event": EventMatch(event="signed_up", label="signed up"), "touches": 4})
+    c = cohort_analyst.define(a, str(FIX))
+    assert "new qualifiers" in c.monthly_entrants.basis and "went on to create a report" in c.baseline_conversion_rate.basis
+    assert c.trigger_payload_example == {} and "re-entry off" in c.platform_pattern
+    assert "new_qualifiers" in cohort_analyst.audit(a, str(FIX))["metrics"]
 
 
 def test_a_missing_event_is_blocked(brief):
@@ -239,7 +291,7 @@ def _cohort(brief, entrants, baseline):
 def test_holdout_sizing_uses_the_stats_tool(brief):
     from tools import stats
     d = experimentation_agent.design(brief, _cohort(brief, 5000, 0.10))
-    f = stats.feasibility(5000, 0.15, 0.10, mde_rel=0.25, outcome_window_days=brief.outcome_window_days)
+    f = stats.feasibility(5000, 0.15, 0.10, mde_rel=0.25, outcome_window_days=campaign_architect.outcome_window(brief))
     assert d.read == f["expected_read"] and str(f["required_holdout_n"]) in d.sizing.replace(",", "")
     assert d.feasibility["months_to_read"] == f["months_to_read"]
     assert [m["months_of_entries"] for m in d.mde_by_horizon] == [3, 6, 12]

@@ -3,7 +3,8 @@
 #
 # Assumed, not stated. Confirm or change each one:
 #   monthly_entrants: estimated from the data (DEMO DATA): 28 a month, mean threshold crossings over 3 complete month(s) to 2026-09
-#   baseline_conversion_rate: estimated from the data (DEMO DATA): 17.5%, 22 of 126 matured crossings came back within 30 days with no flow
+#   baseline_conversion_rate: estimated from the data (DEMO DATA): 17.5%, 22 of 126 matured threshold crossings came back within 30 days with no flow
+#   outcome_window_days: not stated; set to 30 days so the whole flow (last touch on day 18) plus a week is inside it
 product_name: Ridgeview
 flow_type: winback
 goal: Build a 5-touch automated win-back flow for users who completed onboarding but

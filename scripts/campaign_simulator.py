@@ -315,7 +315,11 @@ def behavioral(spec: Dict[str, Any], rules: Dict[str, Any]) -> Tuple[List[Dict[s
     journeys = {name: walk(spec, rules, p) for name, p in personas(spec, rules).items()}
     cap = rules.get("frequency_cap_per_week")
     hour = rules.get("send_hour_local")
-    quiet_start, quiet_end = rules.get("quiet_hours_local", [21, 8])
+    quiet = rules.get("quiet_hours_local") or [21, 8]
+
+    def in_quiet(h: float) -> bool:
+        start, end = quiet
+        return (start <= h or h < end) if start > end else (start <= h < end)
     ps = personas(spec, rules)
     h = journeys["holdout member"]
     checks.append(_check("holdout members receive nothing", not h["sends"] and "holdout" in h["outcome"],
@@ -334,7 +338,9 @@ def behavioral(spec: Dict[str, Any], rules: Dict[str, Any]) -> Tuple[List[Dict[s
     r = journeys["returns after the first touch"]
     goal_at = ps["returns after the first touch"]["events"][0]["at"]
     after = [x for x in r["sends"] if x["at_h"] > goal_at]
-    checks.append(_check("nothing is sent after the core action", r["outcome"] == "converted" and not after,
+    # a flow that has already finished when the person converts cannot exit on it; that is not a defect
+    finished_first = r["outcome"] == "completed" and all(x["at_h"] <= goal_at for x in r["log"])
+    checks.append(_check("nothing is sent after the core action", not after and (r["outcome"] == "converted" or finished_first),
                          f"outcome: {r['outcome']}; {len(after)} message(s) after converting"))
     if cap:
         worst = 0
@@ -347,9 +353,9 @@ def behavioral(spec: Dict[str, Any], rules: Dict[str, Any]) -> Tuple[List[Dict[s
         off = [f"{n}: {x['step']}" for n, j in journeys.items() for x in j["sends"]
                if x["action"].startswith("sent") and round((5.0 + x["at_h"]) % 24, 2) != float(hour)]
         checks.append(_check(f"messages send at {hour:02d}:00 local", not off, "all on time" if not off else "; ".join(off[:5])))
-        quiet = [f"{n}: {x['step']}" for n, j in journeys.items() for x in j["sends"] if x["action"].startswith("sent")
-                 and ((5.0 + x["at_h"]) % 24 >= quiet_start or (5.0 + x["at_h"]) % 24 < quiet_end)]
-        checks.append(_check("nothing sends in quiet hours", not quiet, "none" if not quiet else "; ".join(quiet[:5])))
+        loud = [f"{n}: {x['step']}" for n, j in journeys.items() for x in j["sends"] if x["action"].startswith("sent")
+                and in_quiet((5.0 + x["at_h"]) % 24)]
+        checks.append(_check("nothing sends in quiet hours", not loud, "none" if not loud else "; ".join(loud[:5])))
     mx = rules.get("max_touches")
     if mx:
         over = [n for n, j in journeys.items() if len(j["sends"]) > mx]

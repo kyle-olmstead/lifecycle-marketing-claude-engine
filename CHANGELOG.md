@@ -22,6 +22,8 @@
 - `scripts/mcp_server.py` and `config/mcp_server_config.json`: the teammate as MCP tools, and the
   vendor MCP servers for live data.
 - Skill `lifecycle-teammate`; docs `quickstart_for_marketers.md` and `architectural_overview.md`.
+- Win-back entry is keyed on the lapse and recorded in a ledger table (`lcm_flow_entries`), so each
+  lapse enters once and a missed daily run catches up for three days.
 - CI: a PostgreSQL 16 job runs the PostgreSQL queries on a real database.
 
 **Fixes**

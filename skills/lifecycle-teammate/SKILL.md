@@ -41,9 +41,12 @@ every artifact "unchecked".
 python3 ${CLAUDE_PLUGIN_ROOT}/agents/orchestrator.py plan --brief <brief.yaml> [--data <folder of users, orders, track_events exports>] --copy-mode handoff --out <workdir>/lmm-engine/plans
 ```
 
-- With a warehouse connector, run `cohort/entry_<dialect>.sql` and `cohort/history_<dialect>.sql`
-  from the output through the connector and put the measured monthly entrants and baseline in the
-  brief; label them LIVE PULL. Without data, the plan says the read date is not computed. Keep it so.
+- With a warehouse connector, run `cohort/history_<dialect>.sql` from the output through the
+  connector and put the measured monthly entrants and baseline in the brief; label them LIVE PULL.
+  Without data, the plan says the read date is not computed. Keep it so.
+- The daily win-back job is three queries in `cohort/`: `ledger_<dialect>.sql` once, then each day
+  `entry_<dialect>.sql` (who to push) and, after the push succeeds, `record_<dialect>.sql`. Never
+  skip the record step: it is what stops a person entering twice for one lapse.
 - **Copy:** use `--copy-mode handoff`, then write the drafts yourself from `copy_briefs.md` following
   `${CLAUDE_PLUGIN_ROOT}/skills/lifecycle-copy/SKILL.md`, save `drafts.json`, and re-run with
   `--drafts drafts.json`. The renderer adds the template code, unsubscribe, address and SMS opt-out,

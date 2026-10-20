@@ -34,7 +34,10 @@ TABLE_DDL = {
     "orders": "order_id VARCHAR, user_id VARCHAR, order_at TIMESTAMP, status VARCHAR, gross_amount DECIMAL(18,2), "
               "discount_amount DECIMAL(18,2), net_amount DECIMAL(18,2), currency VARCHAR",
     "track_events": "event_id VARCHAR, user_id VARCHAR, anonymous_id VARCHAR, event_name VARCHAR, event_at TIMESTAMP, properties JSON",
+    # the teammate's ledger of flow entries already pushed (2.1); empty unless a fixture file exists
+    "lcm_flow_entries": "flow VARCHAR, user_id VARCHAR, anchor_date DATE, pushed_at TIMESTAMP, in_holdout BOOLEAN",
 }
+OPTIONAL_TABLES = ("lcm_flow_entries",)
 
 
 def declared_dialect(sql: str) -> Optional[str]:
@@ -60,6 +63,8 @@ def connect(fixtures: Path = FIXTURES):
     for table, cols in TABLE_DDL.items():
         path = fixtures / f"{table}.csv"
         con.execute(f"CREATE TABLE {table} ({cols})")
+        if table in OPTIONAL_TABLES and not path.exists():
+            continue
         con.execute(f"INSERT INTO {table} SELECT * FROM read_csv('{path.as_posix()}', header=true, all_varchar=true, nullstr='')")
     return con
 
@@ -80,6 +85,8 @@ def run(sql: str, con=None) -> Tuple[List[str], List[tuple]]:
         except Exception:
             import sqlglot
             cur = con.execute(sqlglot.transpile(compat, read="postgres", write="duckdb")[0])
+    if not cur.description:  # a statement without a result set (DDL, INSERT)
+        return [], []
     cols = [d[0] for d in cur.description]
     return cols, cur.fetchall()
 

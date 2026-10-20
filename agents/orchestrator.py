@@ -34,7 +34,7 @@ if str(ROOT) not in sys.path:
 
 from agents import __version__, campaign_architect, cohort_analyst, copywriter, experimentation_agent, guardrails  # noqa: E402
 from agents.brief import load_brief, parse_text, to_yaml  # noqa: E402
-from agents.models import PLATFORM_LABEL, Brief, Check, ExecutionPlan, QAReport  # noqa: E402
+from agents.models import PLATFORM_LABEL, Assumption, Brief, Check, ExecutionPlan, QAReport  # noqa: E402
 from scripts import campaign_simulator  # noqa: E402
 
 READ_STATUS = {"causal": "pass", "causal, slow": "warn", "directional only": "warn", "not readable": "warn"}
@@ -84,6 +84,17 @@ def qa(brief: Brief, pol: Dict[str, Any], cohort, flow, copy_plan, exp, data_giv
     return QAReport.from_checks(checks, len(brief.assumptions))
 
 
+def _with_window(brief: Brief) -> Brief:
+    """Fix the outcome window before any agent uses it, and list it for confirmation when it was not stated."""
+    if brief.outcome_window_days:
+        return brief
+    days = campaign_architect.schedule_days(brief)
+    w = campaign_architect.outcome_window(brief)
+    a = Assumption(field="outcome_window_days", value=w,
+                   why=f"not stated; set to {w} days so the whole flow (last touch on day {max(days)}) plus a week is inside it")
+    return brief.model_copy(update={"outcome_window_days": w, "assumptions": brief.assumptions + [a]})
+
+
 def _with_estimates(brief: Brief, cohort) -> Brief:
     """Replace 'unknown' assumptions with what the data estimated, still listed for the marketer to confirm."""
     notes = {"monthly_entrants": cohort.monthly_entrants, "baseline_conversion_rate": cohort.baseline_conversion_rate}
@@ -100,6 +111,7 @@ def _with_estimates(brief: Brief, cohort) -> Brief:
 
 def run(brief: Brief, data: Optional[str] = None, as_of: Optional[str] = None, copy_mode: str = "auto",
         drafts: Optional[Dict[str, Any]] = None, client: Any = None) -> ExecutionPlan:
+    brief = _with_window(brief)
     pol = guardrails.gate_policy(brief.sending_gate)
     cohort = cohort_analyst.define(brief, data, as_of)
     brief = _with_estimates(brief, cohort)
@@ -149,7 +161,13 @@ def render_plan(p: ExecutionPlan) -> str:
         L.append(f"| Entering on {c.as_of} | {c.entrants_on_as_of} |")
     L += ["", "| Data dependency | Kind | Status | Fill | Note |", "|---|---|---|---|---|"]
     L += [f"| {d.name} | {d.kind} | {d.status} | {'' if d.fill_rate is None else format(d.fill_rate, '.0%')} | {d.note or ''} |" for d in c.data_dependencies]
-    L += ["", f"Entry query (run daily; {b.warehouse_dialect}): `cohort/entry_{b.warehouse_dialect}.sql`. Other dialects and the history query are in `cohort/`.", ""]
+    if b.flow_type == "winback":
+        L += ["", f"Run daily ({b.warehouse_dialect}): `cohort/entry_{b.warehouse_dialect}.sql` lists who to push; after the push succeeds, "
+                  f"`cohort/record_{b.warehouse_dialect}.sql` writes them to the ledger so nobody enters twice for one lapse. Create the "
+                  f"ledger once with `cohort/ledger_{b.warehouse_dialect}.sql`. Other dialects and the history query are in `cohort/`.", ""]
+    else:
+        L += ["", f"The trigger is the live {b.qualifying_event.event} event. `cohort/entry_{b.warehouse_dialect}.sql` backfills and audits it; "
+                  f"the history query (`cohort/history_*.sql`) measured the volume and unaided rate above.", ""]
     L += ["## The flow", "", "```mermaid", f.mermaid, "```", "", "| Day | Step | Channel | Job | Only if |", "|---:|---|---|---|---|"]
     L += [f"| {t.day} | {t.step_id} | {t.channel.replace('_', '-')} | {t.job} | {t.condition or ''} |" for t in f.touches]
     L += ["", f"Every step: {'; '.join(x['condition'] for x in spec['ongoing_filters'])}. Frequency: {spec['frequency']['cap']}; {spec['frequency']['quiet_hours']}.", ""]
@@ -165,14 +183,14 @@ def render_plan(p: ExecutionPlan) -> str:
         L += ["", "| Variant | Copy | Framework | Hypothesis |", "|---|---|---|---|"]
         for v in tc.variants:
             if tc.channel == "email":
-                copy_txt = f"**{v.fields.get('subject')}** / {v.fields.get('preheader')}"
+                copy_txt = f"**{v.fields.get('subject')}** / {v.fields.get('preheader')}".replace("{first_name}", "[first name]")
             elif tc.channel == "sms":
                 copy_txt = v.fields.get("text", "")
             elif tc.channel == "push":
                 copy_txt = f"**{v.fields.get('title')}** / {v.fields.get('body')}"
             else:
                 copy_txt = f"**{v.fields.get('headline')}** / {v.fields.get('body')} [{v.fields.get('cta_label')}]"
-            copy_txt = copy_txt.replace("{product_name}", b.product_name).replace("|", "/")
+            copy_txt = copy_txt.replace("{product_name}", b.product_name).replace("{first_name}", "[first name]").replace("|", "/")
             L.append(f"| {v.variant_id} | {copy_txt} | {v.framework} | {v.hypothesis} |")
         files = sorted({k for v in tc.variants for k in v.rendered})
         L += ["", "Files: " + ", ".join(f"`copy/{x}`" for x in files), ""]
@@ -220,6 +238,11 @@ def write_outputs(p: ExecutionPlan, out_root: Path) -> Path:
         (out / "cohort" / f"entry_{d}.sql").write_text(sql, encoding="utf-8")
     for d, sql in p.cohort.history_sql.items():
         (out / "cohort" / f"history_{d}.sql").write_text(sql, encoding="utf-8")
+    if p.brief.flow_type == "winback":
+        for d, sql in p.cohort.ledger_sql.items():
+            (out / "cohort" / f"ledger_{d}.sql").write_text(sql, encoding="utf-8")
+        for d, sql in p.cohort.record_sql.items():
+            (out / "cohort" / f"record_{d}.sql").write_text(sql, encoding="utf-8")
     if p.cohort.trigger_payload_example:
         (out / "trigger_payload_example.json").write_text(json.dumps(p.cohort.trigger_payload_example, indent=2), encoding="utf-8")
     for tc in p.copy_plan:
@@ -254,6 +277,7 @@ def _cli(argv: Optional[List[str]] = None) -> int:
         if a.cmd == "brief":
             y = to_yaml(parse_text(a.text, a.product))
             if a.out:
+                Path(a.out).parent.mkdir(parents=True, exist_ok=True)
                 Path(a.out).write_text(y, encoding="utf-8")
                 print(f"wrote {a.out}: confirm the assumptions at the top, then run: python3 -m agents.orchestrator plan --brief {a.out}")
             else:

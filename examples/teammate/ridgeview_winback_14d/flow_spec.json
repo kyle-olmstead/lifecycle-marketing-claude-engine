@@ -15,13 +15,13 @@
   },
   "entry_filters": [
     {
-      "condition": "completed onboarding (onboarding_step_completed) at least once",
+      "condition": "completed onboarding (onboarding_step_completed where step_index = 3) at least once",
       "evaluated": "entry_only"
     }
   ],
   "ongoing_filters": [
     {
-      "condition": "has not done feature_used since entering",
+      "condition": "has not done feature_used where feature = reports since entering",
       "evaluated": "every_step"
     },
     {
@@ -140,12 +140,12 @@
     }
   ],
   "exit": {
-    "goal": "created a report (feature_used)",
+    "goal": "created a report (feature_used where feature = reports)",
     "unenroll_immediately": true,
     "then": "normal lifecycle messaging"
   },
   "measurement": {
-    "primary_metric": "created a report (feature_used) within 30 days of entry, treatment vs holdout, both arms counted from their entry date",
+    "primary_metric": "created a report (feature_used where feature = reports) within 30 days of entry, treatment vs holdout, both arms counted from their entry date",
     "read_after": "not inside 12 months at this volume (it would take about 187 months): keep the holdout, report against a pre/post baseline, and label every result directional",
     "compared_against": "holdout",
     "guardrails": [
@@ -194,6 +194,12 @@
       "kind": "attribute",
       "status": "unknown",
       "note": "set by the daily entry job on the pushed event; schedule the job before launch"
+    },
+    {
+      "name": "lcm_flow_entries",
+      "kind": "object",
+      "status": "unknown",
+      "note": "the ledger of entries already pushed; create it once with cohort/ledger_<dialect>.sql"
     },
     {
       "name": "lcm_sunset",

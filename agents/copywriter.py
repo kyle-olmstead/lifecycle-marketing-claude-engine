@@ -116,6 +116,8 @@ FIRST_NAME = {
     "hubl": '{{ personalization_token("contact.firstname", "there") }}',
     "ampscript": "%%=v(@fn)=%%",
 }
+# short channels have no room for a declaration block, so AMPscript uses one inline expression with the fallback
+INLINE_AMPSCRIPT_NAME = '%%=IIf(Empty(AttributeValue("FirstName")), "there", AttributeValue("FirstName"))=%%'
 AMPSCRIPT_HEAD = '%%[\nVAR @fn\nSET @fn = AttributeValue("FirstName")\nIF Empty(@fn) THEN SET @fn = "there" ENDIF\n]%%\n'
 
 
@@ -142,10 +144,17 @@ def address_html(d: str, brief: Brief) -> str:
     return "POSTAL ADDRESS REQUIRED: add it to the brief (postal_address) before sending"
 
 
-def _tokens(text: str, d: str, brief: Brief, escape: bool = True) -> str:
+def _tokens(text: str, d: str, brief: Brief, escape: bool = True, inline: bool = False) -> str:
     out = html.escape(text, quote=False) if escape else text
     out = out.replace("{product_name}", html.escape(brief.product_name) if escape else brief.product_name)
-    return out.replace("{first_name}", FIRST_NAME[d])
+    return out.replace("{first_name}", INLINE_AMPSCRIPT_NAME if (inline and d == "ampscript") else FIRST_NAME[d])
+
+
+def subject_lines(f: Dict[str, Any], brief: Brief) -> str:
+    """Subject and preview text in the platform's syntax, for pasting into the ESP's subject and preheader fields."""
+    d = brief.template_dialect
+    return (f"Subject: {_tokens(f['subject'], d, brief, escape=False, inline=True)}\n"
+            f"Preview text: {_tokens(f['preheader'], d, brief, escape=False, inline=True)}\n")
 
 
 def _preview(text: str, brief: Brief) -> str:
@@ -159,17 +168,17 @@ def render_email(f: Dict[str, Any], brief: Brief, step_id: str) -> Tuple[str, st
     href = html.escape(f"{url}{sep}utm_source=lifecycle&utm_medium=email&utm_campaign={brief.slug}&utm_content={step_id}")
     paras = "\n".join(f'          <p class="lcm-text" style="margin:0 0 16px;font:16px/1.5 Arial,sans-serif;">{_tokens(p, d, brief)}</p>'
                       for p in f["paragraphs"])
-    head = AMPSCRIPT_HEAD if d == "ampscript" else ""
+    head = AMPSCRIPT_HEAD if d == "ampscript" else ""   # declared before first use, including the <title>
     body = f"""<!-- dialect: {d} -->
 <!-- {brief.slug} / {step_id}. Rendered by agents/copywriter.py; lint: python3 tools/template_lint.py --dialect {d} --email <this file> -->
-<!DOCTYPE html>
+{head}<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <meta name="supported-color-schemes" content="light dark">
-  <title>{html.escape(_preview(f['subject'], brief))}</title>
+  <title>{_tokens(f['subject'], d, brief)}</title>
   <style>
     :root {{ color-scheme: light dark; }}
     body {{ margin: 0; padding: 0; }}
@@ -182,7 +191,7 @@ def render_email(f: Dict[str, Any], brief: Brief, step_id: str) -> Tuple[str, st
   </style>
 </head>
 <body>
-{head}<div class="preheader" style="display:none;max-height:0;overflow:hidden;">{_tokens(f['preheader'], d, brief)}</div>
+<div class="preheader" style="display:none;max-height:0;overflow:hidden;">{_tokens(f['preheader'], d, brief)}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
   <tr>
     <td align="center">
@@ -220,14 +229,15 @@ def render_email(f: Dict[str, Any], brief: Brief, step_id: str) -> Tuple[str, st
 def render_short(channel: str, f: Dict[str, Any], brief: Brief) -> Dict[str, Any]:
     d = brief.template_dialect
     if channel == "sms":
-        text = f["text"].strip()
+        text = f["text"].strip().replace("{product_name}", brief.product_name)
         if not text.lower().startswith(brief.product_name.lower()):
             text = f"{brief.product_name}: {text}"
         if not re.search(r"\bSTOP\b", text):
             text = f"{text} Reply STOP to opt out."
-        return {"text": _tokens(text, d, brief, escape=False), "preview": _preview(text, brief)}
+        return {"text": _tokens(text, d, brief, escape=False, inline=True), "preview": _preview(text, brief)}
     keys = ("title", "body") if channel == "push" else ("headline", "body", "cta_label")
-    return {k: _tokens(f[k], d, brief, escape=False) for k in keys} | {"preview": {k: _preview(f[k], brief) for k in keys}}
+    return ({k: _tokens(f[k], d, brief, escape=False, inline=True) for k in keys}
+            | {"preview": {k: _preview(f[k], brief) for k in keys}})
 
 
 def check_variant(channel: str, f: Dict[str, Any], brief: Brief, step_id: str, vid: str) -> CopyVariant:
@@ -260,7 +270,10 @@ def check_variant(channel: str, f: Dict[str, Any], brief: Brief, step_id: str, v
                 warnings.append("no postal address: CAN-SPAM requires one; add postal_address to the brief")
             if PLACEHOLDER_CTA in body:
                 warnings.append("the button links to a placeholder; set cta_url in the brief to a deep link on your own domain")
-            rendered = {f"{step_id}_{vid}.html": body, f"{step_id}_{vid}.txt": text}
+            subj = subject_lines(f, brief)
+            lint_s = template_lint.lint(subj, brief.template_dialect)
+            errors += [f"subject: {x}" for x in lint_s["errors"]]
+            rendered = {f"{step_id}_{vid}.html": body, f"{step_id}_{vid}.txt": text, f"{step_id}_{vid}.subject.txt": subj}
     elif channel == "sms":
         r = render_short("sms", f, brief)
         e, w, _report = guardrails.check_sms(r["preview"], brief.product_name, first_message=False)
@@ -583,23 +596,95 @@ def _lib(brief: Brief) -> Dict[str, List[Dict[str, Any]]]:
     }
 
 
+def _short_lib(brief: Brief) -> Dict[str, Dict[str, List[Any]]]:
+    """Channel-native starter copy for SMS, push and in-app, per role: (A, B) pairs. Bracketed text is for the marketer."""
+    p = "{product_name}"
+    core = brief.core_conversion_event
+    act = core.label or core.event.replace("_", " ")
+    do = base_form(act)
+    Do = do[:1].upper() + do[1:]
+    n = brief.churn_threshold_days
+    return {
+        "value_reminder": {
+            "sms": [f"Your {p} setup is saved. Pick up where you left off: [link]", f"{n} days since you last {act}. Back in one tap: [link]"],
+            "push": [("Everything is still set up", f"Pick up where you left off in {p}."), (f"{n} days since your last visit", f"{Do} again in a few minutes.")],
+            "in_app": [("Welcome back", f"Your setup is saved. The fastest way back in is to {do}.", "Continue"),
+                       ("Pick up where you left off", f"It has been {n} days. {Do} from where you stopped.", f"{Do}"[:24])]},
+        "friction_removal": {
+            "sms": ["Stuck on [the common blocker]? The 2-minute way past it: [link]", f"A ready-made template to {do} in two minutes: [link]"],
+            "push": [("Stuck? There is a shortcut", "[The shortest path past the most common blocker]."),
+                     ("Start from a template", f"A ready-made template gets you to {do} in two minutes.")],
+            "in_app": [("Stuck? Here is the shortcut", "[The shortest path past the most common blocker].", "Show me"),
+                       ("Start from a template", f"Skip the blank page: a template gets you to {do} in two minutes.", "Open a template")]},
+        "whats_new": {
+            "sms": [f"New in {p}: [the change, in a few words]. See it: [link]", f"You asked, we built it: [the change]. Try it: [link]"],
+            "push": [(f"New in {p}", "[The change, and what it does for them, in one sentence]."),
+                     ("You asked, we built it", "[The change], live in your account now.")],
+            "in_app": [("One thing changed", "[What the change does for them, with a concrete example].", "See it"),
+                       ("[The change, as a benefit]", "It came from requests like yours. Try it on your own data.", "Try it now")]},
+        "social_proof": {
+            "sms": [f"How [customer type] use {p} each week, in one short routine: [link]", f"[Number] teams used {p} to {do} last week. Your turn: [link]"],
+            "push": [("A weekly routine that sticks", f"[A team like theirs] uses {p} every [day] to [outcome]."),
+                     ("What active teams are doing", f"[Number] teams used {p} to {do} last week.")],
+            "in_app": [("A routine worth copying", f"[A team like theirs] uses {p} every [day] to [outcome].", "Copy the routine"),
+                       ("What active teams do", f"[Number] teams used {p} to {do} last week.", f"{Do}"[:24])]},
+        "human_help": {
+            "sms": [f"Hi {{first_name}}, it's [name] at {p}. Anything I can help with? Just reply.", f"[Name] from {p}: want 15 minutes to get set up? Book here: [link]"],
+            "push": [("Need a hand?", "Book 15 minutes with [name] and get set up."), ("One question from [name]", f"What would make {p} worth coming back to?")],
+            "in_app": [("Need a hand?", "Book 15 minutes with [name] and we will set it up with you.", "Book a time"),
+                       ("Tell us what is missing", f"One line on what would make {p} worth coming back to.", "Answer")]},
+        "use_case": {
+            "sms": [f"Another way to use {p}: [second use case]. Try it: [link]", f"[Second use case] in {p} takes about five minutes: [link]"],
+            "push": [(f"Another way to use {p}", "[Second use case], built for [their role]."), ("[Second use case]", "Set it up in about five minutes.")],
+            "in_app": [("Try something new", "[Second use case], built for [their role]. First step: [step].", "Try it"),
+                       ("[Second use case]", "Set it up in about five minutes, step by step.", "Set it up")]},
+        "check_in": {
+            "sms": [f"{p}: what would make it worth coming back? Reply with one line.", f"{p} here. Was it something we did? A one-line reply helps."],
+            "push": [("Quick question", f"What would make {p} worth coming back to?"), ("Help us get it right", "Tell us what we missed. One line is enough.")],
+            "in_app": [("Quick question", f"What would make {p} worth coming back to?", "Answer"),
+                       ("Help us get it right", "Tell us what we missed. One line is enough.", "Tell us")]},
+        "repermission": {
+            "sms": [f"{p}: still want these texts? Reply YES to keep them; otherwise we will stop in 2 weeks.", f"{p}: we will pause these texts in 2 weeks unless you reply YES."],
+            "push": [("Keep getting updates?", "Tap to keep them; otherwise we will pause them."), ("Pausing updates", "Tap to keep them coming.")],
+            "in_app": [("Still want our emails?", "One click keeps them coming. Otherwise we will pause them in two weeks.", "Keep my emails"),
+                       ("Pausing your emails", "We plan to stop marketing emails in two weeks. Want them?", "Keep them")]},
+        "first_step": {
+            "sms": [f"Welcome to {p}. Your first step: {do}. About five minutes: [link]", f"Welcome to {p}, {{first_name}}. Start here: [link]"],
+            "push": [("Your first step", f"{Do} in about five minutes."), (f"Welcome to {p}", "Here is where to start.")],
+            "in_app": [("Start here", f"The fastest way to see what {p} does: {do}.", "Start"),
+                       (f"Welcome to {p}", f"Most teams start the same way: they {do} first.", "Get started")]},
+        "unblock": {
+            "sms": ["Stuck on [the leak step]? Here is the shortcut: [link]", f"Need a hand getting set up in {p}? Reply and a person will help."],
+            "push": [("Stuck on [the leak step]?", "[The shortest way past it]."), ("Need a hand?", "Reply to our email and we will set it up with you.")],
+            "in_app": [("Stuck on [the leak step]?", "[The shortest way past it].", "Show me"),
+                       ("We can do it with you", "Book a short call and we will set it up together.", "Get help")]},
+        "show_outcome": {
+            "sms": [f"See what teams get when they {do}: [link]", f"Five minutes to your first [outcome] in {p}: [link]"],
+            "push": [("Here is what you get", "[A real example of the outcome]."), ("Your first [outcome]", "[Step one], then [step two]. That is it.")],
+            "in_app": [("Here is what you get", "[A real example of the outcome].", "Make yours"),
+                       ("Your first [outcome]", "[Step one], then [step two]. That is it.", "Start now")]},
+        "last_nudge": {
+            "sms": [f"Still want to try {p}? Your first step: {do}. [link]", f"No rush. When you are ready, {p} starts here: [link]"],
+            "push": [("Whenever you are ready", f"Your first step: {do}."), ("No rush", f"When you are ready, {p} starts with one step.")],
+            "in_app": [("Whenever you are ready", f"Your first step is to {do}.", "Take the first step"),
+                       ("No rush", f"When the time is right, the first step is to {do}.", f"Open {p}"[:24])]},
+    }
+
+
 def offline_drafts(t: Touch, brief: Brief) -> List[Dict[str, Any]]:
     emails = _lib(brief)[t.role][: brief.copy_variants]
     if t.channel == "email":
         return [dict(e) for e in emails]
+    short = _short_lib(brief)[t.role][t.channel]
     out = []
-    for e in emails:
-        first = e["paragraphs"][-1]
-        short = re.sub(r"\s+", " ", first)
+    for e, s in zip(emails, short):
+        meta = {"framework": e["framework"], "hypothesis": e["hypothesis"]}
         if t.channel == "sms":
-            out.append({"text": _shorten(f"{e['headline']}. {e['cta_label']}: [your short link]", 110),
-                        "framework": e["framework"], "hypothesis": e["hypothesis"]})
+            out.append({"text": _shorten(s, 110), **meta})
         elif t.channel == "push":
-            out.append({"title": _shorten(e["headline"], 50), "body": _shorten(short, 150), "framework": e["framework"],
-                        "hypothesis": e["hypothesis"]})
+            out.append({"title": _shorten(s[0], 50), "body": _shorten(s[1], 150), **meta})
         else:
-            out.append({"headline": _shorten(e["headline"], 60), "body": _shorten(short, 200), "cta_label": _shorten(e["cta_label"], 24),
-                        "framework": e["framework"], "hypothesis": e["hypothesis"]})
+            out.append({"headline": _shorten(s[0], 60), "body": _shorten(s[1], 200), "cta_label": _shorten(s[2], 24), **meta})
     return out
 
 

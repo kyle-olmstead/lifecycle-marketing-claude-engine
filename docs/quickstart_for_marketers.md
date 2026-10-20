@@ -73,7 +73,7 @@ The plan lands in `out/<your flow>/plan.md`. A worked example for a fictional co
 |---|---|---|
 | **Status** | READY, READY WITH ASSUMPTIONS, or BLOCKED | BLOCKED names the check that failed; fix that first |
 | **Confirm before you build** | everything the teammate assumed or could not verify | answer each line, update the brief, run it again |
-| **Who enters** | the entry rule, the exit, the trigger, and the data it depends on | check the event names are yours |
+| **Who enters** | the entry rule, the exit, the trigger, the data it depends on, and the daily queries (who to push, then a record of who was pushed, so nobody enters twice) | check the event names are yours |
 | **The flow** | a diagram and a day-by-day table: channel, job, conditions | sanity-check timing against your other flows |
 | **Build it in your platform** | numbered build steps in your platform's own words | hand to whoever builds it |
 | **The copy** | two variants per message, each with a hypothesis; files are in `copy/` | replace any `[bracketed]` text with real specifics |
@@ -149,6 +149,7 @@ Until step 4, the workflow runs on demo data so you can see what it produces.
 
 The teammate reads three tables: users, orders and events. If your events flow through Segment,
 point a Webhooks destination at `scripts/webhook_parser.py` (your engineer can host it in minutes;
-the file explains how). GA4 events can come in through the same service, or through GA4's
+the file explains how), with a shared secret set and batching turned off so every request is signed
+in full. GA4 events can come in through the same service, or through GA4's
 BigQuery export. Events that do not match your tracking plan are held aside with the reason,
 never silently dropped.

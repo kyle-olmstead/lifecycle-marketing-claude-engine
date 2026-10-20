@@ -15,10 +15,10 @@ of CSVs written with --to-csv.
 Sources
   Segment  POST /webhooks/segment. Works with the Webhooks (Actions) destination and the classic
            Webhooks destination. Requests are signed: header X-Signature, hex HMAC-SHA1 of the body
-           with the destination's shared secret. Segment's documentation computes it over the JSON
-           body as serialized by Segment, so the parser accepts a match on the raw bytes or on the
-           compact re-serialization, and, for batches, on the first event (Segment signs the first
-           event of a batch). Single events, arrays and {"batch": [...]} are all accepted.
+           with the destination's shared secret, over the whole body (the raw bytes, or the same JSON
+           compactly serialized). With batching on, Segment signs only the first event of a batch,
+           which would let anyone holding one signed event append forged ones, so a batch is accepted
+           only when its signature covers the whole body: turn batching off in the destination.
   GA4      POST /webhooks/ga4. GA4 does not push webhooks itself; this accepts the Measurement
            Protocol body shape ({client_id, user_id, timestamp_micros, events: [{name, params}]})
            as forwarded by server-side Google Tag Manager or a relay. Authenticated with a shared
@@ -26,7 +26,9 @@ Sources
            (sign_up to signed_up, purchase to order_completed, and so on); others are snake_cased.
 
 Secrets come from the environment only: SEGMENT_SHARED_SECRET, LCM_GA4_TOKEN. With no secret set
-the endpoint refuses traffic unless LCM_ALLOW_UNSIGNED=1 (local testing only).
+the endpoint refuses traffic unless LCM_ALLOW_UNSIGNED=1 (local testing only). Replays: over HTTP,
+events older than 72 hours are refused, and event ids already written in the last 3 days are
+dropped as duplicates, including across restarts (the sink re-reads its recent files at start).
 
     uvicorn scripts.webhook_parser:app --port 8080                       # serve
     python3 scripts/webhook_parser.py parse --source segment payload.json --to-csv out/events   # offline
@@ -63,6 +65,8 @@ PLAN = json.loads(PLAN_PATH.read_text(encoding="utf-8"))
 PLAN_EVENTS = set(PLAN["properties"]["event"]["enum"])
 MAX_BODY_BYTES = 5 * 1024 * 1024
 MAX_FUTURE = timedelta(hours=1)
+HTTP_MAX_AGE = timedelta(hours=72)   # older events over HTTP are refused as possible replays; backfill through the CLI
+DEDUPE_DAYS = 3
 
 GA4_TO_PLAN = {"sign_up": "signed_up", "session_start": "session_started", "purchase": "order_completed",
                "begin_checkout": "checkout_started", "view_item": "product_viewed", "login": "logged_in",
@@ -100,16 +104,13 @@ def _iso(dt: datetime) -> str:
 # ----------------------------------------------------------------------------------------------
 
 def verify_segment_signature(raw: bytes, signature: Optional[str], secret: str) -> bool:
+    """True only when the signature covers the whole body: its raw bytes, or the same JSON compactly serialized."""
     if not signature:
         return False
     sig = signature.strip().lower()
     candidates = [raw]
     try:
-        doc = json.loads(raw)
-        candidates.append(json.dumps(doc, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
-        first = doc[0] if isinstance(doc, list) and doc else (doc.get("batch") or [None])[0] if isinstance(doc, dict) and "batch" in doc else None
-        if first is not None:
-            candidates.append(json.dumps(first, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+        candidates.append(json.dumps(json.loads(raw), separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
     except (ValueError, TypeError):
         pass
     return any(hmac.compare_digest(hmac.new(secret.encode("utf-8"), c, hashlib.sha1).hexdigest(), sig) for c in candidates)
@@ -137,7 +138,8 @@ def _validate(event_name: str, row: Dict[str, Any], source: str) -> List[str]:
     return [f"{'/'.join(map(str, e.path)) or 'event'}: {e.message}" for e in v.iter_errors(doc)][:5]
 
 
-def _common(row: Dict[str, Any], source: str, received: datetime) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+def _common(row: Dict[str, Any], source: str, received: datetime,
+            max_age: Optional[timedelta] = None) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     if not row.get("event_id"):
         return None, "no idempotency key (Segment messageId, or an event_id param for GA4)"
     if not (row.get("user_id") or row.get("anonymous_id")):
@@ -146,6 +148,8 @@ def _common(row: Dict[str, Any], source: str, received: datetime) -> Tuple[Optio
         return None, "missing or unreadable timestamp"
     if row["_at"] > received + MAX_FUTURE:
         return None, f"timestamp {row['_at'].isoformat()} is in the future: client clock is wrong"
+    if max_age is not None and row["_at"] < received - max_age:
+        return None, f"timestamp {row['_at'].isoformat()} is more than {max_age.days * 24 + max_age.seconds // 3600} hours old: refused over HTTP as a possible replay; backfill with the CLI"
     row["event_at"] = _iso(row.pop("_at"))
     errs = _validate(row["event_name"], row, source)
     if errs:
@@ -154,7 +158,8 @@ def _common(row: Dict[str, Any], source: str, received: datetime) -> Tuple[Optio
     return row, None
 
 
-def from_segment(doc: Any, received: Optional[datetime] = None) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+def from_segment(doc: Any, received: Optional[datetime] = None,
+                 max_age: Optional[timedelta] = None) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
     received = received or datetime.now(timezone.utc)
     items = doc if isinstance(doc, list) else (doc.get("batch") if isinstance(doc, dict) and isinstance(doc.get("batch"), list) else [doc])
     events, users, rejected = [], [], []
@@ -185,7 +190,7 @@ def from_segment(doc: Any, received: Optional[datetime] = None) -> Tuple[List[Di
         row = {"event_id": m.get("messageId"), "user_id": str(m["userId"]) if m.get("userId") else None,
                "anonymous_id": str(m["anonymousId"]) if m.get("anonymousId") else None, "event_name": name, "properties": props,
                "source": "segment", "_at": at}
-        ok, why = _common(row, "segment", received)
+        ok, why = _common(row, "segment", received, max_age)
         if ok:
             events.append(ok)
         else:
@@ -222,7 +227,8 @@ def _ga4_to_plan(name: str, p: Dict[str, Any], event_id: str) -> Dict[str, Any]:
     return p
 
 
-def from_ga4(doc: Dict[str, Any], received: Optional[datetime] = None) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+def from_ga4(doc: Dict[str, Any], received: Optional[datetime] = None,
+             max_age: Optional[timedelta] = None) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
     received = received or datetime.now(timezone.utc)
     if not isinstance(doc, dict) or not isinstance(doc.get("events"), list):
         return [], [], [{"source": "ga4", "reason": "expected a Measurement Protocol body with an events array", "payload": doc}]
@@ -246,7 +252,7 @@ def from_ga4(doc: Dict[str, Any], received: Optional[datetime] = None) -> Tuple[
             params.pop(k, None)
         row = {"event_id": str(event_id), "user_id": str(uid) if uid else None, "anonymous_id": str(anon) if anon else None,
                "event_name": name, "properties": params, "source": "ga4", "_at": at}
-        ok, why = _common(row, "ga4", received)
+        ok, why = _common(row, "ga4", received, max_age)
         if ok:
             events.append(ok)
         else:
@@ -262,13 +268,29 @@ def from_ga4(doc: Dict[str, Any], received: Optional[datetime] = None) -> Tuple[
 # ----------------------------------------------------------------------------------------------
 
 class Sink:
-    """Append-only NDJSON by UTC day, deduplicated on event_id within this process (recent 200,000 ids)."""
+    """Append-only NDJSON by UTC day, deduplicated on event_id. At start it re-reads the last DEDUPE_DAYS of files, so a
+    restart does not reopen the door to replays. One process per events folder: run uvicorn with a single worker, or put
+    a unique key on event_id where the files are loaded."""
 
-    def __init__(self, root: Path, dedupe: int = 200_000) -> None:
+    def __init__(self, root: Path, dedupe: int = 500_000) -> None:
         self.root = Path(root)
         self.seen: "OrderedDict[str, None]" = OrderedDict()
         self.dedupe = dedupe
         self.lock = threading.Lock()
+        today = datetime.now(timezone.utc).date()
+        for k in range(DEDUPE_DAYS, -1, -1):
+            path = self.root / "track_events" / f"{(today - timedelta(days=k)).isoformat()}.ndjson"
+            if path.exists():
+                for line in path.read_text(encoding="utf-8").splitlines():
+                    try:
+                        self._remember(json.loads(line)["event_id"])
+                    except (ValueError, KeyError):
+                        continue
+
+    def _remember(self, event_id: str) -> None:
+        self.seen[event_id] = None
+        if len(self.seen) > self.dedupe:
+            self.seen.popitem(last=False)
 
     def _write(self, folder: str, rows: List[Dict[str, Any]]) -> None:
         if not rows:
@@ -288,9 +310,7 @@ class Sink:
                 if e["event_id"] in self.seen:
                     dupes += 1
                     continue
-                self.seen[e["event_id"]] = None
-                if len(self.seen) > self.dedupe:
-                    self.seen.popitem(last=False)
+                self._remember(e["event_id"])
                 fresh.append(e)
             self._write("track_events", fresh)
             self._write("users", users)
@@ -348,7 +368,7 @@ def create_app(events_dir: Optional[Path] = None):
                 raise HTTPException(401, "X-Signature does not match the shared secret")
         elif not allow_unsigned:
             raise HTTPException(503, "SEGMENT_SHARED_SECRET is not set; refusing unsigned events (LCM_ALLOW_UNSIGNED=1 for local tests)")
-        return sink.put(*from_segment(doc))
+        return sink.put(*from_segment(doc, max_age=HTTP_MAX_AGE))
 
     @app.post("/webhooks/ga4")
     async def ga4(request: Request) -> Dict[str, Any]:
@@ -359,7 +379,7 @@ def create_app(events_dir: Optional[Path] = None):
                 raise HTTPException(401, "X-LCM-Token does not match")
         elif not allow_unsigned:
             raise HTTPException(503, "LCM_GA4_TOKEN is not set; refusing unauthenticated events (LCM_ALLOW_UNSIGNED=1 for local tests)")
-        return sink.put(*from_ga4(doc))
+        return sink.put(*from_ga4(doc, max_age=HTTP_MAX_AGE))
 
     return app
 

@@ -99,11 +99,18 @@ def test_multichannel_flow_has_consent_fallbacks_and_passes_simulation():
 
 
 def test_activation_flow():
-    b = load_brief(EXAMPLE).model_copy(update={"flow_type": "activation", "qualifying_event": EventMatch(event="signed_up", label="signed up"),
-                                                "touches": 4})
+    b = load_brief(EXAMPLE).model_copy(update={
+        "flow_type": "activation", "touches": 4,
+        "qualifying_event": EventMatch(event="onboarding_step_completed", where={"step_index": 3}, label="completed onboarding")})
     p = orchestrator.run(b, str(ROOT / "tests/fixtures"), copy_mode="offline")
+    spec = p.flow.flow_spec
     assert p.qa.status != "BLOCKED"
-    assert p.flow.flow_spec["trigger"]["type"] == "event" and p.flow.touches[0].role == "first_step"
+    assert spec["trigger"]["type"] == "event" and p.flow.touches[0].role == "first_step"
+    assert "step_index = 3" in spec["trigger"]["definition"]
+    assert any(f["condition"] == "trigger filter: step_index = 3" for f in spec["entry_filters"])
+    assert "onboarding_step_completed trigger event" in spec["steps"][0]["branch"]["condition"]
+    assert "md5(user_id" in p.flow.build_steps[0], "the build steps say how to put in_holdout on the live event"
+    assert "re-entry off" in p.cohort.platform_pattern and p.cohort.trigger_payload_example == {}
 
 
 def test_red_gate_blocks_and_amber_limits_to_engaged():
@@ -121,6 +128,33 @@ def test_the_spec_sentence_plans_end_to_end_without_data():
     assert p.experiment.read == "not readable" and p.experiment.sensitivity
     md = orchestrator.render_plan(p)
     assert "## Confirm before you build" in md and "core_conversion_event" in md
+
+
+def test_exit_and_metric_respect_the_core_event_filter(plan):
+    spec = plan.flow.flow_spec
+    assert "feature = reports" in spec["exit"]["goal"] and "feature = reports" in spec["ongoing_filters"][0]["condition"]
+    assert "feature = reports" in plan.experiment.primary_metric and "feature = reports" in plan.experiment.decision_rule
+
+
+@pytest.mark.parametrize("touches", range(1, 9))
+def test_every_touch_count_plans_cleanly(touches):
+    b = load_brief(EXAMPLE).model_copy(update={"touches": touches, "channels": ["email", "sms", "push", "in_app"]})
+    p = orchestrator.run(b, copy_mode="offline")
+    assert p.qa.status != "BLOCKED", [(c.name, c.detail) for c in p.qa.checks if c.status == "fail"]
+
+
+def test_outcome_window_covers_the_whole_flow():
+    b = load_brief(EXAMPLE).model_copy(update={"touches": 8, "frequency_cap_per_week": 1})
+    p = orchestrator.run(b, copy_mode="offline")
+    last = max(t.day for t in p.flow.touches)
+    assert p.experiment.outcome_window_days >= last + 7
+    assert any(a.field == "outcome_window_days" for a in p.brief.assumptions)
+
+
+def test_custom_quiet_hours_reach_the_simulator():
+    b = load_brief(EXAMPLE).model_copy(update={"send_hour_local": 7, "quiet_hours": "22:00 to 06:00"})
+    p = orchestrator.run(b, copy_mode="offline")
+    assert p.flow.simulation["quiet_hours_local"] == [22.0, 6.0] and p.qa.status != "BLOCKED"
 
 
 def test_frequency_cap_spreads_touches():

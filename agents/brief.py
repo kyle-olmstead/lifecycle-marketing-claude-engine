@@ -25,9 +25,11 @@ from agents.models import Assumption, Brief, EventMatch
 NUMBER_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
 PLATFORMS = (("customer.io", "customerio"), ("customerio", "customerio"), ("klaviyo", "klaviyo"), ("hubspot", "hubspot"),
              ("braze", "braze"), ("marketing cloud", "sfmc"), ("sfmc", "sfmc"))
-WINBACK_WORDS = ("win-back", "winback", "win back", "re-engage", "reengage", "re-engagement", "reactivat", "lapsed", "inactive",
-                 "haven't", "have not", "hasn't", "stopped", "dormant", "churn")
-ACTIVATION_WORDS = ("onboarding flow", "activation", "welcome", "new users", "new signups", "just signed up", "first week")
+WINBACK_WORDS = ("win-back", "winback", "win back", "re-engage", "reengage", "re-engagement", "reactivat", "lapsed", "lapse",
+                 "inactive", "stopped", "dormant", "churn", "gone quiet")
+ACTIVATION_WORDS = ("onboarding flow", "onboarding series", "activation", "welcome", "new users", "new signups", "new sign-ups",
+                    "just signed up", "first week", "trial")
+NEGATION = r"haven't|have not|hasn't|has not|without|\bbut\b"
 
 # Phrases a marketer uses for the qualifying cohort and the core action, mapped to the reference
 # tracking plan (modules/02_behavioral_triggers_and_flows/schemas/custom_event_definitions.json).
@@ -44,6 +46,12 @@ QUALIFYING_PHRASES: List[Tuple[str, EventMatch, str]] = [
      EventMatch(event="order_completed", label="placed an order"), "'customers' mapped to order_completed"),
 ]
 CORE_PHRASES: List[Tuple[str, EventMatch, str]] = [
+    (r"connect\w* (a |your |their )?data|data source",
+     EventMatch(event="onboarding_step_completed", where={"step": "connected_data_source"}, label="connected a data source"),
+     "core action read as connecting a data source: onboarding_step_completed with step = connected_data_source"),
+    (r"invit\w* (a )?(teammate|colleague|team)",
+     EventMatch(event="onboarding_step_completed", where={"step": "invited_teammate"}, label="invited a teammate"),
+     "core action read as inviting a teammate: onboarding_step_completed with step = invited_teammate"),
     (r"(purchas|order|bought|buy)\w*", EventMatch(event="order_completed", label="placed an order"),
      "core action read as a purchase: order_completed"),
     (r"log(ged)? ?in|session|opened the app|came back",
@@ -69,11 +77,15 @@ def parse_text(text: str, product_name: Optional[str] = None, overrides: Optiona
         data[field] = value
         assumptions.append(Assumption(field=field, value=value if not isinstance(value, EventMatch) else value.model_dump(), why=why))
 
-    # flow type
+    # flow type: explicit words win; "haven't ... yet" about new people reads as activation, otherwise as a lapse
     if any(w in low for w in WINBACK_WORDS):
         data["flow_type"] = "winback"
-    elif any(w in low for w in ACTIVATION_WORDS) or "onboarding" in low:
+    elif any(w in low for w in ACTIVATION_WORDS):
         data["flow_type"] = "activation"
+    elif re.search(r"haven't|have not|hasn't|has not", low) and re.search(r"\byet\b|\bnew\b", low):
+        data["flow_type"] = "activation"
+    elif re.search(r"haven't|have not|hasn't|has not|in \d+ (day|week|month)", low):
+        data["flow_type"] = "winback"
     else:
         assume("flow_type", "winback", "the brief does not say whether this is a win-back or an activation flow")
 
@@ -93,7 +105,10 @@ def parse_text(text: str, product_name: Optional[str] = None, overrides: Optiona
         assume("churn_threshold_days", 14, "inactivity threshold not stated")
 
     # qualifying cohort: the clause before "but", or the whole sentence
-    who = low.split(" but ")[0]
+    who = re.split(NEGATION, low, maxsplit=1)[0]
+    for sep in (":", " for "):
+        if sep in who:
+            who = who.rsplit(sep, 1)[1]
     for pattern, match, why in QUALIFYING_PHRASES:
         if re.search(pattern, who):
             data["qualifying_event"] = match
@@ -104,7 +119,7 @@ def parse_text(text: str, product_name: Optional[str] = None, overrides: Optiona
                "who qualifies was not stated; defaulted to users who reached activation")
 
     # core action: the clause after "but" / "haven't"
-    after = re.split(r"\bbut\b|haven't|have not|hasn't|without", low, maxsplit=1)
+    after = re.split(NEGATION, low, maxsplit=1)
     action = after[1] if len(after) > 1 else ""
     for pattern, match, why in CORE_PHRASES:
         if re.search(pattern, action):

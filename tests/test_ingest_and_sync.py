@@ -71,8 +71,9 @@ def test_segment_signature_forms():
     sign = lambda b: hmac.new(secret.encode(), b, hashlib.sha1).hexdigest()  # noqa: E731
     compact = json.dumps(json.loads(body), separators=(",", ":")).encode()
     first = json.dumps(json.loads(body)[0], separators=(",", ":")).encode()
-    for b in (body, compact, first):
+    for b in (body, compact):
         assert webhook_parser.verify_segment_signature(body, sign(b), secret)
+    assert not webhook_parser.verify_segment_signature(body, sign(first), secret), "a signature on one event must not cover a batch"
     assert not webhook_parser.verify_segment_signature(body, sign(b"other"), secret)
     assert not webhook_parser.verify_segment_signature(body, None, secret)
 
@@ -82,19 +83,41 @@ def test_http_app(tmp_path, monkeypatch):
     monkeypatch.setenv("SEGMENT_SHARED_SECRET", "s3cret")
     monkeypatch.setenv("LCM_GA4_TOKEN", "tok")
     client = TestClient(webhook_parser.create_app(tmp_path))
-    raw = json.dumps(_seg()).encode()
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    raw = json.dumps({**_seg(), "timestamp": now}).encode()
     sig = hmac.new(b"s3cret", raw, hashlib.sha1).hexdigest()
     assert client.post("/webhooks/segment", content=raw, headers={"X-Signature": "0" * 40}).status_code == 401
     r = client.post("/webhooks/segment", content=raw, headers={"X-Signature": sig})
     assert r.status_code == 200 and r.json()["accepted"] == 1
     assert client.post("/webhooks/segment", content=raw, headers={"X-Signature": sig}).json()["duplicates"] == 1
-    bad = json.dumps(_seg(props={"feature": "Reports"}, mid="msg_0000000009")).encode()
+    bad = json.dumps({**_seg(props={"feature": "Reports"}, mid="msg_0000000009"), "timestamp": now}).encode()
     assert client.post("/webhooks/segment", content=bad, headers={"X-Signature": hmac.new(b"s3cret", bad, hashlib.sha1).hexdigest()}).json()["quarantined"] == 1
     ga = {"client_id": "1.2", "events": [{"name": "sign_up", "params": {"method": "email"}}]}
     assert client.post("/webhooks/ga4", json=ga).status_code == 401
     assert client.post("/webhooks/ga4", json=ga, headers={"X-LCM-Token": "tok"}).json()["accepted"] == 1
     lines = [json.loads(x) for f in (tmp_path / "track_events").glob("*.ndjson") for x in f.read_text().splitlines()]
     assert len(lines) == 2 and (tmp_path / "quarantine").exists()
+
+
+def test_forged_batch_and_replays_are_refused(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from fastapi.testclient import TestClient
+    monkeypatch.setenv("SEGMENT_SHARED_SECRET", "s3cret")
+    sign = lambda b: hmac.new(b"s3cret", b, hashlib.sha1).hexdigest()  # noqa: E731
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    good = {**_seg(), "timestamp": now}
+    forged = json.dumps({"batch": [good, {**_seg("Order Completed", "msg_9999999999", {"order_id": "o", "net_amount": 1, "currency": "USD"}),
+                                          "timestamp": now}]}).encode()
+    client = TestClient(webhook_parser.create_app(tmp_path))
+    assert client.post("/webhooks/segment", content=forged, headers={"X-Signature": sign(json.dumps(good, separators=(",", ":")).encode())}).status_code == 401
+    old = json.dumps({**_seg(mid="msg_0000000077"), "timestamp": (datetime.now(timezone.utc) - timedelta(days=4)).isoformat()}).encode()
+    r = client.post("/webhooks/segment", content=old, headers={"X-Signature": sign(old)}).json()
+    assert r["accepted"] == 0 and r["quarantined"] == 1
+    fresh = json.dumps(good).encode()
+    assert client.post("/webhooks/segment", content=fresh, headers={"X-Signature": sign(fresh)}).json()["accepted"] == 1
+    restarted = TestClient(webhook_parser.create_app(tmp_path))      # dedupe survives a restart
+    assert restarted.post("/webhooks/segment", content=fresh, headers={"X-Signature": sign(fresh)}).json()["duplicates"] == 1
 
 
 def test_unsigned_traffic_is_refused_by_default(tmp_path, monkeypatch):
@@ -223,6 +246,14 @@ def test_sync_extends_an_older_header_and_refuses_a_foreign_one():
         sheets_sync.upsert(ws2, sheets_sync.TABS["Anomalies"]["header"], ["as_of"], [])
 
 
+def test_duplicate_keys_in_one_call_keep_the_last_row():
+    ws = FakeWS("Anomalies")
+    rows = [{"as_of": "2026-10-01", "flow": "f", "metric": "signups", "value": v} for v in (1, 2)]
+    assert sheets_sync.upsert(ws, sheets_sync.TABS["Anomalies"]["header"], ["as_of", "flow", "metric"], rows) == {"updated": 0, "appended": 1}
+    assert sheets_sync.upsert(ws, sheets_sync.TABS["Anomalies"]["header"], ["as_of", "flow", "metric"], rows) == {"updated": 1, "appended": 0}
+    assert len(ws.rows) == 2 and ws.rows[1][3] == "2"
+
+
 def test_retry_on_quota_errors():
     from gspread.exceptions import APIError
 
@@ -286,3 +317,27 @@ def test_daily_workflow():
     for path in ("agents.cohort_analyst", "scripts/sheets_sync.py"):
         assert path in runs
     assert (ROOT / "briefs/examples/winback_14d.yaml").exists()
+
+
+def test_parquet_exports_load_and_orders_are_optional(tmp_path):
+    """A folder (or URL prefix) of .parquet files loads, parquet is preferred over csv, and a missing orders table is empty."""
+    import duckdb
+    from agents import cohort_analyst
+    con = duckdb.connect()
+    for t in ("users", "track_events"):
+        con.execute(f"COPY (SELECT * FROM read_csv('{ROOT / 'tests/fixtures' / (t + '.csv')}', header=true, all_varchar=true)) "
+                    f"TO '{tmp_path / (t + '.parquet')}' (FORMAT parquet)")
+    (tmp_path / "users.csv").write_text("not,a,valid,users,file\n")   # parquet must win over a broken csv
+    c = cohort_analyst.connect(str(tmp_path))
+    assert c.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 400
+    assert c.execute("SELECT COUNT(*) FROM orders").fetchone()[0] == 0
+    (tmp_path / "track_events.parquet").unlink()
+    with pytest.raises(FileNotFoundError, match="track_events"):
+        cohort_analyst.connect(str(tmp_path))
+
+
+def test_brief_command_creates_its_folder(tmp_path):
+    from agents import orchestrator
+    out = tmp_path / "lmm-engine" / "briefs" / "acme.yaml"
+    assert orchestrator._cli(["brief", "--text", "5-touch win-back after 14 days inactive", "--product", "Acme", "--out", str(out)]) == 0
+    assert "churn_threshold_days: 14" in out.read_text()

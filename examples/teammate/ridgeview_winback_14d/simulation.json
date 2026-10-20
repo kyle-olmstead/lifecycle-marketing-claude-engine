@@ -7,8 +7,8 @@
   "frequency_cap_per_week": 3,
   "send_hour_local": 10,
   "quiet_hours_local": [
-    21,
-    8
+    21.0,
+    8.0
   ],
   "in_app_display_days": 3,
   "max_touches": 5,

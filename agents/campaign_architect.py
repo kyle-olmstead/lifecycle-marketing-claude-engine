@@ -29,7 +29,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from agents import guardrails  # noqa: E402
-from agents.models import PLATFORM_LABEL, Brief, CohortDefinition, FlowPlan, Touch  # noqa: E402
+from agents.models import PLATFORM_LABEL, Brief, CohortDefinition, FlowPlan, Touch, parse_quiet_hours  # noqa: E402
 
 ROLES: Dict[str, Dict[str, str]] = {
     "value_reminder": {"job": "Remind them of the one outcome {product} gave them, tied to what they last did, with one link that lets them {core_do} again. No offer.",
@@ -128,15 +128,37 @@ def _fmt(s: str, brief: Brief) -> str:
     return s.format(product=brief.product_name, core_label=c.label or c.event, core_do=c.do, core=c.event)
 
 
-def design(brief: Brief, cohort: CohortDefinition) -> FlowPlan:
-    pol = guardrails.gate_policy(brief.sending_gate)
-    core = brief.core_conversion_event
+def roles_for(brief: Brief) -> List[str]:
     n = brief.touches
     roles = WINBACK_ORDER[n] if brief.flow_type == "winback" else ACTIVATION_ORDER[:n]
     if brief.flow_type == "activation" and n >= 2:
         roles = roles[:-1] + ["last_nudge"]
-    base_days = (WINBACK_DAYS if brief.flow_type == "winback" else ACTIVATION_DAYS)[:n]
-    days = _space(base_days, brief.frequency_cap_per_week)
+    return roles
+
+
+def schedule_days(brief: Brief) -> List[int]:
+    """The day of each touch after entry, spread to respect the weekly frequency cap."""
+    base_days = (WINBACK_DAYS if brief.flow_type == "winback" else ACTIVATION_DAYS)[: brief.touches]
+    return _space(base_days, brief.frequency_cap_per_week)
+
+
+def outcome_window(brief: Brief) -> int:
+    """Days each entrant is followed for the core action: as given, or the whole flow plus a week."""
+    if brief.outcome_window_days:
+        return brief.outcome_window_days
+    last = max(schedule_days(brief))
+    if brief.flow_type == "winback":
+        return max(30, 2 * brief.churn_threshold_days, last + 7)
+    return max(14, last + 7)
+
+
+def design(brief: Brief, cohort: CohortDefinition) -> FlowPlan:
+    pol = guardrails.gate_policy(brief.sending_gate)
+    core = brief.core_conversion_event
+    qual = brief.qualifying_event
+    n = brief.touches
+    roles = roles_for(brief)
+    days = schedule_days(brief)
     channels = _channels_for(roles, brief)
     hh = f"{brief.send_hour_local:02d}:00"
 
@@ -148,8 +170,10 @@ def design(brief: Brief, cohort: CohortDefinition) -> FlowPlan:
     prev_node = "holdout_split"
     prev_label = "no"
 
+    hold_src = ("event property from the daily entry job" if brief.flow_type == "winback" else
+                f"property on the {qual.event} trigger event, set by the system that sends it")
     steps.append({"id": "holdout_split", "wait": {"type": "none"}, "channel": "none", "message": "-", "goal": "-",
-                  "branch": {"condition": "in_holdout is true (event property from the daily entry job)", "yes": "exit (holdout)",
+                  "branch": {"condition": f"in_holdout is true ({hold_src})", "yes": "exit (holdout)",
                              "no": f"t1_{channels[0]}"}})
     sim["holdout_split"] = {"branch": {"holdout": True}}
 
@@ -203,15 +227,19 @@ def design(brief: Brief, cohort: CohortDefinition) -> FlowPlan:
         steps.append({"id": "sunset", "wait": {"type": "fixed", "duration": "P14D"}, "channel": "none",
                       "condition": f"no click on the re-permission email and no {core.event} since entering",
                       "message": "Set lcm_sunset = true: suppressed from marketing, record kept, lifted only by a fresh opt-in", "goal": "-"})
-        sim["sunset"] = {"condition": {"all": [{"not": {"event_since_entry": "message_clicked"}}, {"not": {"event_since_entry": core.event}}]}}
+        sim["sunset"] = {"condition": {"all": [{"not": {"event_since_entry": "message_clicked"}}, {"not": {"event_since_entry": core.event}}]}}  # noqa: E501
         mer.append(f'  {prev_node} -- "{prev_label}" --> sunset["Day {last_day + 14}: sunset if no click"]')
         prev_node = "sunset"
     mer.append(f'  {prev_node} --> done(["Exit: flow complete"])')
-    mer.append(f'  goal(["{core.event} at any step"]) -.->|"exits immediately"| exit_goal(["Exit: converted"])')
+    mer.append(f'  goal(["{core.detail()} at any step"]) -.->|"exits immediately"| exit_goal(["Exit: converted"])')
 
-    entry_filters = [{"condition": f"{brief.qualifying_event.describe()} ({brief.qualifying_event.event}) at least once", "evaluated": "entry_only"}]
+    if brief.flow_type == "winback":
+        entry_filters = [{"condition": f"{qual.describe()} ({qual.detail()}) at least once", "evaluated": "entry_only"}]
+    else:
+        entry_filters = [{"condition": f"trigger filter: {k} = {v}", "evaluated": "entry_only"} for k, v in qual.where.items()]
+        entry_filters.append({"condition": f"has not yet done {core.detail()}", "evaluated": "entry_only"})
     entry_filters += [{"condition": f, "evaluated": "entry_only"} for f in pol["entry_filters"]]
-    ongoing = [{"condition": f"has not done {core.event} since entering", "evaluated": "every_step"},
+    ongoing = [{"condition": f"has not done {core.detail()} since entering", "evaluated": "every_step"},
                {"condition": "can receive email marketing (subscribed, not bounced, not sunset-suppressed)", "evaluated": "every_step"}]
     n_days = brief.churn_threshold_days
     if brief.flow_type == "winback":
@@ -222,8 +250,8 @@ def design(brief: Brief, cohort: CohortDefinition) -> FlowPlan:
                                     f"{PLATFORM_LABEL[brief.platform]} as the custom event {cohort.trigger_event}",
                    "re_entry": f"allowed: after doing {core.event} again a person can lapse again and re-enter; the entry query fires once per lapse"}
     else:
-        trigger = {"type": "event", "definition": f"{brief.qualifying_event.event} occurred",
-                   "source_object": f"{brief.qualifying_event.event} streamed to {PLATFORM_LABEL[brief.platform]}",
+        trigger = {"type": "event", "definition": f"{qual.detail()} occurred",
+                   "source_object": f"{qual.event} streamed to {PLATFORM_LABEL[brief.platform]} in real time, carrying in_holdout",
                    "re_entry": "off: one activation journey per person"}
     flow_spec: Dict[str, Any] = {
         "flow": f"{'Win-back' if brief.flow_type == 'winback' else 'Activation'}: {brief.product_name}"
@@ -244,14 +272,14 @@ def design(brief: Brief, cohort: CohortDefinition) -> FlowPlan:
         "frequency": {"cap": f"at most {brief.frequency_cap_per_week} lifecycle messages a person a week across flows ({VOCAB[brief.platform]['freq']})",
                       "quiet_hours": f"send at {hh} recipient local; nothing between {brief.quiet_hours}", "priority": 3},
         "steps": steps,
-        "exit": {"goal": f"{core.describe()} ({core.event})", "unenroll_immediately": True,
+        "exit": {"goal": f"{core.describe()} ({core.detail()})", "unenroll_immediately": True,
                  "then": "normal lifecycle messaging" if brief.flow_type == "winback" else "the engaged-user program"},
         "measurement": {"primary_metric": "attached by the experimentation agent", "read_after": "-", "compared_against": "holdout"},
         "data_dependencies": [d.model_dump(exclude_none=True) for d in cohort.data_dependencies],
     }
     simulation = {"version": 1, "flow": flow_spec["flow"], "core_event": core.event, "goal_event": core.event, "holdout_pct": brief.holdout_pct,
                   "frequency_cap_per_week": brief.frequency_cap_per_week, "send_hour_local": brief.send_hour_local,
-                  "quiet_hours_local": [21, 8], "in_app_display_days": IN_APP_DISPLAY_DAYS, "max_touches": n,
+                  "quiet_hours_local": parse_quiet_hours(brief.quiet_hours), "in_app_display_days": IN_APP_DISPLAY_DAYS, "max_touches": n,
                   "engaged_only": pol["effective_gate"] == "AMBER", "steps": sim}
     return FlowPlan(flow_spec=flow_spec, simulation=simulation, touches=touches, mermaid="\n".join(mer),
                     build_steps=build_steps(brief, cohort, touches, flow_spec))
@@ -259,7 +287,7 @@ def design(brief: Brief, cohort: CohortDefinition) -> FlowPlan:
 
 def build_steps(brief: Brief, cohort: CohortDefinition, touches: List[Touch], spec: Dict[str, Any]) -> List[str]:
     v = VOCAB[brief.platform]
-    core = brief.core_conversion_event.event
+    core = brief.core_conversion_event.detail()
     out = []
     if brief.flow_type == "winback":
         push = ("fire one Journey Builder API Event per row (entry source for the journey), carrying in_holdout" if brief.platform == "sfmc" else
@@ -267,7 +295,11 @@ def build_steps(brief: Brief, cohort: CohortDefinition, touches: List[Touch], sp
         out.append(f"Schedule the cohort entry query ({brief.warehouse_dialect}) to run daily after the warehouse load, and {push}. "
                    f"Holdout members are pushed too.")
     else:
-        out.append(f"Confirm {brief.qualifying_event.event} reaches {PLATFORM_LABEL[brief.platform]} in real time; it is the trigger.")
+        q = brief.qualifying_event.event
+        out.append(f"Confirm {q} reaches {PLATFORM_LABEL[brief.platform]} in real time; it is the trigger. Add two properties to it where it "
+                   f"is sent: holdout_bucket = first 7 hex digits of md5(user_id + ':{brief.slug}') as an integer, mod 100, and "
+                   f"in_holdout = holdout_bucket < {brief.holdout_pct:g}. The same formula is in agents/sql_dialects.py (Python and SQL), "
+                   f"so the readout can recompute the arms in the warehouse.")
     out.append(f"Create {v['container']} and {v['draft']}. {v['trigger']}: {cohort.trigger_event}.")
     out.append(f"Entry filters (checked once at entry): " + "; ".join(f["condition"] for f in spec["entry_filters"]) + ".")
     out.append(f"Checked before every step ({v['every_step']}): " + "; ".join(f["condition"] for f in spec["ongoing_filters"]) + ".")

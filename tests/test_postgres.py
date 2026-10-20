@@ -45,11 +45,13 @@ def pg():
         "event_at timestamp, properties jsonb)")
     for t in ("users", "orders", "track_events"):
         run(f"\\copy {t} from '{FIX / (t + '.csv')}' csv header null ''", at=False)
+    run(cohort_analyst.ledger_ddl("postgres"))
 
     def query(sql: str):
         out = run(f"SELECT coalesce(json_agg(t), '[]'::json) FROM ({sql.rstrip().rstrip(';')}) t")
         return json.loads(out)
 
+    query.run = run
     yield query
     subprocess.run(["psql", DSN, "-q", "-c", f"DROP SCHEMA {schema} CASCADE"], capture_output=True)
 
@@ -85,6 +87,17 @@ def test_postgres_matches_duckdb(pg):
     assert _norm(pg(cohort_analyst.history_sql(b, "postgres", "2026-10-18"))) == _norm(cohort_analyst._rows(con, cohort_analyst.history_sql(b, "duckdb", "2026-10-18")))
     for name, sql in cohort_analyst.audit_sql(b, "postgres", "2026-10-18").items():
         assert _norm(pg(sql)) == _norm(cohort_analyst._rows(con, cohort_analyst.audit_sql(b, "duckdb", "2026-10-18")[name])), name
+
+
+def test_postgres_record_writes_the_ledger(pg):
+    b = load_brief(ROOT / "briefs/examples/winback_14d.yaml")
+    due = pg(cohort_analyst.entry_sql(b, "postgres", "2026-10-18"))
+    assert due
+    pg.run(cohort_analyst.record_sql(b, "postgres", "2026-10-18"))
+    assert pg(cohort_analyst.entry_sql(b, "postgres", "2026-10-18")) == [], "recorded entries are not pushed again"
+    rows = pg("SELECT flow, user_id, anchor_date FROM lcm_flow_entries")
+    assert len(rows) == len(due) and {r["user_id"] for r in rows} == {r["user_id"] for r in due}
+    pg.run("DELETE FROM lcm_flow_entries")
 
 
 def test_postgres_holdout_bucket_matches_python(pg):

@@ -84,9 +84,10 @@ jobs:
         run: |
           python -m agents.cohort_analyst audit-sql --brief "$LCM_BRIEF" --dialect bigquery --out out/audit_sql
           mkdir -p out/audit_results
+          # the queries start with '-- dialect:' comment lines, which bq would read as flags: they are stripped
           for q in daily snapshot funnel; do
             bq query --project_id="$LCM_BQ_PROJECT" --dataset_id="$LCM_BQ_PROJECT:$LCM_BQ_DATASET" \
-              --use_legacy_sql=false --format=json --max_rows=100000 "$(cat out/audit_sql/$q.sql)" > "out/audit_results/$q.json"
+              --use_legacy_sql=false --format=json --max_rows=100000 "$(grep -v '^--' out/audit_sql/$q.sql)" > "out/audit_results/$q.json"
           done
 
       - name: Audit cohort health

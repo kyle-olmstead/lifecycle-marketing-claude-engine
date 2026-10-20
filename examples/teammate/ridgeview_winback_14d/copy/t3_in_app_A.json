@@ -1,10 +1,10 @@
 {
   "headline": "One thing changed",
-  "body": "[What it does for them in one sentence, with a concrete example].",
-  "cta_label": "See it in your account",
+  "body": "[What the change does for them, with a concrete example].",
+  "cta_label": "See it",
   "preview": {
     "headline": "One thing changed",
-    "body": "[What it does for them in one sentence, with a concrete example].",
-    "cta_label": "See it in your account"
+    "body": "[What the change does for them, with a concrete example].",
+    "cta_label": "See it"
   }
 }

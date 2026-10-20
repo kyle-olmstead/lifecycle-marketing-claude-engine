@@ -128,10 +128,12 @@ def rows_to_events(rows: Iterable[Dict[str, Any]], event: str, flow: str, as_of:
             continue
         hold = r.get("in_holdout")
         hold = hold if isinstance(hold, bool) else str(hold).lower() in ("true", "1", "t")
+        anchor = str(r.get("anchor_date") or "")[:10] or as_of
         props = {"flow": flow, "in_holdout": hold, "holdout_bucket": int(r["holdout_bucket"]) if r.get("holdout_bucket") not in (None, "") else None,
-                 "days_inactive": int(r["days_inactive"]) if r.get("days_inactive") not in (None, "") else None}
+                 "days_inactive": int(r["days_inactive"]) if r.get("days_inactive") not in (None, "") else None, "anchor_date": anchor}
+        # keyed on the lapse (user and anchor date), not the run date, so a re-sent lapse carries the same id
         out.append({"user_id": r["user_id"], "email": r.get("email") or None, "event": event, "properties": props,
-                    "occurred_at": f"{as_of}T05:00:00Z", "event_id": f"{flow}:{r['user_id']}:{as_of}"})
+                    "occurred_at": f"{as_of}T05:00:00Z", "event_id": f"{flow}:{r['user_id']}:{anchor}"})
     return out
 
 

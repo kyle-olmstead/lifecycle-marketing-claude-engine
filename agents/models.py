@@ -30,9 +30,60 @@ EVENT_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 PropertyValue = str | int | float | bool
 
 IRREGULAR = {"made": "make", "ran": "run", "built": "build", "bought": "buy", "sent": "send", "wrote": "write", "set": "set",
-             "logged": "log", "shipped": "ship", "stopped": "stop", "planned": "plan", "paid": "pay", "chose": "choose", "took": "take"}
-STRIP_D = ("ated", "ized", "ised", "ured", "ored", "ided", "oted", "uted", "ited", "eted", "aced", "ared", "ined", "oved", "ased",
-           "used", "aged", "uded", "ired", "ered", "oded", "iced", "ived", "aved")
+             "paid": "pay", "chose": "choose", "took": "take", "read": "read", "got": "get", "gave": "give", "did": "do",
+             "began": "begin", "found": "find", "held": "hold", "kept": "keep", "left": "leave", "met": "meet", "put": "put",
+             "sold": "sell", "spent": "spend", "won": "win", "invited": "invite", "liked": "like", "synced": "sync",
+             "focused": "focus", "canceled": "cancel", "cancelled": "cancel", "labeled": "label", "labelled": "label",
+             "monitored": "monitor", "visited": "visit", "edited": "edit", "exited": "exit", "credited": "credit",
+             "opened": "open", "listened": "listen", "happened": "happen", "agreed": "agree", "freed": "free",
+             "traveled": "travel", "travelled": "travel", "modeled": "model", "modelled": "model", "totaled": "total",
+             "leveled": "level", "fueled": "fuel", "signaled": "signal", "treated": "treat", "repeated": "repeat",
+             "heated": "heat", "seated": "seat", "defeated": "defeat", "cheated": "cheat"}
+CONSONANTS = set("bcdfghjklmnpqrstvwxyz")
+VOWELS = set("aeiou")
+
+
+def _past_to_base(w: str) -> str:
+    """Base form of a regular past-tense verb, by the spelling rules that cover product actions."""
+    if w in IRREGULAR:
+        return IRREGULAR[w]
+    if not w.endswith("ed") or len(w) < 4:
+        return w
+    if w.endswith("ied") and len(w) > 4:
+        return w[:-3] + "y"                         # applied, copied
+    s = w[:-2]                                      # created -> creat, booked -> book
+    if len(s) >= 3 and s[-1] == s[-2] and s[-1] in "bgmnprt":
+        return s[:-1]                               # shipped, planned, submitted, logged, preferred
+    last, prev = s[-1], s[-2]
+    if last in "wyhx" or s.endswith(("ss", "ll", "zz", "ff", "dd")):
+        return s                                    # viewed, played, reached, fixed, passed, called, added
+    if last == "u":
+        return s + "e"                              # continued, queued
+    if last in "vz":
+        return s + "e"                              # saved, approved, optimized
+    if last in "cg":
+        return s + "e"                              # placed, reduced, changed, managed
+    if last == "s":
+        return s + "e"                              # used, closed, purchased, paused
+    if last == "l":
+        if prev in CONSONANTS:
+            return s + "e"                          # enabled, handled
+        return s + "e" if len(s) >= 3 and s[-3] in CONSONANTS else s     # scheduled, filed / failed, pooled
+    if last == "r":
+        return s + "e" if prev in "aiuo" else s     # shared, configured, required, stored / entered, ordered
+    if last in "td":
+        if prev in CONSONANTS:
+            return s                                # connected, started, printed, exported, sounded
+        if s.endswith("eat"):
+            return s + "e"                          # created, recreated (treated and the like are listed above)
+        if prev in VOWELS and len(s) >= 3 and s[-3] in VOWELS:
+            return s                                # loaded, needed, waited
+        return s + "e" if prev in "aeou" or (prev == "i" and last == "d") else s   # created, completed, voted, decided / visited
+    if last in "kpmnb":
+        if prev in "aiouy" and len(s) >= 3 and s[-3] in CONSONANTS:
+            return s + "e"                          # invoked, typed, named, tuned, subscribed
+        return s                                    # booked, clicked, helped, signed, opened
+    return s
 
 
 def base_form(label: str) -> str:
@@ -40,19 +91,24 @@ def base_form(label: str) -> str:
     words = label.split()
     if not words:
         return label
-    w = words[0].lower()
-    if w in IRREGULAR:
-        b = IRREGULAR[w]
-    elif w.endswith("ied"):
-        b = w[:-3] + "y"
-    elif w.endswith(STRIP_D) and not w.endswith("ered") or w in ("used", "shared", "placed", "invited", "created", "completed"):
-        b = w[:-1]
-    elif w.endswith("ed"):
-        b = w[:-2]
-    else:
-        b = w
-    return " ".join([b] + words[1:])
+    return " ".join([_past_to_base(words[0].lower())] + words[1:])
 
+
+QUIET = re.compile(r"(\d{1,2})(?::(\d{2}))?\s*(?:to|-|until)\s*(\d{1,2})(?::(\d{2}))?")
+
+
+def parse_quiet_hours(text: str) -> Optional[List[float]]:
+    """'21:00 to 08:00 recipient local time' to [21.0, 8.0]; None if it cannot be read."""
+    m = QUIET.search(text or "")
+    if not m:
+        return None
+    a, b = int(m.group(1)) + int(m.group(2) or 0) / 60, int(m.group(3)) + int(m.group(4) or 0) / 60
+    return [a, b] if 0 <= a < 24 and 0 <= b < 24 else None
+
+
+def in_quiet_hours(hour: float, quiet: List[float]) -> bool:
+    start, end = quiet
+    return (start <= hour or hour < end) if start > end else (start <= hour < end)
 
 
 class Assumption(BaseModel):
@@ -122,7 +178,7 @@ class Brief(BaseModel):
     monthly_entrants: Optional[int] = Field(None, ge=0)
     baseline_conversion_rate: Optional[float] = Field(None, gt=0, lt=1)
     min_detectable_lift: float = Field(0.20, gt=0, le=5, description="relative lift worth acting on, 0.20 = 20%")
-    outcome_window_days: Optional[int] = Field(None, ge=1, le=365)
+    outcome_window_days: Optional[int] = Field(None, ge=1, le=365, description="default: the whole flow plus a week, at least 30 days")
 
     sending_gate: Gate = "UNKNOWN"
     warehouse_dialect: SqlDialect = "postgres"
@@ -149,10 +205,12 @@ class Brief(BaseModel):
         return seen
 
     @model_validator(mode="after")
-    def _window(self) -> "Brief":
-        if self.outcome_window_days is None:
-            # long enough for the whole flow to run and a returner to act on the last touch
-            self.outcome_window_days = max(30, 2 * self.churn_threshold_days)
+    def _quiet(self) -> "Brief":
+        quiet = parse_quiet_hours(self.quiet_hours)
+        if quiet is None:
+            raise ValueError(f"quiet_hours must read like '21:00 to 08:00' (got {self.quiet_hours!r})")
+        if in_quiet_hours(self.send_hour_local, quiet):
+            raise ValueError(f"send_hour_local {self.send_hour_local}:00 falls inside quiet hours ({self.quiet_hours}); pick an hour outside them")
         return self
 
     @property
@@ -197,6 +255,8 @@ class CohortDefinition(BaseModel):
     platform_pattern: str
     sql: Dict[str, str] = Field(description="entry query by dialect, plus 'duckdb' for runs on files")
     history_sql: Dict[str, str]
+    ledger_sql: Dict[str, str] = Field(default_factory=dict, description="CREATE TABLE for the entry ledger, by dialect")
+    record_sql: Dict[str, str] = Field(default_factory=dict, description="INSERT of today's pushed entries into the ledger, by dialect")
     sql_checks: Dict[str, str]
     data_dependencies: List[DataDependency]
     monthly_entrants: Estimate

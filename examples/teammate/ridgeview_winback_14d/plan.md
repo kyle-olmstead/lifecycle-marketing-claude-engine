@@ -1,6 +1,6 @@
 # Win-back: Ridgeview, 14 days since the core action (created a report)
 
-**Status: READY WITH ASSUMPTIONS** | Customer.io | generated 2026-10-20T22:39:21+00:00 | run 5bd564f280f6 | LMM Engine 2.1.0
+**Status: READY WITH ASSUMPTIONS** | Customer.io | generated 2026-10-20T23:10:28+00:00 | run fb7b57f05e74 | LMM Engine 2.1.0
 
 ## In one paragraph
 
@@ -9,7 +9,8 @@ People who completed onboarding and then went 14 days without the core action (c
 ## Confirm before you build
 
 - **monthly_entrants**: estimated from the data (DEMO DATA): 28 a month, mean threshold crossings over 3 complete month(s) to 2026-09
-- **baseline_conversion_rate**: estimated from the data (DEMO DATA): 17.5%, 22 of 126 matured crossings came back within 30 days with no flow
+- **baseline_conversion_rate**: estimated from the data (DEMO DATA): 17.5%, 22 of 126 matured threshold crossings came back within 30 days with no flow
+- **outcome_window_days**: not stated; set to 30 days so the whole flow (last touch on day 18) plus a week is inside it
 - **copy: t2_email**: 2 variant(s) pass lint and guardrails (offline); contains [bracketed] fill-ins: replace them with the real specifics before sending
 - **copy: t3_in_app**: 2 variant(s) pass lint and guardrails (offline); contains [bracketed] fill-ins: replace them with the real specifics before sending
 - **copy: t4_email**: 2 variant(s) pass lint and guardrails (offline); contains [bracketed] fill-ins: replace them with the real specifics before sending
@@ -19,13 +20,13 @@ People who completed onboarding and then went 14 days without the core action (c
 
 | | |
 |---|---|
-| Entry | completed onboarding (onboarding_step_completed where step_index = 3) at least once (evaluated at entry); 14 full days without the core action (feature_used where feature = reports), measured from their own last one, or from qualifying if they never did it; enters on the day the threshold is crossed; one entry per lapse |
+| Entry | completed onboarding (onboarding_step_completed where step_index = 3) at least once (evaluated at entry); 14 or more calendar days since the core action (feature_used where feature = reports), counted from their own last one, or from qualifying if they never did it; enters on the first daily run after crossing; a missed run catches up for 3 days; the ledger lcm_flow_entries makes it one entry per lapse |
 | Never enters | no consent for any channel in the flow; on the platform's suppression list; internal or test account |
 | Exit | leaves the moment they create a report again (checked before every step) |
-| Trigger | core_action_lapsed_14d: Event-triggered campaign on core_action_lapsed_14d, re-entry allowed. Exit: performs feature_used (conversion goal with exit on conversion). Holdout: True/False branch on the event attribute in_holdout. |
+| Trigger | core_action_lapsed_14d: Event-triggered campaign on core_action_lapsed_14d, re-entry allowed. Exit: performs feature_used where feature = reports (conversion goal with exit on conversion). Holdout: True/False branch on the event attribute in_holdout. |
 | Monthly entrants | 28 (DEMO DATA: mean threshold crossings over 3 complete month(s) to 2026-09) |
-| Come back with no flow | 17.5% (DEMO DATA: 22 of 126 matured crossings came back within 30 days with no flow) |
-| Entering on 2026-10-18 | 2 |
+| Come back with no flow | 17.5% (DEMO DATA: 22 of 126 matured threshold crossings came back within 30 days with no flow) |
+| Entering on 2026-10-18 | 3 |
 
 | Data dependency | Kind | Status | Fill | Note |
 |---|---|---|---|---|
@@ -35,9 +36,10 @@ People who completed onboarding and then went 14 days without the core action (c
 | email_consent | attribute | verified | 86% | email marketing consent; users.email_consent_at filled 86% |
 | session_started | event | verified |  | in-app messages show at the next session |
 | in_holdout | attribute | unknown |  | set by the daily entry job on the pushed event; schedule the job before launch |
+| lcm_flow_entries | object | unknown |  | the ledger of entries already pushed; create it once with cohort/ledger_<dialect>.sql |
 | lcm_sunset | attribute | unknown |  | suppression flag the sunset step writes; create the property in the platform before launch |
 
-Entry query (run daily; postgres): `cohort/entry_postgres.sql`. Other dialects and the history query are in `cohort/`.
+Run daily (postgres): `cohort/entry_postgres.sql` lists who to push; after the push succeeds, `cohort/record_postgres.sql` writes them to the ledger so nobody enters twice for one lapse. Create the ledger once with `cohort/ledger_postgres.sql`. Other dialects and the history query are in `cohort/`.
 
 ## The flow
 
@@ -52,7 +54,7 @@ flowchart TD
   t4_email -- "next" --> t5_email["Day 18: email (repermission)"]
   t5_email -- "next" --> sunset["Day 32: sunset if no click"]
   sunset --> done(["Exit: flow complete"])
-  goal(["feature_used at any step"]) -.->|"exits immediately"| exit_goal(["Exit: converted"])
+  goal(["feature_used where feature = reports at any step"]) -.->|"exits immediately"| exit_goal(["Exit: converted"])
 ```
 
 | Day | Step | Channel | Job | Only if |
@@ -63,14 +65,14 @@ flowchart TD
 | 12 | t4_email | email | How a team like theirs uses Ridgeview to create a report each week: one specific, true example with a number. |  |
 | 18 | t5_email | email | Ask plainly whether they still want these messages, with one button to stay. Say what happens if they do nothing. |  |
 
-Every step: has not done feature_used since entering; can receive email marketing (subscribed, not bounced, not sunset-suppressed). Frequency: at most 3 lifecycle messages a person a week across flows (the workspace message limit); send at 10:00 recipient local; nothing between 21:00 to 08:00 recipient local time.
+Every step: has not done feature_used where feature = reports since entering; can receive email marketing (subscribed, not bounced, not sunset-suppressed). Frequency: at most 3 lifecycle messages a person a week across flows (the workspace message limit); send at 10:00 recipient local; nothing between 21:00 to 08:00 recipient local time.
 
 ## Build it in Customer.io
 
 1. Schedule the cohort entry query (postgres) to run daily after the warehouse load, and push one core_action_lapsed_14d event per row with tools/event_payloads.py (customerio). Holdout members are pushed too.
 2. Create an event-triggered campaign and leave every message in Draft until it is approved. Trigger: core_action_lapsed_14d.
-3. Entry filters (checked once at entry): completed onboarding (onboarding_step_completed) at least once.
-4. Checked before every step (Exit condition (conversion goal, exit on conversion)): has not done feature_used since entering; can receive email marketing (subscribed, not bounced, not sunset-suppressed).
+3. Entry filters (checked once at entry): completed onboarding (onboarding_step_completed where step_index = 3) at least once.
+4. Checked before every step (Exit condition (conversion goal, exit on conversion)): has not done feature_used where feature = reports since entering; can receive email marketing (subscribed, not bounced, not sunset-suppressed).
 5. First step, True/False branch: in_holdout is true goes to exit; everyone else continues. Nothing sends before this split.
 6. Time delay to day 0 at 10:00 recipient local, then email message t1_email: value reminder.
 7. Time delay to day 3 at 10:00 recipient local, then email message t2_email: friction removal.
@@ -79,7 +81,7 @@ Every step: has not done feature_used since entering; can receive email marketin
 10. Time delay to day 18 at 10:00 recipient local, then email message t5_email: repermission.
 11. Time delay 14 days, then: if no click on the re-permission email, update the person: lcm_sunset = true. Make lcm_sunset a suppression in every marketing send.
 12. Frequency: at most 3 lifecycle messages a person a week across flows (the workspace message limit); send at 10:00 recipient local; nothing between 21:00 to 08:00 recipient local time.
-13. Before enabling: run scripts/campaign_simulator.py on flow_spec.json, send every message to a seed list, and get approval. Exit on feature_used must be live before the first send.
+13. Before enabling: run scripts/campaign_simulator.py on flow_spec.json, send every message to a seed list, and get approval. Exit on feature_used where feature = reports must be live before the first send.
 
 ## The copy
 
@@ -90,7 +92,7 @@ Every step: has not done feature_used since entering; can receive email marketin
 | A | **Your Ridgeview workspace is where you left it** / Pick up from your last session in Ridgeview | BAB: before, after, bridge | Stressing that setup is already done raises the core-action rate within 7 days because it removes the restart cost; falsified if B converts as well or better. |
 | B | **14 days since you last created a report** / A plain note, no offer | Plain, factual reminder | A factual, specific gap in the subject raises clicks more than a benefit line because it is concrete; falsified if A's click rate is equal or higher. |
 
-Files: `copy/t1_email_A.html`, `copy/t1_email_A.txt`, `copy/t1_email_B.html`, `copy/t1_email_B.txt`
+Files: `copy/t1_email_A.html`, `copy/t1_email_A.subject.txt`, `copy/t1_email_A.txt`, `copy/t1_email_B.html`, `copy/t1_email_B.subject.txt`, `copy/t1_email_B.txt`
 
 ### t2_email (email, offline)
 
@@ -99,14 +101,14 @@ Files: `copy/t1_email_A.html`, `copy/t1_email_A.txt`, `copy/t1_email_B.html`, `c
 | A | **The step most people get stuck on** / And the two-minute way past it | PAS: problem, agitation kept factual, solution | Naming the blocker raises the core-action rate among lapsed users because it addresses the actual reason they left; falsified if B converts as well or better. |
 | B | **A template to create a report in two minutes** / Start from something that already works | Solution first, problem implied | Leading with a ready-made starting point raises the core-action rate more than naming the problem because it lowers effort at the moment of reading; falsified if A converts as well or better. |
 
-Files: `copy/t2_email_A.html`, `copy/t2_email_A.txt`, `copy/t2_email_B.html`, `copy/t2_email_B.txt`
+Files: `copy/t2_email_A.html`, `copy/t2_email_A.subject.txt`, `copy/t2_email_A.txt`, `copy/t2_email_B.html`, `copy/t2_email_B.subject.txt`, `copy/t2_email_B.txt`
 
 ### t3_in_app (in-app, offline)
 
 | Variant | Copy | Framework | Hypothesis |
 |---|---|---|---|
-| A | **One thing changed** / [What it does for them in one sentence, with a concrete example]. [See it in your account] | AIDA: attention, interest, desire, action | A single concrete change raises clicks more than a roundup because it is easy to evaluate; falsified if B's click rate is equal or higher. |
-| B | **[The change, as a benefit]** / It came from customer requests like yours. Try it on your own data; it takes about a minute. [Try it now] | Reciprocity framed around feedback | Framing the change as a response to customer requests raises clicks because it signals the product is improving for them; falsified if A's click rate is equal or higher. |
+| A | **One thing changed** / [What the change does for them, with a concrete example]. [See it] | AIDA: attention, interest, desire, action | A single concrete change raises clicks more than a roundup because it is easy to evaluate; falsified if B's click rate is equal or higher. |
+| B | **[The change, as a benefit]** / It came from requests like yours. Try it on your own data. [Try it now] | Reciprocity framed around feedback | Framing the change as a response to customer requests raises clicks because it signals the product is improving for them; falsified if A's click rate is equal or higher. |
 
 Files: `copy/t3_in_app_A.json`, `copy/t3_in_app_B.json`
 
@@ -117,7 +119,7 @@ Files: `copy/t3_in_app_A.json`, `copy/t3_in_app_B.json`
 | A | **How [customer type] use Ridgeview each week** / One routine, start to finish | Social proof through one concrete case | A single specific customer routine raises the core-action rate more than general benefits because it is easy to imitate; falsified if B converts as well or better. |
 | B | **[Number] teams did this last week** / A quick look at what is working | Social proof through volume | A volume number raises clicks less than one concrete case; falsified if B's click rate is higher than A's. |
 
-Files: `copy/t4_email_A.html`, `copy/t4_email_A.txt`, `copy/t4_email_B.html`, `copy/t4_email_B.txt`
+Files: `copy/t4_email_A.html`, `copy/t4_email_A.subject.txt`, `copy/t4_email_A.txt`, `copy/t4_email_B.html`, `copy/t4_email_B.subject.txt`, `copy/t4_email_B.txt`
 
 ### t5_email (email, offline)
 
@@ -126,17 +128,17 @@ Files: `copy/t4_email_A.html`, `copy/t4_email_A.txt`, `copy/t4_email_B.html`, `c
 | A | **Should we keep sending these?** / One click to stay; nothing to do to stop | Plain re-permission; no guilt, no countdown | An honest ask keeps the people who still care and lowers complaints from those who do not; expect 1 to 5% to click. Falsified if complaints on this send exceed the flow average. |
 | B | **We will pause emails from Ridgeview** / Unless you tell us otherwise | Default-effect framing | Stating the default (a pause) raises stay clicks over asking a question because it makes the consequence concrete; falsified if A's stay rate is equal or higher. |
 
-Files: `copy/t5_email_A.html`, `copy/t5_email_A.txt`, `copy/t5_email_B.html`, `copy/t5_email_B.txt`
+Files: `copy/t5_email_A.html`, `copy/t5_email_A.subject.txt`, `copy/t5_email_A.txt`, `copy/t5_email_B.html`, `copy/t5_email_B.subject.txt`, `copy/t5_email_B.txt`
 
 ## Measurement
 
 | | |
 |---|---|
 | Holdout | 15%, user level, persistent: persistent, by user: bucket = first 7 hex digits of md5(user_id || ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout. Computed in the daily entry query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population |
-| Primary metric | created a report (feature_used) within 30 days of entry, treatment vs holdout, both arms counted from their entry date |
+| Primary metric | created a report (feature_used where feature = reports) within 30 days of entry, treatment vs holdout, both arms counted from their entry date |
 | Sizing | about 28 entrants a month (DEMO DATA), 17.5% return within 30 days with no flow (DEMO DATA), 25% relative lift (4.4 pts) worth acting on: 781 holdout entrants at 15%, 186.0 months of entries plus the 30-day outcome window, so the read lands about 186.9 months after launch (tools/stats.py feasible --entries-per-month 28 --holdout 0.15 --baseline 0.1746 --mde-rel 0.25 --outcome-window-days 30) |
 | Read | directional only: not inside 12 months at this volume (it would take about 187 months): keep the holdout, report against a pre/post baseline, and label every result directional |
-| Decision rule | Keep the flow when the 95% interval for (treatment minus holdout) feature_used rate lies above zero and the guardrails hold. If it spans zero at the planned read, report it as inconclusive: keep the holdout running or change the flow. Report attributed, incremental and the gap together (tools/stats.py incrementality). |
+| Decision rule | Keep the flow when the 95% interval for (treatment minus holdout) rate of feature_used where feature = reports lies above zero and the guardrails hold. If it spans zero at the planned read, report it as inconclusive: keep the holdout running or change the flow. Report attributed, incremental and the gap together (tools/stats.py incrementality). |
 | Sample ratio | At every look, test the split against 85/15 (tools/stats.py readout --expected-holdout 0.15). A chi-square p below 0.001 means assignment or logging is broken; read nothing until it is fixed. |
 | Peeking | One planned read on the date above. Earlier looks check sample ratio and guardrails only; no early stop for a good-looking lift. |
 | Guardrails | spam complaint rate per send below 0.1% (Gmail's target; 0.3% is its hard limit); unsubscribe rate per send, against the 90-day median for your lifecycle sends; pause a touch running above twice it; hard bounce rate below 1% |
@@ -177,7 +179,7 @@ Files: `copy/t5_email_A.html`, `copy/t5_email_A.txt`, `copy/t5_email_B.html`, `c
 | simulation: every branch target is a step or an exit | PASS | all resolve |
 | simulation: every step is reachable | PASS | all reachable |
 | simulation: holdout is held out before the first message | PASS | holdout_split at position 1 |
-| simulation: exit on goal is immediate | PASS | goal: created a report (feature_used) |
+| simulation: exit on goal is immediate | PASS | goal: created a report (feature_used where feature = reports) |
 | simulation: nominal schedule respects the weekly frequency cap | PASS | at most 2 email/sms/push message(s) in any 7 days on any route, cap 3 |
 | simulation: journey length | PASS | 5 touch(es) over 18 days on the longest route |
 | simulation: holdout members receive nothing | PASS | outcome: exit (holdout), 0 message(s) |

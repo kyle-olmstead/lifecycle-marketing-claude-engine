@@ -49,14 +49,25 @@ sequenceDiagram
     participant ESP as ESP flow
     WH->>Job: cohort/entry_<dialect>.sql (run date = today)
     Job->>ESP: one core_action_lapsed_<n>d event per entrant,<br/>with in_holdout and holdout_bucket (tools/event_payloads.py)
+    Job->>WH: after the push succeeds: cohort/record_<dialect>.sql<br/>writes the entries to lcm_flow_entries
     ESP->>ESP: first step: in_holdout? yes: exit. no: continue
-    ESP->>ESP: every step: exit on the core event
+    ESP->>ESP: every step: exit on the core event (with its property filter)
 ```
 
-The entry query selects people whose last core action (or qualification, if none since) was
-exactly `n` days before the run date, so each lapse enters once and a returning customer can lapse
-again later. Holdout members are pushed too and exit at the first step, so both arms are the same
-population when they diverge.
+A lapse is identified by the person and its **anchor date** (their last core action, or their
+qualification if none since). The entry query selects lapses whose anchor is `n` to `n + 3` calendar
+days before the run date and that are not yet in the ledger table `lcm_flow_entries`; the record
+query writes them there once the push succeeds. So each lapse enters exactly once, a late or missed
+run catches up for three days, and a returning customer can lapse again later under a new anchor.
+The event id is the lapse key, so platforms that deduplicate on it (Klaviyo `unique_id`, HubSpot
+`uuid`, Customer.io `messageId`) drop an accidental re-send too. Holdout members are pushed and
+exit at the first step, so both arms are the same population when they diverge.
+
+**Activation flows** trigger on the live qualifying event instead (for example
+`onboarding_step_completed` with `step_index = 3`, filtered at the trigger). Nothing is pushed, so
+the system that sends that event adds `holdout_bucket` and `in_holdout` to it with the same
+formula; the build steps spell it out. Their volume and baseline come from new qualifiers per month
+and the share who reach the core action unaided, not from lapses.
 
 **One assignment everywhere.** The bucket is the first 7 hex digits of
 `md5(user_id || ':' || salt)` as an integer, modulo 100. It is written once per dialect in
@@ -72,7 +83,7 @@ population when they diverge.
 | Data dependencies | with `--data`: every event exists, property filters match rows, fill rates; a missing qualifying or core event blocks |
 | Cohort SQL | entry and history queries parse in PostgreSQL, Snowflake and BigQuery (sqlglot); the DuckDB version runs on the data |
 | Flow structure | `scripts/campaign_simulator.py`: schema, unique ids, branch targets, reachability, holdout before the first message, weekly cap on every route |
-| Journeys | synthetic people walk the flow hour by hour: holdout gets nothing, no send without consent, nothing after the core action, cap, send hour, quiet hours, touch count, sunset only for non-clickers |
+| Journeys | synthetic people walk the flow hour by hour: holdout gets nothing, no send without consent, nothing after the core action, cap, send hour, the brief's quiet hours, touch count, sunset only for non-clickers |
 | Trigger payload | the example request validates against `config/esp_payload_schemas.json` |
 | Copy | every variant: dialect lint (`tools/template_lint.py`), unsubscribe and address present, SMS segments and opt-out (`tools/sms.py`), offer policy, fake urgency, deceptive subjects, unknown tokens, text-to-image |
 | Holdout read | causal, causal and slow, directional only, or not readable (`tools/stats.py feasible`) |
@@ -81,7 +92,7 @@ population when they diverge.
 
 | Piece | Role | Security |
 |---|---|---|
-| `scripts/webhook_parser.py` | Segment (Actions or classic) and GA4 Measurement Protocol bodies into canonical `track_events` rows, validated against the tracking plan, deduplicated on `event_id`, rejects quarantined with reasons | HMAC-SHA1 `X-Signature` for Segment, shared token for GA4, constant-time compares; refuses unsigned traffic unless explicitly allowed; 5 MB body cap |
+| `scripts/webhook_parser.py` | Segment (Actions or classic) and GA4 Measurement Protocol bodies into canonical `track_events` rows, validated against the tracking plan, deduplicated on `event_id` (across restarts, from the last 3 days of files), rejects quarantined with reasons | HMAC-SHA1 `X-Signature` over the whole body for Segment (batched requests, which Segment signs on the first event only, are refused: turn batching off), shared token for GA4, constant-time compares; events over 72 hours old refused over HTTP as possible replays; refuses unsigned traffic unless explicitly allowed; 5 MB body cap |
 | `tools/event_payloads.py` | entry rows into Klaviyo, HubSpot (date-versioned 2026-09), Braze and Customer.io Pipelines requests within each vendor's limits | headers carry `${PLACEHOLDER}` names; no credential is ever written |
 | `scripts/sheets_sync.py` | four tabs upserted on a key, so re-runs update rather than duplicate; exponential backoff on 429 and 5xx | service account only; dry-run CSVs when not configured |
 | `.github/workflows/daily_cohort_audit.yml` | 05:00 UTC audit: BigQuery (keyless, Workload Identity Federation), a file URL, or demo fixtures; summary, Sheets, issue on anomaly, artifact | least-privilege `permissions`; secrets only in `secrets.*` |
@@ -97,9 +108,9 @@ own finding: a stalled pipeline looks like a churn spike otherwise.
 
 | Claim | Verified by | Not verified |
 |---|---|---|
-| The entry query selects the right people | `tests/test_agents.py` recomputes entrants from the CSVs in plain Python on 40 dates and compares | behavior on warehouse data shapes the fixtures do not cover |
+| The entry query selects the right people | `tests/test_agents.py` recomputes entrants from the CSVs in plain Python on 40 dates and compares; a simulated run of daily jobs with skipped days shows every lapse pushed exactly once | behavior on warehouse data shapes the fixtures do not cover |
 | Snowflake and BigQuery versions match | transpiled to DuckDB and compared on entry, history and audit queries; the Snowflake VARIANT path and hex parse, which sqlglot does not translate faithfully, are substituted in the test and the hex parse is checked against Snowflake's documented `TO_DECIMAL('ae5', 'XXX')` form | execution on a live Snowflake or BigQuery account |
-| The PostgreSQL version is correct | executed on PostgreSQL 16 in CI (`tests/test_postgres.py`, a service container) and compared with DuckDB and Python | other PostgreSQL versions |
+| The PostgreSQL version is correct | executed on PostgreSQL 16 in CI (`tests/test_postgres.py`, a service container) and compared with DuckDB and Python, including the ledger round trip | other PostgreSQL versions |
 | Payloads match vendor APIs | JSON Schemas written from vendor documentation read on 2026-10-20 | a live request to each vendor |
 | The Claude copy path works | a stub client exercises structured output parsing, the repair round, drop and block rules, and API failure fallback | a live API call in CI (no key in CI); the call uses the SDK's documented `messages.parse(output_format=...)` |
 | Sheets sync is idempotent | an in-memory worksheet; retry on a synthetic 429 | a live Google Sheet |

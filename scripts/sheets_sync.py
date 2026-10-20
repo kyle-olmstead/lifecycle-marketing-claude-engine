@@ -142,15 +142,14 @@ def upsert(ws: Any, header: Sequence[str], key: Sequence[str], rows: List[Dict[s
     for r, row in enumerate(values[1:], start=2):
         k = tuple((row[idx[c]] if idx[c] < len(row) else "") for c in key)
         existing[k] = r
-    updates, appends = [], []
-    for row in rows:
+    upd: Dict[tuple, List[Any]] = {}
+    app: Dict[tuple, List[Any]] = {}
+    for row in rows:                                   # a key repeated within one call: the last row wins
         out = [_cell(row.get(h)) for h in header]
         k = tuple(str(_cell(row.get(c))) for c in key)
-        if k in existing:
-            updates.append({"range": f"A{existing[k]}:{_a1_col(len(header))}{existing[k]}", "values": [out]})
-        else:
-            appends.append(out)
-            existing[k] = -1
+        (upd if k in existing else app)[k] = out
+    updates = [{"range": f"A{existing[k]}:{_a1_col(len(header))}{existing[k]}", "values": [v]} for k, v in upd.items()]
+    appends = list(app.values())
     if updates:
         with_retry(lambda: ws.batch_update(updates, value_input_option="RAW"), sleep=sleep)
     if appends:
