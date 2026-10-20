@@ -1,7 +1,7 @@
 -- dialect: bigquery
--- Record today's pushed entries for ridgeview_winback_14d in lcm_flow_entries. Run after the push succeeds.
-INSERT INTO lcm_flow_entries (flow, user_id, anchor_date, pushed_at, in_holdout)
-SELECT 'ridgeview_winback_14d', e.user_id, e.anchor_date, CURRENT_TIMESTAMP(), e.in_holdout
+-- Daily step 1 of 3 for ridgeview_winback_14d: queue every lapse that is due as 'pending'.
+INSERT INTO lcm_flow_entries (flow, user_id, anchor_date, holdout_bucket, in_holdout, status, queued_at)
+SELECT 'ridgeview_winback_14d', e.user_id, e.anchor_date, e.holdout_bucket, e.in_holdout, 'pending', CURRENT_TIMESTAMP()
 FROM (
 WITH qualified AS (
   SELECT s.user_id, MIN(s.event_at) AS qualified_at

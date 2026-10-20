@@ -48,6 +48,9 @@ def test_the_spec_sentence_parses_and_records_every_assumption():
      {"flow_type": "activation", "touches": 3, "platform": "klaviyo", "sms": True}),
     ("Activation flow: new signups who have not created a report", {"flow_type": "activation"}),
     ("nudge new users who haven't invited a teammate yet", {"flow_type": "activation"}),
+    ("Bring back users who haven't created a report in 14 days, new dashboard feature launched", {"flow_type": "winback"}),
+    ("Users who haven't logged in since their trial ended 2 weeks ago", {"flow_type": "winback", "churn_threshold_days": 14}),
+    ("Customers who have not ordered yet after signing up: 3 emails", {"flow_type": "activation", "touches": 3}),
     ("win back customers who haven't purchased in 2 months via Braze push", {"churn_threshold_days": 60, "platform": "braze", "push": True}),
     ("Reactivate users inactive for three weeks, 20% holdout, HubSpot", {"churn_threshold_days": 21, "holdout_pct": 20.0, "platform": "hubspot"}),
 ])
@@ -150,15 +153,19 @@ def test_entry_query_matches_an_independent_computation(brief, con):
     assert total >= 20, "the fixture dates must exercise the query"
 
 
-def test_daily_runs_with_the_ledger_push_each_lapse_once_and_catch_up(brief):
+def test_daily_job_pushes_each_lapse_once_retries_failures_and_catches_up(brief):
     con = cohort_analyst.connect(str(FIX))
     pushed = []
     day = date(2026, 6, 1)
     while day <= date(2026, 10, 18):
         if day.day % 9 != 0:   # some days the job does not run at all
-            rows = cohort_analyst._rows(con, cohort_analyst.entry_sql(brief, "duckdb", day.isoformat()))
+            cohort_analyst._rows(con, cohort_analyst.queue_sql(brief, "duckdb", day.isoformat()))
+            rows = cohort_analyst._rows(con, cohort_analyst.pending_sql(brief, "duckdb", day.isoformat()))
+            if day.day % 7 == 0:   # the push fails: nothing is marked, the rows stay pending
+                day += timedelta(days=1)
+                continue
             pushed += [(r["user_id"], r["anchor_date"]) for r in rows]
-            cohort_analyst._rows(con, cohort_analyst.record_sql(brief, "duckdb", day.isoformat()))
+            cohort_analyst._rows(con, cohort_analyst.mark_sql(brief, "duckdb"))
         day += timedelta(days=1)
     assert len(pushed) == len(set(pushed)) > 20, "no lapse is pushed twice"
     expected = set()
@@ -168,8 +175,28 @@ def test_daily_runs_with_the_ledger_push_each_lapse_once_and_catch_up(brief):
         day += timedelta(days=1)
     caught = {x for x in expected if x[1] + timedelta(days=14 + cohort_analyst.CATCH_UP_DAYS) <= date(2026, 10, 18)}
     assert caught <= set(pushed), "every lapse is pushed within the catch-up window, even across skipped runs"
-    ledger = con.execute("SELECT COUNT(*), COUNT(DISTINCT user_id || CAST(anchor_date AS VARCHAR)) FROM lcm_flow_entries").fetchone()
-    assert ledger[0] == ledger[1] == len(pushed)
+    ledger = con.execute("SELECT COUNT(*), COUNT(DISTINCT user_id || CAST(anchor_date AS VARCHAR)), "
+                         "SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) FROM lcm_flow_entries").fetchone()
+    assert ledger[0] == ledger[1] == len(pushed) + ledger[2]
+
+
+def test_a_late_event_is_queued_later_not_lost(brief, tmp_path):
+    """A core event loaded late moves a person's anchor; they are queued on a later run, never recorded without a push."""
+    import shutil
+    for t in ("users", "orders", "track_events"):
+        shutil.copy(FIX / f"{t}.csv", tmp_path / f"{t}.csv")
+    con = cohort_analyst.connect(str(tmp_path))
+    cohort_analyst._rows(con, cohort_analyst.queue_sql(brief, "duckdb", "2026-10-18"))
+    queued = {r["user_id"] for r in cohort_analyst._rows(con, cohort_analyst.pending_sql(brief, "duckdb", "2026-10-18"))}
+    late_user = next(u for (u,) in con.execute("SELECT DISTINCT user_id FROM track_events WHERE event_name = 'onboarding_step_completed' "
+                                                "AND json_extract_string(properties, '$.step_index') = '3' ORDER BY 1").fetchall()
+                     if u not in queued)
+    con.execute("INSERT INTO track_events VALUES ('late_0001', ?, NULL, 'feature_used', TIMESTAMP '2026-10-05 12:00:00', "
+                "'{\"feature\":\"reports\"}')", [late_user])
+    cohort_analyst._rows(con, cohort_analyst.mark_sql(brief, "duckdb"))
+    assert late_user not in {r[0] for r in con.execute("SELECT user_id FROM lcm_flow_entries").fetchall()}
+    cohort_analyst._rows(con, cohort_analyst.queue_sql(brief, "duckdb", "2026-10-19"))
+    assert late_user in {r["user_id"] for r in cohort_analyst._rows(con, cohort_analyst.pending_sql(brief, "duckdb", "2026-10-19"))}
 
 
 def _to_duckdb(sql: str, d: str) -> str:
@@ -208,8 +235,8 @@ def test_warehouse_dialects_return_the_same_rows(brief, con, d):
 
 @pytest.mark.parametrize("d", ["postgres", "snowflake", "bigquery"])
 def test_every_generated_query_parses(brief, d):
-    sqls = [cohort_analyst.entry_sql(brief, d), cohort_analyst.history_sql(brief, d), cohort_analyst.record_sql(brief, d),
-            cohort_analyst.ledger_ddl(d), *cohort_analyst.audit_sql(brief, d).values()]
+    sqls = [cohort_analyst.entry_sql(brief, d), cohort_analyst.history_sql(brief, d), *cohort_analyst.daily_job_sql(brief, d).values(),
+            *cohort_analyst.audit_sql(brief, d).values()]
     for sql in sqls:
         ok, msg = __import__("tools.sql_check", fromlist=["parse"]).parse(sql, d)
         assert ok, msg
@@ -245,8 +272,18 @@ def test_activation_volume_counts_new_qualifiers(brief):
     a = brief.model_copy(update={"flow_type": "activation", "qualifying_event": EventMatch(event="signed_up", label="signed up"), "touches": 4})
     c = cohort_analyst.define(a, str(FIX))
     assert "new qualifiers" in c.monthly_entrants.basis and "went on to create a report" in c.baseline_conversion_rate.basis
-    assert c.trigger_payload_example == {} and "re-entry off" in c.platform_pattern
+    assert c.trigger_payload_example == {} and "re-entry off" in c.platform_pattern and c.job_sql == {}
     assert "new_qualifiers" in cohort_analyst.audit(a, str(FIX))["metrics"]
+    assert cohort_analyst.LEDGER not in cohort_analyst.entry_sql(a, "postgres"), "activation needs no ledger table"
+
+
+def test_activation_cannot_qualify_on_its_own_core_action():
+    with pytest.raises(ValueError, match="same"):
+        Brief(product_name="A", flow_type="activation", qualifying_event=EventMatch(event="order_completed"),
+              core_conversion_event=EventMatch(event="order_completed"))
+    b = Brief(product_name="A", flow_type="winback", qualifying_event=EventMatch(event="order_completed"),
+              core_conversion_event=EventMatch(event="order_completed"))   # first order, then no repeat: a valid win-back
+    assert b.flow_type == "winback"
 
 
 def test_a_missing_event_is_blocked(brief):
@@ -295,6 +332,11 @@ def test_holdout_sizing_uses_the_stats_tool(brief):
     assert d.read == f["expected_read"] and str(f["required_holdout_n"]) in d.sizing.replace(",", "")
     assert d.feasibility["months_to_read"] == f["months_to_read"]
     assert [m["months_of_entries"] for m in d.mde_by_horizon] == [3, 6, 12]
+
+
+def test_a_baseline_with_no_room_for_the_lift_is_not_readable(brief):
+    d = experimentation_agent.design(brief, _cohort(brief, 5000, 0.9))
+    assert d.read == "not readable" and "no room" in d.sizing
 
 
 def test_unknown_volume_is_not_readable_and_shows_a_grid(brief):

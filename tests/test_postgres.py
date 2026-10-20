@@ -89,14 +89,17 @@ def test_postgres_matches_duckdb(pg):
         assert _norm(pg(sql)) == _norm(cohort_analyst._rows(con, cohort_analyst.audit_sql(b, "duckdb", "2026-10-18")[name])), name
 
 
-def test_postgres_record_writes_the_ledger(pg):
+def test_postgres_daily_job_round_trip(pg):
     b = load_brief(ROOT / "briefs/examples/winback_14d.yaml")
     due = pg(cohort_analyst.entry_sql(b, "postgres", "2026-10-18"))
     assert due
-    pg.run(cohort_analyst.record_sql(b, "postgres", "2026-10-18"))
-    assert pg(cohort_analyst.entry_sql(b, "postgres", "2026-10-18")) == [], "recorded entries are not pushed again"
-    rows = pg("SELECT flow, user_id, anchor_date FROM lcm_flow_entries")
-    assert len(rows) == len(due) and {r["user_id"] for r in rows} == {r["user_id"] for r in due}
+    pg.run(cohort_analyst.queue_sql(b, "postgres", "2026-10-18"))
+    pending = pg(cohort_analyst.pending_sql(b, "postgres", "2026-10-18"))
+    assert {(r["user_id"], r["anchor_date"]) for r in pending} == {(r["user_id"], r["anchor_date"]) for r in due}
+    assert pg(cohort_analyst.entry_sql(b, "postgres", "2026-10-18")) == [], "queued lapses are not due again"
+    pg.run(cohort_analyst.mark_sql(b, "postgres"))
+    assert pg(cohort_analyst.pending_sql(b, "postgres", "2026-10-18")) == []
+    assert all(r["status"] == "pushed" for r in pg("SELECT status FROM lcm_flow_entries"))
     pg.run("DELETE FROM lcm_flow_entries")
 
 

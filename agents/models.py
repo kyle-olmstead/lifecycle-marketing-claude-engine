@@ -38,7 +38,8 @@ IRREGULAR = {"made": "make", "ran": "run", "built": "build", "bought": "buy", "s
              "opened": "open", "listened": "listen", "happened": "happen", "agreed": "agree", "freed": "free",
              "traveled": "travel", "travelled": "travel", "modeled": "model", "modelled": "model", "totaled": "total",
              "leveled": "level", "fueled": "fuel", "signaled": "signal", "treated": "treat", "repeated": "repeat",
-             "heated": "heat", "seated": "seat", "defeated": "defeat", "cheated": "cheat"}
+             "heated": "heat", "seated": "seat", "defeated": "defeat", "cheated": "cheat", "favorited": "favorite",
+             "favourited": "favourite"}
 CONSONANTS = set("bcdfghjklmnpqrstvwxyz")
 VOWELS = set("aeiou")
 
@@ -178,7 +179,8 @@ class Brief(BaseModel):
     monthly_entrants: Optional[int] = Field(None, ge=0)
     baseline_conversion_rate: Optional[float] = Field(None, gt=0, lt=1)
     min_detectable_lift: float = Field(0.20, gt=0, le=5, description="relative lift worth acting on, 0.20 = 20%")
-    outcome_window_days: Optional[int] = Field(None, ge=1, le=365, description="default: the whole flow plus a week, at least 30 days")
+    outcome_window_days: Optional[int] = Field(None, ge=1, le=365,
+                                               description="default: the whole flow plus a week (win-back: at least 30 days or twice the threshold)")
 
     sending_gate: Gate = "UNKNOWN"
     warehouse_dialect: SqlDialect = "postgres"
@@ -203,6 +205,15 @@ class Brief(BaseModel):
         if "email" not in seen:
             raise ValueError("email must be one of the channels: it carries the unsubscribe, the re-permission ask and the fallback")
         return seen
+
+    @model_validator(mode="after")
+    def _distinct_events(self) -> "Brief":
+        # a win-back may qualify and lapse on the same event (first order, then no repeat order); an activation flow cannot
+        same = (self.qualifying_event.event, self.qualifying_event.where) == (self.core_conversion_event.event, self.core_conversion_event.where)
+        if same and self.flow_type == "activation":
+            raise ValueError(f"an activation flow's qualifying event and core action are the same ({self.core_conversion_event.detail()}): "
+                             f"nobody could qualify without already having done the core action. Make them different events")
+        return self
 
     @model_validator(mode="after")
     def _quiet(self) -> "Brief":
@@ -255,8 +266,8 @@ class CohortDefinition(BaseModel):
     platform_pattern: str
     sql: Dict[str, str] = Field(description="entry query by dialect, plus 'duckdb' for runs on files")
     history_sql: Dict[str, str]
-    ledger_sql: Dict[str, str] = Field(default_factory=dict, description="CREATE TABLE for the entry ledger, by dialect")
-    record_sql: Dict[str, str] = Field(default_factory=dict, description="INSERT of today's pushed entries into the ledger, by dialect")
+    job_sql: Dict[str, Dict[str, str]] = Field(default_factory=dict,
+                                               description="win-back daily job by dialect: ledger (once), queue, pending, mark")
     sql_checks: Dict[str, str]
     data_dependencies: List[DataDependency]
     monthly_entrants: Estimate

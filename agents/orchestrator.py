@@ -145,7 +145,8 @@ def render_plan(p: ExecutionPlan) -> str:
           f"({', '.join(sorted({t.channel.replace('_', '-') for t in sends}))}), starts with a {e.holdout_pct:g}% holdout that receives nothing, "
           f"and stops the moment they {core.do}" + (" again. " if b.flow_type == "winback" else ". ")
           + (f"About {c.monthly_entrants.value:,.0f} people a month ({c.monthly_entrants.label}) would enter; "
-             f"{_pct(c.baseline_conversion_rate.value)} come back within {e.outcome_window_days} days on their own ({c.baseline_conversion_rate.label}). "
+             f"{_pct(c.baseline_conversion_rate.value)} {'come back' if b.flow_type == 'winback' else 'get there'} within "
+             f"{e.outcome_window_days} days on their own ({c.baseline_conversion_rate.label}). "
              if c.monthly_entrants.value else "Entry volume is not known yet, so the read date is not computed. ")
           + f"Read: {e.read}. {p.gate_policy['note']}.", ""]
     confirm = [f"- **{a.field}**: {a.why}" for a in b.assumptions]
@@ -156,15 +157,19 @@ def render_plan(p: ExecutionPlan) -> str:
           f"| Entry | {'; '.join(c.entry_rules)} |", f"| Never enters | {'; '.join(c.exclusions)} |", f"| Exit | {c.exit_rule} |",
           f"| Trigger | {c.trigger_event}: {c.platform_pattern} |",
           f"| Monthly entrants | {'unknown' if c.monthly_entrants.value is None else format(c.monthly_entrants.value, ',.0f')} ({c.monthly_entrants.label}: {c.monthly_entrants.basis}) |",
-          f"| Come back with no flow | {_pct(c.baseline_conversion_rate.value)} ({c.baseline_conversion_rate.label}: {c.baseline_conversion_rate.basis}) |"]
+          f"| {'Come back with no flow' if b.flow_type == 'winback' else 'Reach the core action with no flow'} | "
+          f"{_pct(c.baseline_conversion_rate.value)} ({c.baseline_conversion_rate.label}: {c.baseline_conversion_rate.basis}) |"]
     if c.entrants_on_as_of is not None:
         L.append(f"| Entering on {c.as_of} | {c.entrants_on_as_of} |")
     L += ["", "| Data dependency | Kind | Status | Fill | Note |", "|---|---|---|---|---|"]
     L += [f"| {d.name} | {d.kind} | {d.status} | {'' if d.fill_rate is None else format(d.fill_rate, '.0%')} | {d.note or ''} |" for d in c.data_dependencies]
     if b.flow_type == "winback":
-        L += ["", f"Run daily ({b.warehouse_dialect}): `cohort/entry_{b.warehouse_dialect}.sql` lists who to push; after the push succeeds, "
-                  f"`cohort/record_{b.warehouse_dialect}.sql` writes them to the ledger so nobody enters twice for one lapse. Create the "
-                  f"ledger once with `cohort/ledger_{b.warehouse_dialect}.sql`. Other dialects and the history query are in `cohort/`.", ""]
+        d = b.warehouse_dialect
+        L += ["", f"The daily job ({d}), in `cohort/job/`: create the ledger once (`ledger_{d}.sql`); then each day queue who is due "
+                  f"(`queue_{d}.sql`), push every pending row (`pending_{d}.sql` into tools/event_payloads.py), and mark them pushed "
+                  f"(`mark_{d}.sql`) only when every request succeeded. Each lapse sits in the ledger once, so nobody enters twice; "
+                  f"a failed push stays pending and goes out on the next run. `cohort/entry_{d}.sql` shows who is due without "
+                  f"queuing; other dialects and the history query are in `cohort/`.", ""]
     else:
         L += ["", f"The trigger is the live {b.qualifying_event.event} event. `cohort/entry_{b.warehouse_dialect}.sql` backfills and audits it; "
                   f"the history query (`cohort/history_*.sql`) measured the volume and unaided rate above.", ""]
@@ -238,11 +243,11 @@ def write_outputs(p: ExecutionPlan, out_root: Path) -> Path:
         (out / "cohort" / f"entry_{d}.sql").write_text(sql, encoding="utf-8")
     for d, sql in p.cohort.history_sql.items():
         (out / "cohort" / f"history_{d}.sql").write_text(sql, encoding="utf-8")
-    if p.brief.flow_type == "winback":
-        for d, sql in p.cohort.ledger_sql.items():
-            (out / "cohort" / f"ledger_{d}.sql").write_text(sql, encoding="utf-8")
-        for d, sql in p.cohort.record_sql.items():
-            (out / "cohort" / f"record_{d}.sql").write_text(sql, encoding="utf-8")
+    if p.cohort.job_sql:
+        (out / "cohort" / "job").mkdir(exist_ok=True)
+        for d, steps in p.cohort.job_sql.items():
+            for step, sql in steps.items():
+                (out / "cohort" / "job" / f"{step}_{d}.sql").write_text(sql, encoding="utf-8")
     if p.cohort.trigger_payload_example:
         (out / "trigger_payload_example.json").write_text(json.dumps(p.cohort.trigger_payload_example, indent=2), encoding="utf-8")
     for tc in p.copy_plan:

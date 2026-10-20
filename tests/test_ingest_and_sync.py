@@ -26,7 +26,8 @@ def _seg(event="feature_used", mid="msg_0000000001", props=None, **kw):
 
 def test_segment_events_normalize_to_the_canonical_row():
     ev, users, rej = webhook_parser.from_segment({"batch": [_seg(), _seg("Report Shared", "msg_0000000002", {"x": 1}),
-                                                            {"type": "identify", "userId": "u_0001", "traits": {"email": "A@Example.com"}}]})
+                                                            {"type": "identify", "userId": "u_0001", "messageId": "id_0000000001",
+                                                             "timestamp": TS, "traits": {"email": "A@Example.com"}}]})
     assert not rej
     assert ev[0] == {"event_id": "msg_0000000001", "user_id": "u_0001", "anonymous_id": None, "event_name": "feature_used",
                      "properties": {"feature": "reports"}, "source": "segment", "event_at": "2026-10-19 10:00:00", "in_tracking_plan": True}
@@ -118,6 +119,23 @@ def test_forged_batch_and_replays_are_refused(tmp_path, monkeypatch):
     assert client.post("/webhooks/segment", content=fresh, headers={"X-Signature": sign(fresh)}).json()["accepted"] == 1
     restarted = TestClient(webhook_parser.create_app(tmp_path))      # dedupe survives a restart
     assert restarted.post("/webhooks/segment", content=fresh, headers={"X-Signature": sign(fresh)}).json()["duplicates"] == 1
+
+
+def test_identify_replays_are_refused(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from fastapi.testclient import TestClient
+    monkeypatch.setenv("SEGMENT_SHARED_SECRET", "s3cret")
+    sign = lambda b: hmac.new(b"s3cret", b, hashlib.sha1).hexdigest()  # noqa: E731
+    client = TestClient(webhook_parser.create_app(tmp_path))
+    old = json.dumps({"type": "identify", "userId": "u_1", "messageId": "id_00000001", "timestamp": "2020-01-01T00:00:00Z",
+                      "traits": {"email": "old@example.com"}}).encode()
+    assert client.post("/webhooks/segment", content=old, headers={"X-Signature": sign(old)}).json()["users"] == 0
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    fresh = json.dumps({"type": "identify", "userId": "u_1", "messageId": "id_00000002", "timestamp": now,
+                        "traits": {"email": "new@example.com"}}).encode()
+    assert client.post("/webhooks/segment", content=fresh, headers={"X-Signature": sign(fresh)}).json()["users"] == 1
+    again = TestClient(webhook_parser.create_app(tmp_path)).post("/webhooks/segment", content=fresh, headers={"X-Signature": sign(fresh)}).json()
+    assert again["users"] == 0 and again["duplicates"] == 1
 
 
 def test_unsigned_traffic_is_refused_by_default(tmp_path, monkeypatch):

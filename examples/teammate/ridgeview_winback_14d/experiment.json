@@ -7,7 +7,7 @@
     "snowflake": "MOD(TO_NUMBER(SUBSTR(MD5(user_id || ':ridgeview_winback_14d'), 1, 7), 'XXXXXXX'), 100) < 15",
     "bigquery": "MOD(CAST(CONCAT('0x', SUBSTR(TO_HEX(MD5(CONCAT(user_id, ':ridgeview_winback_14d'))), 1, 7)) AS INT64), 100) < 15"
   },
-  "assignment_rule": "persistent, by user: bucket = first 7 hex digits of md5(user_id || ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout. Computed in the daily entry query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population",
+  "assignment_rule": "persistent, by user: bucket = first 7 hex digits of md5(user_id || ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout, computed in the daily queue query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population",
   "primary_metric": "created a report (feature_used where feature = reports) within 30 days of entry, treatment vs holdout, both arms counted from their entry date",
   "outcome_window_days": 30,
   "read": "directional only",

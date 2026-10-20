@@ -25,10 +25,11 @@ from agents.models import Assumption, Brief, EventMatch
 NUMBER_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
 PLATFORMS = (("customer.io", "customerio"), ("customerio", "customerio"), ("klaviyo", "klaviyo"), ("hubspot", "hubspot"),
              ("braze", "braze"), ("marketing cloud", "sfmc"), ("sfmc", "sfmc"))
-WINBACK_WORDS = ("win-back", "winback", "win back", "re-engage", "reengage", "re-engagement", "reactivat", "lapsed", "lapse",
-                 "inactive", "stopped", "dormant", "churn", "gone quiet")
+WINBACK_WORDS = ("win-back", "winback", "win back", "win them back", "bring back", "bring them back", "come back", "re-engage",
+                 "reengage", "re-engagement", "reactivat", "lapsed", "lapse", "inactive", "stopped", "dormant", "churn", "gone quiet")
 ACTIVATION_WORDS = ("onboarding flow", "onboarding series", "activation", "welcome", "new users", "new signups", "new sign-ups",
-                    "just signed up", "first week", "trial")
+                    "new customers", "new accounts", "new members", "just signed up", "first week", "trial users", "free trial users")
+SIGNUP = r"sign(ed|ing)? ?up|signups|sign-ups|new users|new customers|new accounts|new members|registered"
 NEGATION = r"haven't|have not|hasn't|has not|without|\bbut\b"
 
 # Phrases a marketer uses for the qualifying cohort and the core action, mapped to the reference
@@ -77,14 +78,16 @@ def parse_text(text: str, product_name: Optional[str] = None, overrides: Optiona
         data[field] = value
         assumptions.append(Assumption(field=field, value=value if not isinstance(value, EventMatch) else value.model_dump(), why=why))
 
-    # flow type: explicit words win; "haven't ... yet" about new people reads as activation, otherwise as a lapse
-    if any(w in low for w in WINBACK_WORDS):
+    # flow type: explicit lapse words win; then "haven't ... since" (a lapse); then explicit new-user words; then
+    # "haven't ... yet" (not done it for the first time); then any negation or "in N days" (a lapse)
+    neg = r"(haven't|have not|hasn't|has not)"
+    if any(w in low for w in WINBACK_WORDS) or re.search(neg + r".*\bsince\b", low):
         data["flow_type"] = "winback"
     elif any(w in low for w in ACTIVATION_WORDS):
         data["flow_type"] = "activation"
-    elif re.search(r"haven't|have not|hasn't|has not", low) and re.search(r"\byet\b|\bnew\b", low):
+    elif re.search(neg + r".*\byet\b", low):
         data["flow_type"] = "activation"
-    elif re.search(r"haven't|have not|hasn't|has not|in \d+ (day|week|month)", low):
+    elif re.search(neg + r"|in \d+ (day|week|month)", low):
         data["flow_type"] = "winback"
     else:
         assume("flow_type", "winback", "the brief does not say whether this is a win-back or an activation flow")
@@ -109,14 +112,19 @@ def parse_text(text: str, product_name: Optional[str] = None, overrides: Optiona
     for sep in (":", " for "):
         if sep in who:
             who = who.rsplit(sep, 1)[1]
+    if data.get("flow_type") == "activation" and re.search(SIGNUP, low):
+        who = "signed up"   # an activation flow starts at signup when the sentence mentions it anywhere
     for pattern, match, why in QUALIFYING_PHRASES:
         if re.search(pattern, who):
             data["qualifying_event"] = match
             assumptions.append(Assumption(field="qualifying_event", value=match.model_dump(), why=why))
             break
     else:
-        assume("qualifying_event", EventMatch(event="activation_reached", label="reached activation"),
-               "who qualifies was not stated; defaulted to users who reached activation")
+        if data.get("flow_type") == "activation":
+            assume("qualifying_event", EventMatch(event="signed_up", label="signed up"), "who qualifies was not stated; defaulted to new signups")
+        else:
+            assume("qualifying_event", EventMatch(event="activation_reached", label="reached activation"),
+                   "who qualifies was not stated; defaulted to users who reached activation")
 
     # core action: the clause after "but" / "haven't"
     after = re.split(NEGATION, low, maxsplit=1)
@@ -164,6 +172,15 @@ def parse_text(text: str, product_name: Optional[str] = None, overrides: Optiona
     else:
         assume("product_name", "Your product", "product name not given; pass --product or edit the brief")
 
+    q, c = data.get("qualifying_event"), data.get("core_conversion_event")
+    if (data.get("flow_type") == "activation" and isinstance(q, EventMatch) and isinstance(c, EventMatch)
+            and (q.event, q.where) == (c.event, c.where)):
+        fallback = EventMatch(event="signed_up", label="signed up")
+        data["qualifying_event"] = fallback
+        assumptions[:] = [a for a in assumptions if a.field != "qualifying_event"]
+        assumptions.append(Assumption(field="qualifying_event", value=fallback.model_dump(),
+                                      why=f"the sentence named {c.event} for both who qualifies and the core action; qualifying set to "
+                                          f"{fallback.event}. Confirm who should be eligible"))
     data["goal"] = t
     for k, v in (overrides or {}).items():
         data[k] = v

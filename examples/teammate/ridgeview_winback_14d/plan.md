@@ -1,6 +1,6 @@
 # Win-back: Ridgeview, 14 days since the core action (created a report)
 
-**Status: READY WITH ASSUMPTIONS** | Customer.io | generated 2026-10-20T23:10:28+00:00 | run fb7b57f05e74 | LMM Engine 2.1.0
+**Status: READY WITH ASSUMPTIONS** | Customer.io | generated 2026-10-20T23:27:40+00:00 | run adff70101e29 | LMM Engine 2.1.0
 
 ## In one paragraph
 
@@ -20,7 +20,7 @@ People who completed onboarding and then went 14 days without the core action (c
 
 | | |
 |---|---|
-| Entry | completed onboarding (onboarding_step_completed where step_index = 3) at least once (evaluated at entry); 14 or more calendar days since the core action (feature_used where feature = reports), counted from their own last one, or from qualifying if they never did it; enters on the first daily run after crossing; a missed run catches up for 3 days; the ledger lcm_flow_entries makes it one entry per lapse |
+| Entry | completed onboarding (onboarding_step_completed where step_index = 3) at least once (evaluated at entry); 14 or more calendar days since the core action (feature_used where feature = reports), counted from their own last one, or from qualifying if they never did it; queued on the first daily run after crossing (a missed run catches up for 3 days) and pushed from the ledger lcm_flow_entries, which holds each lapse once |
 | Never enters | no consent for any channel in the flow; on the platform's suppression list; internal or test account |
 | Exit | leaves the moment they create a report again (checked before every step) |
 | Trigger | core_action_lapsed_14d: Event-triggered campaign on core_action_lapsed_14d, re-entry allowed. Exit: performs feature_used where feature = reports (conversion goal with exit on conversion). Holdout: True/False branch on the event attribute in_holdout. |
@@ -36,10 +36,10 @@ People who completed onboarding and then went 14 days without the core action (c
 | email_consent | attribute | verified | 86% | email marketing consent; users.email_consent_at filled 86% |
 | session_started | event | verified |  | in-app messages show at the next session |
 | in_holdout | attribute | unknown |  | set by the daily entry job on the pushed event; schedule the job before launch |
-| lcm_flow_entries | object | unknown |  | the ledger of entries already pushed; create it once with cohort/ledger_<dialect>.sql |
+| lcm_flow_entries | object | unknown |  | the ledger (outbox) of entries; create it once with cohort/job/ledger_<dialect>.sql |
 | lcm_sunset | attribute | unknown |  | suppression flag the sunset step writes; create the property in the platform before launch |
 
-Run daily (postgres): `cohort/entry_postgres.sql` lists who to push; after the push succeeds, `cohort/record_postgres.sql` writes them to the ledger so nobody enters twice for one lapse. Create the ledger once with `cohort/ledger_postgres.sql`. Other dialects and the history query are in `cohort/`.
+The daily job (postgres), in `cohort/job/`: create the ledger once (`ledger_postgres.sql`); then each day queue who is due (`queue_postgres.sql`), push every pending row (`pending_postgres.sql` into tools/event_payloads.py), and mark them pushed (`mark_postgres.sql`) only when every request succeeded. Each lapse sits in the ledger once, so nobody enters twice; a failed push stays pending and goes out on the next run. `cohort/entry_postgres.sql` shows who is due without queuing; other dialects and the history query are in `cohort/`.
 
 ## The flow
 
@@ -134,7 +134,7 @@ Files: `copy/t5_email_A.html`, `copy/t5_email_A.subject.txt`, `copy/t5_email_A.t
 
 | | |
 |---|---|
-| Holdout | 15%, user level, persistent: persistent, by user: bucket = first 7 hex digits of md5(user_id || ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout. Computed in the daily entry query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population |
+| Holdout | 15%, user level, persistent: persistent, by user: bucket = first 7 hex digits of md5(user_id || ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout, computed in the daily queue query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population |
 | Primary metric | created a report (feature_used where feature = reports) within 30 days of entry, treatment vs holdout, both arms counted from their entry date |
 | Sizing | about 28 entrants a month (DEMO DATA), 17.5% return within 30 days with no flow (DEMO DATA), 25% relative lift (4.4 pts) worth acting on: 781 holdout entrants at 15%, 186.0 months of entries plus the 30-day outcome window, so the read lands about 186.9 months after launch (tools/stats.py feasible --entries-per-month 28 --holdout 0.15 --baseline 0.1746 --mde-rel 0.25 --outcome-window-days 30) |
 | Read | directional only: not inside 12 months at this volume (it would take about 187 months): keep the holdout, report against a pre/post baseline, and label every result directional |

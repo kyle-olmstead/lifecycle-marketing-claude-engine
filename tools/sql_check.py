@@ -35,7 +35,8 @@ TABLE_DDL = {
               "discount_amount DECIMAL(18,2), net_amount DECIMAL(18,2), currency VARCHAR",
     "track_events": "event_id VARCHAR, user_id VARCHAR, anonymous_id VARCHAR, event_name VARCHAR, event_at TIMESTAMP, properties JSON",
     # the teammate's ledger of flow entries already pushed (2.1); empty unless a fixture file exists
-    "lcm_flow_entries": "flow VARCHAR, user_id VARCHAR, anchor_date DATE, pushed_at TIMESTAMP, in_holdout BOOLEAN",
+    "lcm_flow_entries": "flow VARCHAR, user_id VARCHAR, anchor_date DATE, holdout_bucket INTEGER, in_holdout BOOLEAN, status VARCHAR, "
+                        "queued_at TIMESTAMP, pushed_at TIMESTAMP",
 }
 OPTIONAL_TABLES = ("lcm_flow_entries",)
 

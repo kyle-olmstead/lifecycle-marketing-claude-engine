@@ -36,9 +36,11 @@ def design(brief: Brief, cohort: CohortDefinition) -> ExperimentDesign:
     w = outcome_window(brief)
     core = brief.core_conversion_event
     assignment_sql = {d: f"{dialect(d).holdout_bucket('user_id', salt)} < {pct:g}" for d in ("postgres", "snowflake", "bigquery")}
+    where = ("computed in the daily queue query and pushed on the trigger event as in_holdout" if brief.flow_type == "winback" else
+             f"added as in_holdout to the live {brief.qualifying_event.event} event by the system that sends it")
     rule = (f"persistent, by {brief.randomization_unit}: bucket = first 7 hex digits of md5(user_id || ':{salt}') mod 100; "
-            f"bucket < {pct:g} is the holdout. Computed in the daily entry query and pushed on the trigger event as in_holdout; "
-            f"holdout members enter, then exit at holdout_split, so both arms are the same population")
+            f"bucket < {pct:g} is the holdout, {where}; holdout members enter, then exit at holdout_split, so both arms are the "
+            f"same population")
     primary = (f"{core.describe()} ({core.detail()}) within {w} days of entry, treatment vs holdout, both arms counted from their entry date")
     entries, base = cohort.monthly_entrants.value, cohort.baseline_conversion_rate.value
     e_label, b_label = cohort.monthly_entrants.label, cohort.baseline_conversion_rate.label
@@ -49,6 +51,12 @@ def design(brief: Brief, cohort: CohortDefinition) -> ExperimentDesign:
     if pct == 0:
         read, sizing, read_after = "directional only", "no holdout by request: the flow can only be compared with a pre/post baseline", \
             "a pre/post comparison after one full outcome window; directional only, no lift percentage"
+    elif entries and base and base * (1 + brief.min_detectable_lift) >= 1:
+        read = "not readable"
+        sizing = (f"{base:.1%} of entrants ({b_label}) already {core.do} within {w} days with no flow, so a "
+                  f"{brief.min_detectable_lift:.0%} relative lift would pass 100%: there is no room to measure. Narrow the core action "
+                  f"or the entry rule so fewer people do it on their own, or shorten the outcome window")
+        read_after = "never as defined: the baseline leaves no room for the lift"
     elif entries and base:
         feas = stats.feasibility(entries, share, base, mde_rel=brief.min_detectable_lift, outcome_window_days=w,
                                  design_effect=1.0)
@@ -72,7 +80,7 @@ def design(brief: Brief, cohort: CohortDefinition) -> ExperimentDesign:
         for horizon in (3, 6, 12):
             total = entries * horizon
             n_c, n_t = int(total * share), int(total - total * share)
-            if n_c < 1:
+            if n_c < 1 or n_t < 1:
                 continue
             m = stats.minimum_detectable_effect(n_c, n_t, base)
             mde_rows.append({"months_of_entries": horizon, "holdout_n": n_c, "treatment_n": n_t,

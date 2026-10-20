@@ -185,9 +185,10 @@ def _window(brief: Brief) -> int:
 
 
 def entry_sql(brief: Brief, dialect_name: str, as_of: Optional[str] = None, catch_up: int = CATCH_UP_DAYS, order: bool = True) -> str:
-    """One row per person to push on the run date. Each entry is keyed by (flow, user_id, anchor_date), and the ledger
-    lcm_flow_entries holds the keys already pushed, so a late or missed run catches up for `catch_up` days without
-    pushing anyone twice. Record pushed rows with record_sql()."""
+    """Who is due on the run date. Win-back: each lapse is keyed by (flow, user_id, anchor_date); lapses already in the
+    ledger lcm_flow_entries are excluded, so a late or missed run catches up for `catch_up` days without queuing anyone
+    twice (queue_sql writes the due rows to the ledger; pending_sql and mark_sql drive the push). Activation: an audit
+    and backfill of the live trigger, with no ledger."""
     D = dialect(dialect_name)
     a = _as_of_expr(D, as_of)
     salt = brief.slug
@@ -195,11 +196,10 @@ def entry_sql(brief: Brief, dialect_name: str, as_of: Optional[str] = None, catc
     n = brief.churn_threshold_days
     bucket = D.holdout_bucket("u.user_id", salt)
     header = (f"-- dialect: {dialect_name}\n"
-              f"-- {brief.product_name}, {brief.flow_type} flow: who to push on the run date ({'the literal as-of date' if as_of else 'today'}).\n"
+              f"-- {brief.product_name}, {brief.flow_type} flow: who is due on the run date ({'the literal as-of date' if as_of else 'today'}).\n"
               f"-- Qualifying: {brief.qualifying_event.describe()} ({brief.qualifying_event.detail()}). "
               f"Core action: {brief.core_conversion_event.describe()} ({brief.core_conversion_event.detail()}).\n")
     tail = "ORDER BY u.user_id\n" if order else ""
-    ledger = (f"LEFT JOIN {LEDGER} l ON l.flow = '{salt}' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date\n")
     cols = (f"SELECT u.user_id, u.email, a.qualified_at, a.last_core_at, a.anchor_date,\n"
             f"       {D.days_between(a, 'a.anchor_date')} AS days_inactive,\n"
             f"       u.email_consent_at IS NOT NULL AS email_consent,\n"
@@ -208,40 +208,70 @@ def entry_sql(brief: Brief, dialect_name: str, as_of: Optional[str] = None, catc
             f"       {bucket} < {pct:g} AS in_holdout\n")
     if brief.flow_type == "activation":
         return (header +
-                f"-- Entry: qualified within the last {catch_up + 1} days and has not done the core action. The live trigger is the ESP's own\n"
-                f"-- {brief.qualifying_event.event} event; this query backfills and audits it, keyed on the qualification date.\n"
+                f"-- Entry: qualified on the run date or up to {catch_up} days before, and has not done the core action. The live trigger\n"
+                f"-- is the ESP's own {brief.qualifying_event.event} event; this query audits and backfills it.\n"
                 f"WITH {_ctes(D, brief, a)}\n" + cols +
-                f"FROM anchored a\nJOIN users u ON u.user_id = a.user_id\n" + ledger +
-                f"WHERE {D.to_date('a.qualified_at')} BETWEEN {D.add_days(a, -catch_up)} AND {a} AND a.last_core_at IS NULL\n"
-                f"  AND l.user_id IS NULL\n" + tail)
+                f"FROM anchored a\nJOIN users u ON u.user_id = a.user_id\n"
+                f"WHERE {D.to_date('a.qualified_at')} BETWEEN {D.add_days(a, -catch_up)} AND {a} AND a.last_core_at IS NULL\n" + tail)
     return (header +
             f"-- Entry: {n} calendar days or more since the last core action (or since qualifying, if none since): the anchor date is\n"
             f"-- between {n} and {n + catch_up} days before the run date, and this lapse (user, anchor date) is not yet in {LEDGER}.\n"
             f"-- A missed run catches up for {catch_up} days. The ESP applies consent and suppression; this query decides who crossed.\n"
             f"-- Holdout: holdout_bucket < {pct:g} (salt '{salt}'); identical in every dialect and in agents/sql_dialects.holdout_bucket.\n"
             f"WITH {_ctes(D, brief, a)}\n" + cols +
-            f"FROM anchored a\nJOIN users u ON u.user_id = a.user_id\n" + ledger +
+            f"FROM anchored a\nJOIN users u ON u.user_id = a.user_id\n"
+            f"LEFT JOIN {LEDGER} l ON l.flow = '{salt}' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date\n"
             f"WHERE a.anchor_date BETWEEN {D.add_days(a, -(n + catch_up))} AND {D.add_days(a, -n)}\n"
             f"  AND l.user_id IS NULL\n" + tail)
 
 
+def _now(dialect_name: str) -> str:
+    return {"snowflake": "CURRENT_TIMESTAMP()", "bigquery": "CURRENT_TIMESTAMP()"}.get(dialect_name, "CURRENT_TIMESTAMP")
+
+
 def ledger_ddl(dialect_name: str) -> str:
-    text, ts, boolean = ("STRING", "TIMESTAMP", "BOOL") if dialect_name == "bigquery" else ("VARCHAR", "TIMESTAMP", "BOOLEAN")
+    text, boolean, integer = ("STRING", "BOOL", "INT64") if dialect_name == "bigquery" else ("VARCHAR", "BOOLEAN", "INTEGER")
     key = "" if dialect_name == "bigquery" else ",\n  PRIMARY KEY (flow, user_id, anchor_date)"
-    return (f"-- dialect: {dialect_name}\n-- Ledger of flow entries already pushed to the ESP. Create once; the entry query excludes what is here.\n"
+    return (f"-- dialect: {dialect_name}\n"
+            f"-- The ledger of win-back entries: an outbox. queue writes due lapses as 'pending', the job pushes every pending row,\n"
+            f"-- and mark sets them to 'pushed'. A lapse is in here at most once, so nobody enters twice for one lapse. Create once.\n"
             f"CREATE TABLE IF NOT EXISTS {LEDGER} (\n  flow {text} NOT NULL,\n  user_id {text} NOT NULL,\n  anchor_date DATE NOT NULL,\n"
-            f"  pushed_at {ts} NOT NULL,\n  in_holdout {boolean} NOT NULL{key}\n)\n")
+            f"  holdout_bucket {integer} NOT NULL,\n  in_holdout {boolean} NOT NULL,\n  status {text} NOT NULL,\n"
+            f"  queued_at TIMESTAMP NOT NULL,\n  pushed_at TIMESTAMP{key}\n)\n")
 
 
-def record_sql(brief: Brief, dialect_name: str, as_of: Optional[str] = None) -> str:
-    """Run right after a successful push: writes the pushed entries to the ledger. If the push failed part way, record only the
-    rows whose requests succeeded instead."""
-    D = dialect(dialect_name)
-    now = {"snowflake": "CURRENT_TIMESTAMP()", "bigquery": "CURRENT_TIMESTAMP()"}.get(dialect_name, "CURRENT_TIMESTAMP")
+def queue_sql(brief: Brief, dialect_name: str, as_of: Optional[str] = None) -> str:
+    """Step 1 of the daily job: evaluate who is due and write them to the ledger as pending, in one statement."""
     body = "\n".join(line for line in entry_sql(brief, dialect_name, as_of, order=False).splitlines() if not line.startswith("--"))
-    return (f"-- dialect: {dialect_name}\n-- Record today's pushed entries for {brief.slug} in {LEDGER}. Run after the push succeeds.\n"
-            f"INSERT INTO {LEDGER} (flow, user_id, anchor_date, pushed_at, in_holdout)\n"
-            f"SELECT '{brief.slug}', e.user_id, e.anchor_date, {now}, e.in_holdout\nFROM (\n{body}\n) e\n")
+    return (f"-- dialect: {dialect_name}\n-- Daily step 1 of 3 for {brief.slug}: queue every lapse that is due as 'pending'.\n"
+            f"INSERT INTO {LEDGER} (flow, user_id, anchor_date, holdout_bucket, in_holdout, status, queued_at)\n"
+            f"SELECT '{brief.slug}', e.user_id, e.anchor_date, e.holdout_bucket, e.in_holdout, 'pending', {_now(dialect_name)}\n"
+            f"FROM (\n{body}\n) e\n")
+
+
+def pending_sql(brief: Brief, dialect_name: str, as_of: Optional[str] = None) -> str:
+    """Step 2: the rows to push, including any left pending by an earlier failed push. Feed them to tools/event_payloads.py."""
+    D = dialect(dialect_name)
+    a = _as_of_expr(D, as_of)
+    return (f"-- dialect: {dialect_name}\n-- Daily step 2 of 3 for {brief.slug}: push these rows, one trigger event each "
+            f"(tools/event_payloads.py).\n"
+            f"SELECT l.user_id, u.email, l.anchor_date, {D.days_between(a, 'l.anchor_date')} AS days_inactive,\n"
+            f"       l.holdout_bucket, l.in_holdout\n"
+            f"FROM {LEDGER} l\nJOIN users u ON u.user_id = l.user_id\n"
+            f"WHERE l.flow = '{brief.slug}' AND l.status = 'pending'\nORDER BY l.anchor_date, l.user_id\n")
+
+
+def mark_sql(brief: Brief, dialect_name: str) -> str:
+    """Step 3: after every request in step 2 succeeded. On a partial failure, skip it: the next run pushes the pending rows
+    again, and the event id is the lapse key, so Klaviyo, HubSpot and Customer.io drop the repeats."""
+    return (f"-- dialect: {dialect_name}\n-- Daily step 3 of 3 for {brief.slug}: run only when every push in step 2 succeeded.\n"
+            f"UPDATE {LEDGER} SET status = 'pushed', pushed_at = {_now(dialect_name)}\n"
+            f"WHERE flow = '{brief.slug}' AND status = 'pending'\n")
+
+
+def daily_job_sql(brief: Brief, dialect_name: str) -> Dict[str, str]:
+    return {"ledger": ledger_ddl(dialect_name), "queue": queue_sql(brief, dialect_name), "pending": pending_sql(brief, dialect_name),
+            "mark": mark_sql(brief, dialect_name)}
 
 
 def _lapses_ctes(D: Dialect, brief: Brief, a: str) -> str:
@@ -447,7 +477,7 @@ def _dependencies(brief: Brief, con) -> List[DataDependency]:
         deps.append(DataDependency(name="in_holdout", kind="attribute", status="unknown",
                                    note="set by the daily entry job on the pushed event; schedule the job before launch"))
         deps.append(DataDependency(name=LEDGER, kind="object", status="unknown",
-                                   note="the ledger of entries already pushed; create it once with cohort/ledger_<dialect>.sql"))
+                                   note="the ledger (outbox) of entries; create it once with cohort/job/ledger_<dialect>.sql"))
     else:
         deps.append(DataDependency(name="in_holdout", kind="attribute", status="unknown",
                                    note=f"a property on the {brief.qualifying_event.event} event, added where it is sent (formula in the build steps)"))
@@ -499,7 +529,10 @@ def define(brief: Brief, data: Optional[str] = None, as_of: Optional[str] = None
     hist = {d: history_sql(brief, d) for d in ("postgres", "snowflake", "bigquery")}
     checks = {f"entry {k}": v for k, v in check_sql(sql).items()}
     checks.update({f"history {k}": v for k, v in check_sql(hist).items()})
-    checks.update({f"record {k}": v for k, v in check_sql({d: record_sql(brief, d) for d in ("postgres", "snowflake", "bigquery")}).items()})
+    if brief.flow_type == "winback":
+        for step in ("ledger", "queue", "pending", "mark"):
+            checks.update({f"{step} {k}": v for k, v in check_sql({d: daily_job_sql(brief, d)[step]
+                                                                   for d in ("postgres", "snowflake", "bigquery")}).items()})
     entrants_today = None
     if con is not None:
         try:
@@ -516,8 +549,8 @@ def define(brief: Brief, data: Optional[str] = None, as_of: Optional[str] = None
         entry = [f"{q.describe()} ({q.detail()}) at least once (evaluated at entry)",
                  f"{n} or more calendar days since the core action ({c.detail()}), counted from their own last one, or from qualifying "
                  f"if they never did it",
-                 f"enters on the first daily run after crossing; a missed run catches up for {CATCH_UP_DAYS} days; the ledger "
-                 f"{LEDGER} makes it one entry per lapse"]
+                 f"queued on the first daily run after crossing (a missed run catches up for {CATCH_UP_DAYS} days) and pushed from "
+                 f"the ledger {LEDGER}, which holds each lapse once"]
         exit_rule = f"leaves the moment they {c.do} again (checked before every step)"
     else:
         plain = f"People who {q.describe()} and have not yet done the core action ({c.describe()}). They leave the moment they do it."
@@ -541,8 +574,7 @@ def define(brief: Brief, data: Optional[str] = None, as_of: Optional[str] = None
         name=f"{PLATFORM_LABEL[brief.platform]} {brief.flow_type} cohort: {brief.product_name}",
         plain_english=plain, trigger_event=trigger, entry_rules=entry, exclusions=exclusions, exit_rule=exit_rule,
         platform_pattern=pattern, sql=sql, history_sql=hist, sql_checks=checks,
-        ledger_sql={d: ledger_ddl(d) for d in ("postgres", "snowflake", "bigquery")},
-        record_sql={d: record_sql(brief, d) for d in ("postgres", "snowflake", "bigquery")},
+        job_sql=({d: daily_job_sql(brief, d) for d in ("postgres", "snowflake", "bigquery")} if brief.flow_type == "winback" else {}),
         data_dependencies=_dependencies(brief, con), monthly_entrants=monthly, baseline_conversion_rate=baseline,
         entrants_on_as_of=entrants_today, as_of=as_of_date.isoformat() if as_of_date else None,
         trigger_payload_example=example)

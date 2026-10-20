@@ -41,7 +41,7 @@
     "percent": 15.0,
     "persistent": true,
     "unit": "user",
-    "assignment": "persistent, by user: bucket = first 7 hex digits of md5(user_id || ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout. Computed in the daily entry query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population",
+    "assignment": "persistent, by user: bucket = first 7 hex digits of md5(user_id || ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout, computed in the daily queue query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population",
     "sizing": "about 28 entrants a month (DEMO DATA), 17.5% return within 30 days with no flow (DEMO DATA), 25% relative lift (4.4 pts) worth acting on: 781 holdout entrants at 15%, 186.0 months of entries plus the 30-day outcome window, so the read lands about 186.9 months after launch (tools/stats.py feasible --entries-per-month 28 --holdout 0.15 --baseline 0.1746 --mde-rel 0.25 --outcome-window-days 30)",
     "read": "directional only"
   },
@@ -199,7 +199,7 @@
       "name": "lcm_flow_entries",
       "kind": "object",
       "status": "unknown",
-      "note": "the ledger of entries already pushed; create it once with cohort/ledger_<dialect>.sql"
+      "note": "the ledger (outbox) of entries; create it once with cohort/job/ledger_<dialect>.sql"
     },
     {
       "name": "lcm_sunset",

@@ -1,5 +1,5 @@
 -- dialect: snowflake
--- Ridgeview, winback flow: who to push on the run date (today).
+-- Ridgeview, winback flow: who is due on the run date (today).
 -- Qualifying: completed onboarding (onboarding_step_completed where step_index = 3). Core action: created a report (feature_used where feature = reports).
 -- Entry: 14 calendar days or more since the last core action (or since qualifying, if none since): the anchor date is
 -- between 14 and 17 days before the run date, and this lapse (user, anchor date) is not yet in lcm_flow_entries.

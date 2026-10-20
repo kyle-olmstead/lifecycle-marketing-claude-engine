@@ -171,11 +171,17 @@ def from_segment(doc: Any, received: Optional[datetime] = None,
         at = _utc(m.get("timestamp") or m.get("originalTimestamp") or m.get("sentAt") or m.get("receivedAt"))
         if kind == "identify":
             traits = m.get("traits") or (m.get("context") or {}).get("traits") or {}
-            if not m.get("userId"):
-                rejected.append({"source": "segment", "reason": "identify without userId", "payload": m})
+            why = ("identify without userId" if not m.get("userId") else
+                   "identify without a messageId (its idempotency key)" if not m.get("messageId") else
+                   "missing or unreadable timestamp" if at is None else
+                   "identify timestamp is in the future" if at > received + MAX_FUTURE else
+                   "identify is more than 72 hours old: refused over HTTP as a possible replay" if max_age is not None and at < received - max_age
+                   else None)
+            if why:
+                rejected.append({"source": "segment", "reason": why, "payload": m})
                 continue
-            users.append({"user_id": str(m["userId"]), "email": (traits.get("email") or "").strip().lower() or None,
-                          "traits": traits, "seen_at": _iso(at or received)})
+            users.append({"message_id": str(m["messageId"]), "user_id": str(m["userId"]),
+                          "email": (traits.get("email") or "").strip().lower() or None, "traits": traits, "seen_at": _iso(at)})
             continue
         if kind not in ("track", "page", "screen"):
             continue
@@ -279,13 +285,15 @@ class Sink:
         self.lock = threading.Lock()
         today = datetime.now(timezone.utc).date()
         for k in range(DEDUPE_DAYS, -1, -1):
-            path = self.root / "track_events" / f"{(today - timedelta(days=k)).isoformat()}.ndjson"
-            if path.exists():
-                for line in path.read_text(encoding="utf-8").splitlines():
-                    try:
-                        self._remember(json.loads(line)["event_id"])
-                    except (ValueError, KeyError):
-                        continue
+            day = (today - timedelta(days=k)).isoformat()
+            for folder, key, prefix in (("track_events", "event_id", ""), ("users", "message_id", "identify:")):
+                path = self.root / folder / f"{day}.ndjson"
+                if path.exists():
+                    for line in path.read_text(encoding="utf-8").splitlines():
+                        try:
+                            self._remember(prefix + json.loads(line)[key])
+                        except (ValueError, KeyError):
+                            continue
 
     def _remember(self, event_id: str) -> None:
         self.seen[event_id] = None
@@ -312,8 +320,17 @@ class Sink:
                     continue
                 self._remember(e["event_id"])
                 fresh.append(e)
+            fresh_users = []
+            for u in users:
+                key = f"identify:{u['message_id']}"
+                if key in self.seen:
+                    dupes += 1
+                    continue
+                self._remember(key)
+                fresh_users.append(u)
             self._write("track_events", fresh)
-            self._write("users", users)
+            self._write("users", fresh_users)
+            users = fresh_users
             stamp = datetime.now(timezone.utc).isoformat()
             self._write("quarantine", [{**r, "quarantined_at": stamp} for r in rejected])
         return {"accepted": len(fresh), "duplicates": dupes, "users": len(users), "quarantined": len(rejected),

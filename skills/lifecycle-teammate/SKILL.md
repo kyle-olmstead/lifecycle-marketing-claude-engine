@@ -44,9 +44,10 @@ python3 ${CLAUDE_PLUGIN_ROOT}/agents/orchestrator.py plan --brief <brief.yaml> [
 - With a warehouse connector, run `cohort/history_<dialect>.sql` from the output through the
   connector and put the measured monthly entrants and baseline in the brief; label them LIVE PULL.
   Without data, the plan says the read date is not computed. Keep it so.
-- The daily win-back job is three queries in `cohort/`: `ledger_<dialect>.sql` once, then each day
-  `entry_<dialect>.sql` (who to push) and, after the push succeeds, `record_<dialect>.sql`. Never
-  skip the record step: it is what stops a person entering twice for one lapse.
+- The daily win-back job is in `cohort/job/`: `ledger_<dialect>.sql` once, then each day
+  `queue_<dialect>.sql` (writes who is due as pending), `pending_<dialect>.sql` (the rows to push with
+  `tools/event_payloads.py`), and `mark_<dialect>.sql` only when every push succeeded. A failed push
+  stays pending for the next run; each lapse is in the ledger once, so nobody enters twice.
 - **Copy:** use `--copy-mode handoff`, then write the drafts yourself from `copy_briefs.md` following
   `${CLAUDE_PLUGIN_ROOT}/skills/lifecycle-copy/SKILL.md`, save `drafts.json`, and re-run with
   `--drafts drafts.json`. The renderer adds the template code, unsubscribe, address and SMS opt-out,
