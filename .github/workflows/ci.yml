@@ -1,0 +1,20 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Unit tests (tools, schemas, SQL on DuckDB fixtures, dialect equivalence)
+        run: pytest -q
+      - name: Every example in the repository passes its own syntax rules
+        run: python tools/repo_check.py
+      - name: Worked examples reproduce
+        run: |
+          python tools/deliverability.py analyze examples/deliverability/incident.json --markdown > /dev/null
+          python tools/stats.py incrementality examples/stats/winback_readout.json --markdown > /dev/null
+          python tools/template_lint.py --dialect customerio --email modules/03_copywriting_and_multichannel/templates/modular_email_components.html > /dev/null

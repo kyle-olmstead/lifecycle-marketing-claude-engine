@@ -1,0 +1,57 @@
+[
+  {
+    "type": "track",
+    "event": "signed_up",
+    "event_id": "ev_000101",
+    "user_id": "u_0101",
+    "anonymous_id": "anon_0101",
+    "timestamp": "2026-10-01T14:03:11Z",
+    "properties": {
+      "method": "google",
+      "plan": "starter",
+      "utm_source": "newsletter",
+      "utm_campaign": null
+    },
+    "context": {
+      "source": "server"
+    }
+  },
+  {
+    "type": "track",
+    "event": "onboarding_step_completed",
+    "event_id": "ev_000102",
+    "user_id": "u_0101",
+    "timestamp": "2026-10-02T09:15:00Z",
+    "properties": {
+      "step": "connected_data_source",
+      "step_index": 1
+    }
+  },
+  {
+    "type": "track",
+    "event": "order_completed",
+    "event_id": "ev_000103",
+    "user_id": "u_0101",
+    "timestamp": "2026-10-05T18:20:44Z",
+    "properties": {
+      "order_id": "o_0101_01",
+      "net_amount": 129.0,
+      "currency": "USD",
+      "items": 2,
+      "is_first_order": true
+    }
+  },
+  {
+    "type": "track",
+    "event": "product_viewed",
+    "event_id": "ev_000104",
+    "anonymous_id": "anon_0999",
+    "timestamp": "2026-10-06T08:00:00Z",
+    "properties": {
+      "product_id": "p_77",
+      "category": "packs",
+      "price": 89.0,
+      "currency": "USD"
+    }
+  }
+]

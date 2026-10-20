@@ -1,0 +1,45 @@
+{
+  "case": "Enterprise-gateway open collapse after an ESP migration. Fictional sender on reserved example domains.",
+  "message_class": "marketing",
+  "headers": {
+    "path": "headers_gmail.txt"
+  },
+  "dns": {
+    "example.com": {
+      "txt": [
+        "v=spf1 include:_spf.esp-mail.example.net include:_spf.crm.example.org ip4:198.51.100.0/28 ~all",
+        "google-site-verification=0123456789abcdef"
+      ],
+      "dmarc": "v=DMARC1; p=none; pct=100",
+      "mx": [
+        "mx1.mail.example.com",
+        "mx2.mail.example.com"
+      ]
+    },
+    "bounces.esp-mail.example.net": {
+      "txt": [
+        "v=spf1 ip4:192.0.2.0/24 -all"
+      ]
+    }
+  },
+  "dkim_keys": {
+    "k1._domainkey.esp-mail.example.net": "v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDQ/ywBaTDe+pqDJWzNe3F3ZK9GFygYdqMX+IiNKL1a2Xwpe70O5Lr3bDgnlnxkYq+ewknH5kmpESWMBGgx8dAaJq4w7dXVGRlzL8p6JwA6bZRw7kRita4Ql19KjZkTYnoB4bdZpCgdz677tBokP7jsN9TOlNz6jfLMn1Td0/7vLwIDAQAB",
+    "nf1._domainkey.example.com": "v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtzwb6l6DRPyvNbxVN/CYihJ3VtNvVCrB4LAn3FHdvvUdCv8FSvJ06TDqqIAxtgkKNkzICnheuaCWQ05GOX51sJp02SqtEKpxIMfXxczsYsUxRxDh0KbXfkqKIq4kGPcIJLNOD6KFeMuF/NFvk4jc/lJ5DvokTkCt6u2M5CXanfUycJVL+99wY2EP2mvtjsH6VXm+sIitzbtha75Q5b78XE71ng07GnflgvCMQmVFfTrKXzoS3S0qtlw0SwE5KlMif3N9TrOjg0TtsxPrxJ3TVWbdfvV/EZ+/OC3/vjaNegZxCUEWd5SN2ddHDwAECr+g1xloUW8V9Vnrf4kSxaGbIwIDAQAB"
+  },
+  "signals": {
+    "complaint_rate": 0.0018,
+    "hard_bounce_rate": 0.014,
+    "domain_reputation_bounces_90d": 2,
+    "domain_reputation_bounces_trend": "flat",
+    "filtered_share": 0.012,
+    "postmaster_spam_rate": 0.0021,
+    "postmaster_compliance": "fail",
+    "consumer_engagement_rate": 0.031,
+    "enterprise_engagement_rate": 0.006,
+    "unengaged_share": 0.46
+  },
+  "volume": {
+    "daily_to_gmail": 18000,
+    "daily_to_microsoft_consumer": 6200
+  }
+}

@@ -1,0 +1,563 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kyle-olmstead/lifecycle-marketing-claude-engine/schemas/flow_spec.schema.json",
+  "title": "LMM Engine flow specification",
+  "description": "Machine-readable form of the FLOW block from the workflow-engineer method. A flow is defined by its exit conditions and suppression logic at least as much as by its content, so those fields are required. Every filter states whether it is evaluated at entry only or at every step: the most common build error on every platform.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "flow",
+    "platform",
+    "template_dialect",
+    "lifecycle_stage",
+    "objective",
+    "clv_lever",
+    "gate_required",
+    "trigger",
+    "entry_filters",
+    "ongoing_filters",
+    "suppressions",
+    "holdout",
+    "frequency",
+    "steps",
+    "exit",
+    "measurement",
+    "data_dependencies"
+  ],
+  "properties": {
+    "flow": {
+      "type": "string",
+      "minLength": 3
+    },
+    "platform": {
+      "enum": [
+        "customerio",
+        "braze",
+        "klaviyo",
+        "hubspot",
+        "sfmc",
+        "other"
+      ]
+    },
+    "analytics": {
+      "type": "string"
+    },
+    "template_dialect": {
+      "enum": [
+        "customerio",
+        "customerio_legacy",
+        "braze",
+        "klaviyo",
+        "hubl",
+        "ampscript",
+        "liquid"
+      ]
+    },
+    "lifecycle_stage": {
+      "type": "string"
+    },
+    "objective": {
+      "type": "string",
+      "description": "the one behavior this flow changes"
+    },
+    "clv_lever": {
+      "enum": [
+        "transaction_value",
+        "frequency",
+        "lifespan"
+      ]
+    },
+    "gate_required": {
+      "enum": [
+        "GREEN",
+        "AMBER"
+      ],
+      "description": "minimum sending gate; AMBER means engaged-segment only"
+    },
+    "trigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "definition",
+        "source_object"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "event",
+            "state",
+            "date",
+            "score",
+            "absence"
+          ]
+        },
+        "definition": {
+          "type": "string"
+        },
+        "source_object": {
+          "type": "string"
+        },
+        "re_entry": {
+          "type": "string",
+          "description": "allowed? after how long? Off by default in HubSpot; a runaway-send cause in Customer.io segment-triggered campaigns"
+        }
+      }
+    },
+    "entry_filters": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/filter_entry"
+      }
+    },
+    "ongoing_filters": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/filter_ongoing"
+      }
+    },
+    "suppressions": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "string"
+      },
+      "allOf": [
+        {
+          "contains": {
+            "pattern": "(?i)unsubscribed"
+          }
+        },
+        {
+          "contains": {
+            "pattern": "(?i)bounce"
+          }
+        }
+      ]
+    },
+    "holdout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "percent",
+        "read"
+      ],
+      "properties": {
+        "percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 50
+        },
+        "persistent": {
+          "type": "boolean"
+        },
+        "unit": {
+          "enum": [
+            "user",
+            "account"
+          ]
+        },
+        "assignment": {
+          "type": "string"
+        },
+        "sizing": {
+          "type": "string"
+        },
+        "read": {
+          "enum": [
+            "causal",
+            "causal, slow",
+            "directional only",
+            "not readable"
+          ]
+        },
+        "reason_if_none": {
+          "type": "string"
+        }
+      },
+      "if": {
+        "properties": {
+          "percent": {
+            "exclusiveMinimum": 0
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "persistent",
+          "unit",
+          "assignment",
+          "sizing"
+        ],
+        "properties": {
+          "persistent": {
+            "const": true
+          }
+        }
+      },
+      "else": {
+        "required": [
+          "reason_if_none"
+        ]
+      }
+    },
+    "frequency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cap",
+        "quiet_hours"
+      ],
+      "properties": {
+        "cap": {
+          "type": "string"
+        },
+        "quiet_hours": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "wait",
+          "channel",
+          "message",
+          "goal"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]+$"
+          },
+          "wait": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "enum": [
+                  "none",
+                  "fixed",
+                  "until_event",
+                  "until_time_local"
+                ]
+              },
+              "duration": {
+                "type": "string",
+                "pattern": "^P(\\d+D)?(T(\\d+H)?(\\d+M)?)?$",
+                "description": "ISO 8601 duration, e.g. P1D, PT4H"
+              },
+              "event": {
+                "type": "string"
+              },
+              "timeout": {
+                "type": "string",
+                "pattern": "^P(\\d+D)?(T(\\d+H)?(\\d+M)?)?$"
+              },
+              "local_time": {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+              }
+            }
+          },
+          "condition": {
+            "type": "string",
+            "description": "evaluated before the step sends; native platform terms"
+          },
+          "channel": {
+            "enum": [
+              "email",
+              "sms",
+              "push",
+              "in_app",
+              "webhook",
+              "internal_alert",
+              "none"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "goal": {
+            "type": "string"
+          },
+          "requires": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true
+          },
+          "branch": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "condition",
+              "yes",
+              "no"
+            ],
+            "properties": {
+              "condition": {
+                "type": "string"
+              },
+              "yes": {
+                "type": "string"
+              },
+              "no": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "channel": {
+                  "const": "sms"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "requires"
+              ],
+              "properties": {
+                "requires": {
+                  "contains": {
+                    "const": "sms_consent"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "channel": {
+                  "const": "push"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "requires"
+              ],
+              "properties": {
+                "requires": {
+                  "contains": {
+                    "const": "push_permission"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "channel": {
+                  "const": "email"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "requires"
+              ],
+              "properties": {
+                "requires": {
+                  "contains": {
+                    "const": "email_consent"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "wait": {
+                  "properties": {
+                    "type": {
+                      "const": "until_event"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "wait": {
+                  "required": [
+                    "event",
+                    "timeout"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "wait": {
+                  "properties": {
+                    "type": {
+                      "const": "fixed"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "wait": {
+                  "required": [
+                    "duration"
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "exit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "goal",
+        "unenroll_immediately"
+      ],
+      "properties": {
+        "goal": {
+          "type": "string"
+        },
+        "unenroll_immediately": {
+          "type": "boolean"
+        },
+        "then": {
+          "type": "string"
+        }
+      }
+    },
+    "measurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "primary_metric",
+        "read_after",
+        "compared_against"
+      ],
+      "properties": {
+        "primary_metric": {
+          "type": "string"
+        },
+        "read_after": {
+          "type": "string"
+        },
+        "compared_against": {
+          "enum": [
+            "holdout",
+            "pre_post_baseline",
+            "none"
+          ]
+        },
+        "guardrails": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "data_dependencies": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "kind",
+          "status"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "event",
+              "attribute",
+              "object"
+            ]
+          },
+          "status": {
+            "enum": [
+              "verified",
+              "blocked",
+              "unknown"
+            ]
+          },
+          "fill_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "filter_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "condition",
+        "evaluated"
+      ],
+      "properties": {
+        "condition": {
+          "type": "string"
+        },
+        "evaluated": {
+          "const": "entry_only"
+        }
+      }
+    },
+    "filter_ongoing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "condition",
+        "evaluated"
+      ],
+      "properties": {
+        "condition": {
+          "type": "string"
+        },
+        "evaluated": {
+          "const": "every_step"
+        }
+      }
+    }
+  }
+}

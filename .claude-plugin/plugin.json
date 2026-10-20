@@ -1,0 +1,29 @@
+{
+  "name": "lifecycle-engine",
+  "version": "2.0.0",
+  "description": "A lifecycle marketing operating layer for Claude: deliverability diagnosis and sending gates, behavioral activation and win-back flows, copy in the right template dialect for Braze, Customer.io, Klaviyo, HubSpot and Salesforce Marketing Cloud, warehouse SQL for RFM, LTV and retention in Snowflake, BigQuery and PostgreSQL, and experiment sizing and holdout readouts that separate attributed from incremental revenue.",
+  "author": {
+    "name": "Kyle Olmstead",
+    "url": "https://github.com/kyle-olmstead"
+  },
+  "homepage": "https://github.com/kyle-olmstead/lifecycle-marketing-claude-engine",
+  "repository": "https://github.com/kyle-olmstead/lifecycle-marketing-claude-engine",
+  "license": "Apache-2.0",
+  "keywords": [
+    "lifecycle-marketing",
+    "crm",
+    "email-deliverability",
+    "dmarc",
+    "liquid",
+    "klaviyo",
+    "braze",
+    "customer-io",
+    "hubspot",
+    "rfm",
+    "sql",
+    "holdout",
+    "incrementality",
+    "onboarding",
+    "win-back"
+  ]
+}

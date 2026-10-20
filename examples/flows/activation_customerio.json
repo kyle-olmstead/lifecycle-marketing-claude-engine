@@ -1,0 +1,236 @@
+{
+  "flow": "Activation: first shared report",
+  "platform": "customerio",
+  "analytics": "mixpanel",
+  "template_dialect": "customerio",
+  "lifecycle_stage": "signed_up to activated",
+  "objective": "share a first report within 9 days of signup (the data-derived activation window)",
+  "clv_lever": "lifespan",
+  "gate_required": "GREEN",
+  "trigger": {
+    "type": "event",
+    "definition": "signed_up",
+    "source_object": "track_events (Customer.io custom event signed_up, forwarded from the CDP)",
+    "re_entry": "off: one activation journey per person"
+  },
+  "entry_filters": [
+    {
+      "condition": "customer.lmm_holdout_activation is not true",
+      "evaluated": "entry_only"
+    },
+    {
+      "condition": "customer.created_at within the last 1 day (excludes backfilled signups)",
+      "evaluated": "entry_only"
+    }
+  ],
+  "ongoing_filters": [
+    {
+      "condition": "has not performed activation_reached",
+      "evaluated": "every_step"
+    },
+    {
+      "condition": "email_consent_at exists (email steps only)",
+      "evaluated": "every_step"
+    }
+  ],
+  "suppressions": [
+    "unsubscribed or hard bounced",
+    "already activated (activation_reached at any time)",
+    "invited by a teammate whose workspace is already activated (they get the invitee path)",
+    "active in the trial-expiring flow"
+  ],
+  "holdout": {
+    "percent": 10,
+    "persistent": true,
+    "unit": "account",
+    "assignment": "warehouse: lmm_holdout_activation = (abs(hash(workspace_id)) % 10 = 0), synced as a customer attribute before entry",
+    "sizing": "3,000 signups a month, 28% baseline activation within 9 days, 5-point lift. Randomized by workspace, so signups in one workspace are not independent: design effect 1.15 (ESTIMATE: 1.3 entrants per workspace and ICC 0.5, both unmeasured until workspace_id is confirmed; re-size when they are). 862 holdout signups, 2.9 months of entries plus the 9-day window: read at about 3.2 months (tools/stats.py feasible --outcome-window-days 9 --design-effect 1.15)",
+    "read": "causal, slow"
+  },
+  "frequency": {
+    "cap": "at most 1 lifecycle email per day and 3 per week across all flows; at most 1 in-app modal per session",
+    "quiet_hours": "email and push 08:00 to 20:00 recipient local; no SMS in this flow",
+    "priority": 2
+  },
+  "steps": [
+    {
+      "id": "welcome",
+      "wait": {
+        "type": "none"
+      },
+      "channel": "email",
+      "message": "Welcome: connect your first data source",
+      "goal": "onboarding_step_completed step=connected_data_source",
+      "requires": [
+        "email_consent"
+      ]
+    },
+    {
+      "id": "wait_connect",
+      "wait": {
+        "type": "until_event",
+        "event": "onboarding_step_completed (step = connected_data_source)",
+        "timeout": "P1D"
+      },
+      "channel": "none",
+      "message": "-",
+      "goal": "-",
+      "branch": {
+        "condition": "connected_data_source done",
+        "yes": "invite_teammate",
+        "no": "connect_assist"
+      }
+    },
+    {
+      "id": "connect_assist",
+      "wait": {
+        "type": "none"
+      },
+      "condition": "session_started in the last 30 minutes",
+      "channel": "in_app",
+      "message": "Modal: connect a source in two clicks",
+      "goal": "connected_data_source",
+      "branch": {
+        "condition": "user is in session",
+        "yes": "send modal",
+        "no": "connect_reminder"
+      }
+    },
+    {
+      "id": "connect_reminder",
+      "wait": {
+        "type": "until_time_local",
+        "local_time": "10:00"
+      },
+      "channel": "email",
+      "message": "Reminder: the one step before your first report",
+      "goal": "connected_data_source",
+      "requires": [
+        "email_consent"
+      ]
+    },
+    {
+      "id": "invite_teammate",
+      "wait": {
+        "type": "until_event",
+        "event": "onboarding_step_completed (step = invited_teammate)",
+        "timeout": "P2D"
+      },
+      "channel": "email",
+      "message": "Invite the person who asks you for the numbers",
+      "goal": "onboarding_step_completed step=invited_teammate",
+      "requires": [
+        "email_consent"
+      ],
+      "branch": {
+        "condition": "invited_teammate done within timeout",
+        "yes": "first_report",
+        "no": "first_report"
+      }
+    },
+    {
+      "id": "first_report",
+      "wait": {
+        "type": "until_event",
+        "event": "onboarding_step_completed (step = created_first_report)",
+        "timeout": "P2D"
+      },
+      "condition": "session_started in the last 30 minutes",
+      "channel": "in_app",
+      "message": "Modal: start from the weekly summary template",
+      "goal": "created_first_report"
+    },
+    {
+      "id": "data_ready_push",
+      "wait": {
+        "type": "until_event",
+        "event": "data_sync_completed",
+        "timeout": "P1D"
+      },
+      "condition": "mobile app installed",
+      "channel": "push",
+      "message": "Your data finished syncing",
+      "goal": "session_started",
+      "requires": [
+        "push_permission"
+      ]
+    },
+    {
+      "id": "human_help",
+      "wait": {
+        "type": "fixed",
+        "duration": "P7D"
+      },
+      "condition": "not activated 7 days after signup",
+      "channel": "email",
+      "message": "Plain text from a named onboarding lead: reply and I will set it up with you",
+      "goal": "reply, or activation_reached",
+      "requires": [
+        "email_consent"
+      ]
+    }
+  ],
+  "exit": {
+    "goal": "activation_reached",
+    "unenroll_immediately": true,
+    "then": "enter the post-activation flow (first week of value)"
+  },
+  "measurement": {
+    "primary_metric": "activated within 9 days of signup (Mixpanel funnel signed_up then activation_reached, 9-day conversion window, broken down by lmm_holdout_activation)",
+    "read_after": "862 holdout signups past their 9-day window (about 3.2 months at current volume; re-size once workspace size is measured); no read before",
+    "compared_against": "holdout",
+    "guardrails": [
+      "unsubscribe rate per send under 0.3%",
+      "spam complaints under 0.1%",
+      "support tickets per signup not rising"
+    ]
+  },
+  "data_dependencies": [
+    {
+      "name": "signed_up",
+      "kind": "event",
+      "status": "verified",
+      "fill_rate": 1.0
+    },
+    {
+      "name": "onboarding_step_completed.step",
+      "kind": "event",
+      "status": "verified",
+      "fill_rate": 1.0
+    },
+    {
+      "name": "activation_reached",
+      "kind": "event",
+      "status": "verified",
+      "fill_rate": null,
+      "note": "fires for 28% of mature signups within 9 days; 31% ever"
+    },
+    {
+      "name": "session_started",
+      "kind": "event",
+      "status": "verified",
+      "fill_rate": null
+    },
+    {
+      "name": "workspace_id",
+      "kind": "attribute",
+      "status": "unknown",
+      "fill_rate": null,
+      "note": "needed for account-level holdout assignment; confirm it is on the customer profile"
+    },
+    {
+      "name": "first_data_source",
+      "kind": "attribute",
+      "status": "unknown",
+      "fill_rate": null,
+      "note": "used in the invite email with a fallback; set server-side when connected_data_source fires"
+    },
+    {
+      "name": "data_sync_completed",
+      "kind": "event",
+      "status": "blocked",
+      "fill_rate": null,
+      "note": "not in the tracking plan; the data_ready_push step stays off until engineering emits it server-side when the first sync finishes"
+    }
+  ]
+}

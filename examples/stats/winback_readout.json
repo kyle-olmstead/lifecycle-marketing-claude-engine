@@ -1,0 +1,14 @@
+{
+  "flow": "Win-back: lapsed past own cycle",
+  "period": "entries 2026-04-01 to 2026-07-31, outcomes through 2026-09-29",
+  "design": "persistent_holdout",
+  "planned_holdout_share": 0.20,
+  "treatment": {"n": 8160, "conversions": 412, "revenue": 61800.00, "largest_transaction": 1950.00},
+  "holdout": {"n": 2040, "conversions": 82, "revenue": 11480.00},
+  "attributed_revenue": 41900.00,
+  "attribution_model": "Klaviyo flow attribution, 5-day click window",
+  "window_days": 60,
+  "window_reason": "the median inter-purchase interval for returning customers is 41 days, so 60 days covers a normal return",
+  "inter_purchase_days_p50": 41,
+  "caveats": ["a site-wide sale ran 2026-07-14 to 2026-07-20 and reached both arms equally (campaign sends were not suppressed for the holdout)"]
+}

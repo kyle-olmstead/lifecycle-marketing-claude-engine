@@ -1,0 +1,72 @@
+"""
+SMS length, encoding and segment count (modules/03 sms_push_modal_orchestrator).
+
+Carriers bill and deliver SMS in segments. A message that is all GSM-7 characters fits 160 per
+single segment and 153 per segment once concatenated. One character outside GSM-7 (a curly quote,
+an em dash, an emoji) switches the whole message to UCS-2: 70 single, 67 per concatenated segment,
+and emoji count as two units. This tool names the characters that forced the switch so they can be
+replaced.
+
+    python3 tools/sms.py "Northfield: your order shipped. Track it: https://nf.example.com/t/8KD2 Reply STOP to opt out."
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import re
+import sys
+from typing import Any, Dict, List, Optional
+
+GSM7_BASIC = set(
+    "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?"
+    "¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà"
+)
+GSM7_EXTENSION = set("^{}\\[~]|€\f")  # each costs two septets
+REPLACEMENTS = {chr(0x2018): "'", chr(0x2019): "'", chr(0x201C): '"', chr(0x201D): '"', chr(0x2013): "-", chr(0x2014): "-", chr(0x2026): "...", chr(0x00A0): " "}
+OPT_OUT = re.compile(r"\b(STOP|UNSUBSCRIBE|END|QUIT|CANCEL|OPTOUT|OPT OUT|REVOKE)\b", re.I)
+
+
+def analyze(text: str, brand: Optional[str] = None, first_message: bool = False) -> Dict[str, Any]:
+    non_gsm = sorted({ch for ch in text if ch not in GSM7_BASIC and ch not in GSM7_EXTENSION})
+    if not non_gsm:
+        units = sum(2 if ch in GSM7_EXTENSION else 1 for ch in text)
+        single, multi, encoding = 160, 153, "GSM-7"
+    else:
+        units = len(text.encode("utf-16-le")) // 2
+        single, multi, encoding = 70, 67, "UCS-2"
+    segments = 1 if units <= single else math.ceil(units / multi)
+    out: Dict[str, Any] = {
+        "encoding": encoding, "units": units, "segments": segments,
+        "limit_single": single, "limit_per_segment_concatenated": multi,
+        "non_gsm_characters": [{"char": c, "codepoint": f"U+{ord(c):04X}", "replace_with": REPLACEMENTS.get(c)} for c in non_gsm],
+        "checks": [],
+    }
+    if non_gsm and all(c in REPLACEMENTS for c in non_gsm):
+        fixed = "".join(REPLACEMENTS.get(c, c) for c in text)
+        alt = analyze(fixed)
+        out["checks"].append(f"every non-GSM character has a plain replacement; with them the message is GSM-7, {alt['units']} units, {alt['segments']} segment(s)")
+        out["gsm7_version"] = fixed
+    if not OPT_OUT.search(text):
+        out["checks"].append("no opt-out keyword: include 'Reply STOP to opt out' in the first message and periodically after (CTIA guidance)")
+    if brand and brand.lower() not in text.lower():
+        out["checks"].append(f"the sender is not identified: name '{brand}' in the message")
+    if first_message and not re.search(r"\b(HELP)\b", text):
+        out["checks"].append("first message: add 'Reply HELP for help' and message frequency per your 10DLC campaign registration")
+    if re.search(r"https?://(bit\.ly|tinyurl\.com|t\.co|goo\.gl|ow\.ly)/", text, re.I):
+        out["checks"].append("public link shortener: carriers filter shared shortener domains; use a branded short domain")
+    return out
+
+
+def _cli(argv: Optional[List[str]] = None) -> int:
+    ap = argparse.ArgumentParser(description="SMS encoding and segment count")
+    ap.add_argument("text")
+    ap.add_argument("--brand")
+    ap.add_argument("--first-message", action="store_true")
+    a = ap.parse_args(argv)
+    print(json.dumps(analyze(a.text, a.brand, a.first_message), indent=2, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(_cli())

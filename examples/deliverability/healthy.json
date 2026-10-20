@@ -1,0 +1,44 @@
+{
+  "case": "Healthy sender: aligned DKIM on its own domain, custom return-path, DMARC at reject, records observed.",
+  "observed_at": "2026-10-19",
+  "message_class": "marketing",
+  "headers": "Authentication-Results: mx.google.com; dkim=pass header.i=@example.org header.s=s2048 header.b=abc; spf=pass smtp.mailfrom=bounce@em.example.org; dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=example.org\nReturn-Path: <bounce@em.example.org>\nReceived: from mta.em.example.org by mx.google.com with ESMTPS id x1; Mon, 19 Oct 2026 09:00:00 -0700\nDKIM-Signature: v=1; a=rsa-sha256; d=example.org; s=s2048; h=from:to:subject:date:list-unsubscribe:list-unsubscribe-post; bh=x; b=y\nFrom: Example Org <hello@example.org>\nList-Unsubscribe: <https://em.example.org/u/abc>, <mailto:u@em.example.org>\nList-Unsubscribe-Post: List-Unsubscribe=One-Click\nSubject: October notes\n",
+  "dns": {
+    "example.org": {
+      "txt": [
+        "v=spf1 include:_spf.esp-mail.example.net -all"
+      ],
+      "dmarc": "v=DMARC1; p=reject; adkim=r; aspf=r; rua=mailto:dmarc@example.org",
+      "mta_sts": "v=STSv1; id=20261001T000000",
+      "tlsrpt": "v=TLSRPTv1; rua=mailto:tls@example.org",
+      "mx": [
+        "mx1.example.org"
+      ]
+    },
+    "em.example.org": {
+      "txt": [
+        "v=spf1 ip4:203.0.113.0/26 -all"
+      ]
+    }
+  },
+  "mta_sts_policies": {
+    "example.org": "version: STSv1\nmode: enforce\nmx: mx1.example.org\nmax_age: 604800\n"
+  },
+  "dkim_keys": {
+    "s2048._domainkey.example.org": "v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtzwb6l6DRPyvNbxVN/CYihJ3VtNvVCrB4LAn3FHdvvUdCv8FSvJ06TDqqIAxtgkKNkzICnheuaCWQ05GOX51sJp02SqtEKpxIMfXxczsYsUxRxDh0KbXfkqKIq4kGPcIJLNOD6KFeMuF/NFvk4jc/lJ5DvokTkCt6u2M5CXanfUycJVL+99wY2EP2mvtjsH6VXm+sIitzbtha75Q5b78XE71ng07GnflgvCMQmVFfTrKXzoS3S0qtlw0SwE5KlMif3N9TrOjg0TtsxPrxJ3TVWbdfvV/EZ+/OC3/vjaNegZxCUEWd5SN2ddHDwAECr+g1xloUW8V9Vnrf4kSxaGbIwIDAQAB"
+  },
+  "signals": {
+    "complaint_rate": 0.0004,
+    "hard_bounce_rate": 0.003,
+    "domain_reputation_bounces_90d": 0,
+    "filtered_share": 0.001,
+    "postmaster_spam_rate": 0.0005,
+    "postmaster_compliance": "pass",
+    "consumer_engagement_rate": 0.042,
+    "enterprise_engagement_rate": 0.035,
+    "unengaged_share": 0.12
+  },
+  "volume": {
+    "daily_to_gmail": 9000
+  }
+}

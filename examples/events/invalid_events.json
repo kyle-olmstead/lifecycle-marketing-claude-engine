@@ -1,0 +1,69 @@
+[
+  {
+    "event": {
+      "type": "track",
+      "event": "Signed Up",
+      "event_id": "ev_000201",
+      "user_id": "u_1",
+      "timestamp": "2026-10-01T00:00:00Z",
+      "properties": {}
+    },
+    "why_invalid": "event name not in the plan (Title Case instead of snake_case)"
+  },
+  {
+    "event": {
+      "type": "track",
+      "event": "onboarding_step_completed",
+      "event_id": "ev_000202",
+      "user_id": "u_1",
+      "timestamp": "2026-10-01T00:00:00Z",
+      "properties": {
+        "step": "connected_datasource",
+        "step_index": 1
+      }
+    },
+    "why_invalid": "step value not in the enumeration (typo)"
+  },
+  {
+    "event": {
+      "type": "track",
+      "event": "order_completed",
+      "event_id": "ev_000203",
+      "user_id": "u_1",
+      "timestamp": "2026-10-01T00:00:00Z",
+      "properties": {
+        "order_id": "o1",
+        "net_amount": 10,
+        "currency": "usd"
+      }
+    },
+    "why_invalid": "currency must be ISO 4217 upper case"
+  },
+  {
+    "event": {
+      "type": "track",
+      "event": "session_started",
+      "event_id": "ev_000204",
+      "timestamp": "2026-10-01T00:00:00Z",
+      "properties": {
+        "platform": "web"
+      }
+    },
+    "why_invalid": "no user_id or anonymous_id"
+  },
+  {
+    "event": {
+      "type": "track",
+      "event": "signed_up",
+      "event_id": "ev_000205",
+      "user_id": "u_1",
+      "timestamp": "2026-10-01T00:00:00Z",
+      "properties": {
+        "method": "email",
+        "plan": "starter",
+        "email": "a@example.com"
+      }
+    },
+    "why_invalid": "undeclared property (PII in event properties)"
+  }
+]

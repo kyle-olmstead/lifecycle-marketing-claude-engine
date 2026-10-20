@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LMM Engine context loader, version 2.0.0
+
+  Fill this once per client or brand and paste it (or attach it) at the start of a session, after
+  core/system_prompt.md. One file carries everything the modules need, so a session never starts by
+  re-explaining the stack.
+
+  Rules:
+  * Leave an element empty rather than guess. Empty means UNKNOWN; the engine will ask or label.
+  * label= says how you know: LIVE PULL (you queried it; give observed_at), SUPPLIED (from a doc or
+    a person, not checked), ESTIMATE (derived; say how in a note).
+  * required="true" marks fields at least one module cannot work without. The modules list which.
+  * Paste real values. Records and schemas can be pasted verbatim inside CDATA sections.
+  * Keep secrets out: API keys and tokens never belong in this file.
+
+  A filled example for a fictional company is in examples/context/ridgeview_context.xml.
+-->
+<lmm_context version="2.0.0">
+
+  <organization>
+    <brand_name required="true" label=""/>
+    <legal_name required="true" label=""/>
+    <postal_address required="true" label=""/>                 <!-- printed in every marketing email footer -->
+    <industry label=""/>
+    <business_model required="true" label=""/>                 <!-- ecommerce | subscription | sales_led_b2b | services | marketplace | episodic -->
+    <transaction_object required="true" label=""/>             <!-- the table that records money received: orders, paid invoices, payments, subscription periods -->
+    <customer_definition required="true" label=""/>            <!-- default: an account with at least one transaction on the transaction object -->
+    <buying_unit label=""/>                                    <!-- person | account; decides holdout randomization -->
+    <recipient_geography label=""/>                            <!-- shares of US, Canada, EU, other; changes the consent standard -->
+  </organization>
+
+  <voice_module label="">
+    <!-- Binding when present: it overrides the engine's stylistic instincts, including toward clever. -->
+    <sender_identities>
+      <sender role="marketing" from_name="" from_address="" reply_to=""/>
+      <sender role="person" from_name="" from_address="" reply_to=""/>
+    </sender_identities>
+    <register/>                                                <!-- e.g. plain, specific, second person, no exclamation marks -->
+    <vocabulary_inversion>
+      <!-- the nouns the reader uses versus the nouns the vendor uses -->
+      <pair never_write="" write_instead=""/>
+    </vocabulary_inversion>
+    <forbidden_phrases/>
+    <derived_from/>                                            <!-- if the voice was derived rather than supplied: from what, and its limits -->
+  </voice_module>
+
+  <stack>
+    <messaging_platform required="true" name="" template_dialect="" label=""/>
+    <!-- name: customerio | braze | klaviyo | hubspot | sfmc | other
+         template_dialect: customerio | customerio_legacy | braze | klaviyo | hubl | ampscript -->
+    <analytics name="" label=""/>                              <!-- mixpanel | amplitude | ga4 | other -->
+    <cdp name="" label=""/>                                    <!-- segment | rudderstack | none -->
+    <warehouse name="" sql_dialect="" label=""/>               <!-- snowflake | bigquery | postgresql -->
+    <crm name="" label=""/>
+    <sms provider="" registration_status="" label=""/>         <!-- e.g. 10DLC campaign registered and approved -->
+    <push sdk="" platforms="" label=""/>
+    <connected_in_claude/>                                     <!-- connectors available in this Claude workspace, comma separated -->
+  </stack>
+
+  <data>
+    <schemas>
+      <!-- Paste DDL or column lists with types for the tables the engine will query. -->
+      <table role="users" name="" label=""><![CDATA[]]></table>
+      <table role="orders" name="" label=""><![CDATA[]]></table>
+      <table role="track_events" name="" label=""><![CDATA[]]></table>
+    </schemas>
+    <fill_rates observed_at="" label="">
+      <!-- one line per field the engine filters or branches on: <field name="" rate=""/> -->
+    </fill_rates>
+    <tracking_plan ref="modules/02_behavioral_triggers_and_flows/schemas/custom_event_definitions.json" label=""/>
+    <consent>
+      <channel name="email" field="" fill_rate="" mechanism="" label=""/>
+      <channel name="sms" field="" fill_rate="" mechanism="" label=""/>
+      <channel name="push" field="" fill_rate="" mechanism="" label=""/>
+    </consent>
+    <identity_resolution label=""/>                            <!-- primary identifier, anonymous-to-known rule, merge rule -->
+  </data>
+
+  <deliverability>
+    <sending_domains label=""/>                                <!-- From domains and subdomains, one per line -->
+    <sending_inventory label=""/>                              <!-- every platform that sends as the domain, with its DKIM selector -->
+    <dns_records observed_at="" label=""><![CDATA[]]></dns_records>   <!-- dig output -->
+    <gate verdict="" assessed_at="" label=""/>                 <!-- from modules/01; GREEN | AMBER | RED -->
+    <volume daily_total="" daily_to_gmail="" daily_to_microsoft_consumer="" label=""/>
+    <engagement_tiers engaged_30d="" engaged_90d="" engaged_180d="" unengaged="" observed_at="" label=""/>
+  </deliverability>
+
+  <benchmarks>
+    <!-- The client's own history, not industry averages. Every rate states its basis. -->
+    <metric name="" value="" period="" bot_excluded="" attribution_model="" attribution_window_days="" label=""/>
+  </benchmarks>
+
+  <program>
+    <phase label=""/>                                          <!-- PRE-BUILD | REMEDIATION | BUILD | STEADY STATE -->
+    <flows>
+      <flow name="" platform_id="" entry_volume_30d="" holdout_percent="" status="" label=""/>
+    </flows>
+    <tests_running/>
+    <change_budget/>                                           <!-- e.g. up to three substantive changes a month -->
+  </program>
+
+  <constraints>
+    <frequency_cap/>                                           <!-- e.g. 1 lifecycle email a day, 3 a week, across all flows -->
+    <quiet_hours/>                                             <!-- in recipient local time, per channel -->
+    <approvals/>                                               <!-- who must approve copy, offers, or legal language -->
+    <do_not_contact/>                                          <!-- suppression lists and segments that never receive marketing -->
+  </constraints>
+
+  <environment>
+    <tools_available label=""/>                                <!-- true | false: whether the repository's Python checks can run here; false means every artifact is marked "unchecked" -->
+  </environment>
+
+  <task>
+    <request/>                                                 <!-- what you want from this session, in a sentence -->
+    <definition_of_done/>
+  </task>
+
+</lmm_context>
