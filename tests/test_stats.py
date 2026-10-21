@@ -107,3 +107,74 @@ def test_no_larger_holdout_suggested_when_already_at_25_percent():
 def test_fractional_interval_levels_are_not_rounded():
     doc = {"flow": "f", "period": "q", "alpha": 0.025, "treatment": {"n": 4000, "conversions": 480}, "holdout": {"n": 1000, "conversions": 100}}
     assert "97.5% CI" in S.render_incrementality(S.incrementality(doc))
+
+
+# ----------------------------------------------------------------------------------------------
+# the sizer never plans an arm the readout refuses (audit finding)
+# ----------------------------------------------------------------------------------------------
+
+def test_regression_sizer_approved_a_design_the_readout_refused():
+    """A large relative lift on a small baseline: power alone wants 267 holdout entrants at a 1% baseline, which is
+    2.67 expected conversions, and readout() refuses any arm below 5. The old feasibility() approved it."""
+    old = S.sample_size(0.01, 0.04, ratio=9, apply_readout_floor=False)
+    assert old["n_control"] == 267
+    expected_holdout_conversions = round(old["n_control"] * 0.01)
+    assert S.readout(round(old["n_treatment"] * 0.04), old["n_treatment"], expected_holdout_conversions, old["n_control"])["read"] == "not readable"
+
+    f = S.feasibility(400, 0.10, 0.01, mde_rel=3.0)
+    assert f["power_holdout_n"] == 267 and f["required_holdout_n"] == 500 and f["required_treatment_n"] == 4500
+    assert f["size_set_by"] == "readout floor" and "the floor, not power, set the size" in f["sizing_note"]
+    assert f["required_holdout_n"] * 0.01 >= S.MIN_EVENTS_FOR_LIFT and f["required_holdout_n"] >= S.MIN_ARM_FOR_LIFT
+    # at the expected counts the planned design is now readable
+    r = S.readout(round(f["required_treatment_n"] * 0.04), f["required_treatment_n"], round(f["required_holdout_n"] * 0.01), f["required_holdout_n"])
+    assert r["read"] != "not readable" and "diff_ci" in r
+    # and the output is honest that 5 expected events is still a coin flip on being readable
+    assert f["p_readable"] < 0.9 and "chance an arm ends below 5 conversions" in f["readable_note"]
+
+
+def test_sample_size_applies_the_floor_and_says_so():
+    tiny = S.sample_size(0.005, 0.05)
+    assert (tiny["power_n_control"], tiny["n_control"], tiny["n_treatment"]) == (207, 1000, 1000)
+    assert tiny["size_set_by"] == "readout floor" and "sizing_note" in tiny
+    usual = S.sample_size(0.10, 0.12)
+    assert usual["size_set_by"] == "power" and usual["n_control"] == usual["power_n_control"] == 3841 and usual["p_readable"] > 0.999
+    # the treatment arm is sized for the lower rate when the treatment could lower conversion
+    down = S.readout_floor(0.10, 0.02, ratio=1.0)
+    assert down["n_treatment"] == 250 and down["n_control"] == 250
+
+
+def test_every_feasibility_plan_clears_the_readout_floor():
+    for entries in (50, 400, 3000):
+        for share in (0.05, 0.10, 0.25):
+            for base in (0.002, 0.01, 0.05, 0.3):
+                for rel in (0.2, 1.0, 4.0):
+                    if base * (1 + rel) >= 1:
+                        continue
+                    f = S.feasibility(entries, share, base, mde_rel=rel)
+                    n_c, n_t = f["required_holdout_n"], f["required_treatment_n"]
+                    assert min(n_c, n_t) >= S.MIN_ARM_FOR_LIFT
+                    assert n_c * base >= S.MIN_EVENTS_FOR_LIFT - 1e-9 and n_t * min(base, base * (1 + rel)) >= S.MIN_EVENTS_FOR_LIFT - 1e-9
+
+
+def test_cluster_aware_feasibility_counts_accounts():
+    f = S.feasibility(3000, 0.10, 0.28, mde_abs=0.05, design_effect=1.15, mean_cluster_size=4)
+    assert f["required_holdout_n"] == 862 and f["required_holdout_clusters"] == 216
+    few = S.feasibility(3000, 0.10, 0.5, mde_abs=0.3, mean_cluster_size=8)
+    assert few["required_holdout_clusters"] >= S.MIN_CLUSTERS_PER_ARM and few["size_set_by"] == "readout floor"
+
+
+def test_mde_is_withheld_when_the_arms_would_be_refused():
+    m = S.minimum_detectable_effect(40, 360, 0.05)
+    assert m["mde_abs"] is None and "refuses" in m["note"]
+
+
+@pytest.mark.parametrize("q, df, expected", [   # published t-table values
+    (0.975, 1, 12.706), (0.975, 5, 2.571), (0.975, 10, 2.228), (0.975, 30, 2.042), (0.995, 3, 5.841), (0.95, 20, 1.725)])
+def test_t_quantiles_match_published_tables(q, df, expected):
+    assert abs(S.t_ppf(q, df) - expected) < 5e-4
+    assert abs(S.t_cdf(S.t_ppf(q, df), df) - q) < 1e-9
+
+
+def test_binomial_tail_is_exact():
+    assert abs(S.binom_prob_at_least(5, 10, 0.5) - 638 / 1024) < 1e-12
+    assert S.binom_prob_at_least(5, 4, 0.9) == 0.0 and S.binom_prob_at_least(0, 3, 0.1) == 1.0
