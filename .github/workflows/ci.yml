@@ -38,6 +38,10 @@ jobs:
         run: |
           python -m agents.orchestrator revise --run out/ridgeview_winback_14d --set touches=4 --out out > /dev/null
           python -m agents.orchestrator status --run out/ridgeview_winback_14d
+      - name: Every question in the question bank reaches its job, and priorities rank on the sample data
+        run: |
+          python tools/question_bank.py
+          lcm "what are my top 3 priority builds today and why?" --data tests/fixtures --out out > /dev/null
       - name: Schemas in schemas/ match the Pydantic contracts
         run: |
           python tools/contracts.py --write-schemas > /dev/null

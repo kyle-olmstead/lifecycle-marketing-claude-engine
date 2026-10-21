@@ -4,7 +4,7 @@
 
 **If you read nothing else:**
 - Describe a campaign in one sentence, the way you would to a colleague. It comes back with everything needed to launch it: who gets it, every message written in your email platform's own code, the timing, a legal and inbox check, and an honest plan for proving whether it worked.
-- Every morning it checks that your emails can still reach the inbox and that your customer lists are healthy, and it raises a flag the day something breaks, not the month after.
+- Every morning it tells you the three things most worth building next, ranked from your own data with the reason and the likely revenue for each, and it checks that your emails still reach the inbox, raising a flag the day something breaks rather than the month after.
 - It never sends a message or changes your systems without a person approving it. It is free, open source, and a marketer can install it in about fifteen minutes. A sample company is included so you can watch it work before connecting anything.
 
 ---
@@ -61,7 +61,8 @@ This engine does that work, checks it, and keeps checking every morning.
 3. **Checks the law before anyone presses send.** A compliance review of every plan against the rules where your customers live: US email and texting law (including the stricter state texting laws), Canada, the UK, the EU, Germany and Australia, plus the mailbox providers' own rules. Every rule cites its source. A missing legal requirement blocks the plan.
 4. **Keeps your email in the inbox.** It looks up your domain's authentication records live, reads real email headers, and issues a GREEN, AMBER or RED sending gate with the exact fixes. It finds the people who have stopped engaging and takes them out of marketing sends (reversibly), because they are what pulls a sender into spam.
 5. **Tells you what actually worked.** Every flow ships with a holdout group sized so the result can be read, and a date when it can. Results report three numbers side by side: what the platform credited, what the flow truly added, and the gap.
-6. **Watches every day.** At 05:00 UTC it audits each live flow's audience for anything unusual, rebuilds the engagement picture, checks each sending domain, logs it all to a Google Sheet, and opens a ticket for each problem it finds.
+6. **Tells you what to build next.** Ask "what are my top 3 priority builds today and why?" or just read the morning check. It looks for the opportunities your data shows (new users stalling at an onboarding step, customers lapsing with no flow to catch them, first-time buyers who never order again, a newsletter reaching people too late) and ranks them by likely monthly revenue, how much data stands behind the estimate, and how much work the build is. Problems that would undercut every build, like a list going stale, come first. Each idea comes with its evidence and the one command that turns it into a full plan.
+7. **Watches every day.** At 05:00 UTC it ranks the day's priorities, audits each live flow's audience for anything unusual, checks that the events your flows depend on are still arriving, rebuilds the engagement picture, checks each sending domain, logs it all to a Google Sheet, and opens a ticket for each problem it finds.
 
 **What it will never do:** send a message · change a platform or a list without your approval · state a number it can't trace to your data · call a result proven when the sample is too small · give legal sign-off (it flags questions for your counsel).
 
@@ -167,6 +168,10 @@ Details, and the path for every tool without a connector: [`CONNECTORS.md`](CONN
 | Say… | What happens |
 |---|---|
 | "set up the lifecycle engine" | Finds your connected tools and configures itself |
+| **"what are my top 3 priority builds today and why?"** | The builds most worth doing next, from your data: the evidence, a monthly revenue range with its assumptions, confidence, effort, and the command to plan it |
+| "what broke overnight?" | The morning check: priorities, anything unusual in a flow's audience, the list, every sending domain |
+| "are our events firing correctly?" | Every tracked event against its usual week, missing properties, and the flows at risk |
+| "when do customers stop using the product, by plan?" | The weekly retention curve, where it drops and where it levels off, per segment |
 | "plan a 5-touch win-back for users who haven't created a report in 14 days" | The full plan: audience, flow, copy, holdout, compliance review, build steps |
 | "make it 4 touches" / "add SMS" / "go with variant B for the first email" | Changes only what that affects; keeps approved copy |
 | "check our deliverability" / "check deliverability for example.com" | Live lookup of your domain's records, the sending gate, the exact DNS fixes |
@@ -177,7 +182,7 @@ Details, and the path for every tool without a connector: [`CONNECTORS.md`](CONN
 | "how many people do we need to test this?" | Test and holdout sizing, and how long the test must run |
 | "write the welcome email for Klaviyo" | Copy in Klaviyo's template language, checked |
 
-Every one ends the same way: it shows what it found and what it would build. Nothing is sent or changed until you say yes, and even then the engine hands you files and instructions; it has no way to send a message.
+These are a sample. The [question bank](docs/QUESTION_BANK.md) lists 25 questions by cadence (daily, weekly, monthly, quarterly, annual), each with what you get, the data it needs, and what it cannot answer. Every one ends the same way: it shows what it found and what it would build. Nothing is sent or changed until you say yes, and even then the engine hands you files and instructions; it has no way to send a message.
 
 ---
 
@@ -185,7 +190,7 @@ Every one ends the same way: it shows what it found and what it would build. Not
 
 | When | Who | What | Time |
 |---|---|---|---|
-| **Every morning** | Automatic | The 05:00 UTC check: every live flow's audience, engagement, every sending domain. Results in a Google Sheet; a ticket for each problem | 2 min to read |
+| **Every morning** | Automatic | The 05:00 UTC check: today's top 3 priorities, every live flow's audience, engagement, every sending domain. Results in a Google Sheet; a ticket for each problem | 2 min to read |
 | **Before any new flow** | Lifecycle marketer | Plan it from a sentence, answer the "confirm before you build" list, approve the copy | 30 min |
 | **Before a big send or a new domain** | Marketer or ops | "check our deliverability"; fix anything RED first | 15 min |
 | **Weekly** | Marketing lead | Clear the open tickets; review the sunset list before it syncs | 15 min |
@@ -223,7 +228,7 @@ The morning check on the same data finds that 62% of the people Ridgeview can st
 
 ## 11. For bigger teams: the daily check
 
-The same engine runs as a scheduled job (GitHub Actions, 05:00 UTC every day) against your warehouse or exported files: every flow listed in `briefs/active/`, the engagement tiers, every sending domain. It writes six tabs to a Google Sheet (campaign plans, cohort health, benchmarks, anomalies, engagement, deliverability), opens one GitHub issue per problem, and comments on it while it stays open. With nothing configured it runs on the sample data, so you can see the output first. Setup needs an engineer for about a day: [`docs/quickstart_for_marketers.md`](docs/quickstart_for_marketers.md), section 7, and the top of [`.github/workflows/daily_cohort_audit.yml`](.github/workflows/daily_cohort_audit.yml).
+The same engine runs as a scheduled job (GitHub Actions, 05:00 UTC every day) against your warehouse or exported files: every flow listed in `briefs/active/`, the engagement tiers, every sending domain. It writes seven tabs to a Google Sheet (priorities, campaign plans, cohort health, benchmarks, anomalies, engagement, deliverability), opens one GitHub issue per problem, and comments on it while it stays open. With nothing configured it runs on the sample data, so you can see the output first. Setup needs an engineer for about a day: [`docs/quickstart_for_marketers.md`](docs/quickstart_for_marketers.md), section 7, and the top of [`.github/workflows/daily_cohort_audit.yml`](.github/workflows/daily_cohort_audit.yml).
 
 ---
 
@@ -232,20 +237,21 @@ The same engine runs as a scheduled job (GitHub Actions, 05:00 UTC every day) ag
 ```text
 lifecycle-marketing-claude-engine/
 ├── agents/          the teammate: a resumable pipeline (Analyst, Strategist, Architect, Copywriter,
-│                    Experiment, QA, Compliance), engagement tiers, and lcm, the plain-English front door
+│                    Experiment, QA, Compliance), today's priorities, engagement tiers, tracking health,
+│                    the retention curve, and lcm, the plain-English front door
 ├── tools/           deterministic checks: deliverability and live DNS, warm-up, statistics, template
 │                    and SQL linting, SMS segments, ESP request bodies, typed input contracts
 ├── scripts/         the daily job, Google Sheets sync, Segment and GA4 event receiver, flow simulator, MCP server,
 │                    and the ROI calculator
 ├── modules/         the method as prompts: deliverability, flows, copy, SQL, experimentation
 ├── skills/          seven Claude plugin skills that route requests to the above
-├── config/          compliance rules (each with its source), ESP request schemas, MCP servers
+├── config/          compliance rules (each with its source), ESP request schemas, MCP servers, the question bank
 ├── schemas/         machine-readable contracts: flow spec and every tool input
 ├── briefs/          the campaign brief template, an example, and active/ for live flows
 ├── examples/        a complete worked example and sample inputs (fictional companies)
-├── docs/            the business case (ROI memo), architecture, the v2.2 audit, SQL conventions, template
-│                    cheat sheet, operations guide
-└── tests/           306 checks CI runs on every change, including a real PostgreSQL 16
+├── docs/            the question bank, the business case (ROI memo), architecture, the v2.2 audit, SQL
+│                    conventions, template cheat sheet, operations guide
+└── tests/           320 checks CI runs on every change, including a real PostgreSQL 16
 ```
 
 | Tool | What it computes |

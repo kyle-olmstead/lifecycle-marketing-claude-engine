@@ -44,6 +44,8 @@ TEAMMATE_TREE = [
     "tools/dns_collect.py", "tools/contracts.py", "scripts/daily.py", "config/compliance_rules.json", "pyproject.toml",
     "schemas/deliverability_input.schema.json", "schemas/readout_input.schema.json", "schemas/warmup_tiers.schema.json",
     "tests/fixtures/message_events.csv", "docs/AUDIT.md", "briefs/active/README.md", "docs/ROI_MEMO.md", "scripts/roi_model.py",
+    "agents/priorities.py", "agents/tracking.py", "agents/retention.py", "config/question_bank.yaml", "docs/QUESTION_BANK.md",
+    "tools/question_bank.py",
 ]
 
 
@@ -92,8 +94,8 @@ def test_versions_agree():
     market = json.loads((ROOT / ".claude-plugin/marketplace.json").read_text())
     pyproject = re.search(r'^version = "([^"]+)"', (ROOT / "pyproject.toml").read_text(), re.M).group(1)
     versions = {a, t, plugin, pyproject, market["metadata"]["version"] if "metadata" in market else a, *[p["version"] for p in market["plugins"]]}
-    assert versions == {"2.2.0"}, versions
-    assert "## 2.2.0" in (ROOT / "CHANGELOG.md").read_text()
+    assert versions == {"2.3.0"}, versions
+    assert "## 2.3.0" in (ROOT / "CHANGELOG.md").read_text()
 
 
 def test_new_cli_entry_points_run(tmp_path):

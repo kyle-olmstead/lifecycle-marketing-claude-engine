@@ -5,13 +5,15 @@ description: >
   "build a 5-touch win-back flow for users who haven't done X in 14 days", "plan a campaign",
   "fill in a campaign brief", "turn this brief into a flow", "end-to-end lifecycle plan"; when they
   want to change, approve or resume a plan ("make it 4 touches", "approve variant B", "it failed,
-  try again"); or for the daily health check, engagement tiers and sunset lists, calendar blast vs
-  trigger comparisons, and live domain checks ("audit our cohort", "who should we stop mailing",
-  "is our newsletter worth keeping", "check our DMARC"). Runs the teammate's pipeline (Analyst,
+  try again"); when they ask what to build ("what are my top 3 priority builds today and why?",
+  "what should I build next", "campaign ideas"); or for the daily health check, engagement tiers and
+  sunset lists, tracking health, the retention curve, calendar blast vs trigger comparisons, and live
+  domain checks ("what broke overnight", "are our events firing", "when do customers stop using
+  the product", "who should we stop mailing", "is our newsletter worth keeping", "check our DMARC"). Runs the teammate's pipeline (Analyst,
   Strategist, Architect, Copywriter, Experiment, QA, Compliance) and returns a build-ready plan with
   SQL, a schema-valid flow spec, linted copy, a sized holdout and a compliance review.
 metadata:
-  version: "2.2.0"
+  version: "2.3.0"
 ---
 
 # Lifecycle teammate
@@ -28,6 +30,25 @@ every artifact "unchecked".
 routes a plain-English request (or a YAML job file) to the right tool. Run it with `--dry-run` first
 when the request is ambiguous: it prints the job and anything still missing, and runs nothing. The
 sections below are the same jobs called directly, for when you need their options.
+
+## What to build next
+
+When the user asks what to build, what their priorities are, or for campaign ideas, run:
+
+```text
+python3 ${CLAUDE_PLUGIN_ROOT}/agents/priorities.py --data <exports> --top 3 --out <workdir>/lmm-engine [--value-per-conversion <dollars>]
+```
+
+- Lead with the ranked list as written: fixes first, then builds, each with its evidence, the monthly range with
+  the assumptions, confidence, effort and the next step. Never present the range as a forecast; the lift is assumed.
+- If the user knows what one conversion is worth, ask for it and pass `--value-per-conversion`; the default is an
+  estimate from their orders.
+- Offer to plan the top build: each build has a ready brief under `<workdir>/lmm-engine/priorities/`; plan it with
+  Step 2.
+
+Every other question a lifecycle manager asks, by cadence, with the job or skill that answers it and what it cannot
+answer, is in `${CLAUDE_PLUGIN_ROOT}/config/question_bank.yaml` (readable version: `docs/QUESTION_BANK.md`). Match
+the user's question to the closest entry and follow its route; say plainly when an entry's limits apply.
 
 ## Step 1: Get a brief
 
@@ -89,6 +110,8 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/daily.py --data <exports> --domains <examp
 python3 ${CLAUDE_PLUGIN_ROOT}/agents/engagement.py --data <exports> [--platform klaviyo|hubspot|braze|customerio] --out <workdir>/lmm-engine/engagement
 python3 ${CLAUDE_PLUGIN_ROOT}/agents/cohort_analyst.py blast-vs-trigger --brief <brief.yaml> --data <exports> [--dates 2026-09-01,2026-10-01]
 python3 ${CLAUDE_PLUGIN_ROOT}/tools/dns_collect.py <domain> [--selectors s1,s2] --analyze --markdown
+python3 ${CLAUDE_PLUGIN_ROOT}/agents/tracking.py --data <exports> [--events-dir <receiver folder>]
+python3 ${CLAUDE_PLUGIN_ROOT}/agents/retention.py --data <exports> [--by plan|country|lifecycle_stage]
 ```
 
 - The daily job audits every brief in `briefs/active/`; `summary.md` is the report and `status.json`

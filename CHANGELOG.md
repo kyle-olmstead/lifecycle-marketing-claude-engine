@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.3.0 (2026-10)
+
+**It tells you what to build next.** Ask "what are my top 3 priority builds today and why?", or read the top of the
+morning check, which answers it every day.
+
+- `agents/priorities.py`: opportunities found in your data (an onboarding step where new users stall, customers
+  lapsing with no flow to catch them, first-time buyers who never order again, a newsletter reaching people late),
+  each sized as people a month x the measured baseline x an assumed lift range x the value of a conversion, and
+  ranked by that value, the data behind it and the effort. Fixes that cap every build (a RED domain, a RED list,
+  data that stopped arriving) come first. Each build ships with a ready brief and the command to plan it.
+- `agents/tracking.py`: every tracked event's last 7 days against its usual week, required properties going
+  missing, events arriving off the plan, the live flows at risk, and the webhook receiver's quarantine reasons.
+- `agents/retention.py`: the weekly retention curve on the core action, with the cliff (only when bigger than
+  chance) and the floor, by plan, country or lifecycle stage.
+- The question bank (`config/question_bank.yaml`, `docs/QUESTION_BANK.md`): 25 questions a lifecycle manager asks
+  daily, weekly, monthly, quarterly and yearly, each with what you get, the data it needs, and what it cannot
+  answer. CI checks that every question reaches its job.
+- `lcm` understands those questions: new jobs `priorities`, `daily`, `tracking`, `retention` and `roi`. The daily
+  job opens with the priorities and writes a Priorities tab; the MCP server gains a `priorities` tool.
+
 ## 2.2.0 (2026-10)
 
 **An engine that runs itself.** In plain English: plans now survive failures and edits, every plan is

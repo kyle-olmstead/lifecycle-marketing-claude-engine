@@ -159,6 +159,29 @@ latest complete day against the trailing 28 days: `0.6745 (x - median) / MAD`, f
 data, and silent on series too small to judge (median under 5). Data older than two days is its
 own finding: a stalled pipeline looks like a churn spike otherwise.
 
+## 4a. Today's priorities, and the question bank
+
+`agents/priorities.py` answers "what should I build next?" from the data, and the daily job runs it first.
+
+| Candidate | Found when | Sized as |
+|---|---|---|
+| Activation flow aimed at the largest onboarding leak | no live activation brief for the core action | new signups a month x share reaching the core action unaided x lift |
+| Win-back | no live win-back brief for the core action | threshold crossings a month x share returning unaided in 30 days x lift; the calendar-send comparison is attached as evidence |
+| Post-purchase second order | at least 20 matured first-time buyers | new customers a month x share ordering again within 60 days x lift x average order value |
+| Fix: domain RED, list RED, data stalled | the deliverability check, engagement tiers or the audit say so | not sized: listed first, because no build pays while they stand |
+
+Audience and baseline come from the Analyst's own estimates (`cohort_analyst.define`), so a priority and the plan it
+becomes use the same numbers. The lift is a range, 10 to 25 percent relative by default (the effects the engine
+plans tests to detect), and the value of a conversion is supplied or estimated from orders, labeled either way.
+Ranking is mid-range monthly value x confidence weight (high 1.0, medium 0.7, low 0.4) / effort weight (S 1.0, M
+1.5, L 2.0), with fixes pinned above. Each build gets a ready brief, so the next step is one command.
+
+`config/question_bank.yaml` lists 25 questions by cadence; each names the `lcm` job or skill that answers it and
+what it cannot answer. `tools/question_bank.py` checks that every routed question reaches its job and writes
+`docs/QUESTION_BANK.md`. Two jobs exist mainly for it: `agents/tracking.py` (events arriving, complete and on the
+plan, against their usual week) and `agents/retention.py` (the weekly retention curve, with a cliff only when the
+drop exceeds about two standard errors).
+
 **DKIM selectors probed by default** (`tools/dns_collect.py SELECTOR_SOURCES`), read from each
 provider's setup documentation on 2026-10-20: Google Workspace `google`; Microsoft 365 `selector1`,
 `selector2`; Klaviyo static CNAMEs `km1`, `km2`, `kt1`, `kt2`, `ks1`, `ks2` and legacy `kl1`, `kl2`;

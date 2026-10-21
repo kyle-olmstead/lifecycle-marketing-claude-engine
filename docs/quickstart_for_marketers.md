@@ -15,7 +15,21 @@
 
 ## 2. Say what you want
 
-Any of these works as a first message:
+Not sure what to build? Start here:
+
+```text
+What are my top 3 priority builds today and why?
+```
+
+The engine reads your data for opportunities (new users stalling in onboarding, customers lapsing with no flow
+to catch them, first-time buyers who never order again, a newsletter reaching people too late), ranks them by
+likely monthly revenue, the data behind the estimate and the work involved, and puts anything that would undercut
+every build first. Each comes with its evidence, a revenue range with the assumptions spelled out, and the one
+command that turns it into a full plan. The morning check (section 7) answers the same question every day without
+being asked. For everything else a lifecycle manager asks daily, weekly, monthly, quarterly and yearly, see the
+[question bank](QUESTION_BANK.md).
+
+Or describe a campaign directly. Any of these works as a first message:
 
 ```text
 Plan a 5-touch win-back flow for Acme users who completed onboarding but haven't created a report in 14 days. We use Customer.io.
@@ -38,6 +52,7 @@ example `feature_used` with `feature = reports`). Then it builds the plan.
 Type what you want, the way you would say it:
 
 ```text
+lcm "what are my top 3 priority builds today and why?" --data exports/
 lcm "plan a 5-touch win-back for users who completed onboarding but haven't created a report in 14 days" --product Acme
 lcm "check deliverability for example.com"
 lcm "build the engagement tiers and the sunset list" --data exports/ --platform klaviyo
@@ -169,11 +184,13 @@ Customer.io, BigQuery, Snowflake and Google Sheets, so Claude can read your real
 ## 7. The daily health check
 
 Every morning at 05:00 UTC, `.github/workflows/daily_cohort_audit.yml` runs `scripts/daily.py`. It
-checks the cohort behind every flow in `briefs/active/`, sorts your email audience into engagement
-tiers, looks up each sending domain's authentication records, and logs it all to a Google Sheet:
+ranks today's top 3 priorities, checks the cohort behind every flow in `briefs/active/`, sorts your email
+audience into engagement tiers, looks up each sending domain's authentication records, and logs it all to a
+Google Sheet. The summary opens with the priorities:
 
 | Tab | One row per | Shows |
 |---|---|---|
+| Priorities | ranked item per day | the fix or build, why, the monthly revenue range, confidence, effort, and the next step |
 | Cohort Health | flow per day | qualified people by risk band (active, at risk, lapsed), the biggest onboarding leak, data freshness |
 | Benchmarks | metric per day | signups, active users, core-action users, orders and threshold crossings against their 28-day median |
 | Anomalies | finding | anything unusual, in a sentence |

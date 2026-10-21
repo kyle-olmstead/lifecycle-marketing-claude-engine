@@ -15,7 +15,9 @@ What it does, in order. Each step is independent: one that fails is recorded and
      gate's input. Skipped, not failed, when the data has no message_events table.
   3. For each domain in --domains (or LCM_DOMAINS), a live DNS pull (tools/dns_collect.py) and the
      deliverability analysis, with today's unengaged share as a signal.
-  4. One Sheets sync with everything (scripts/sheets_sync.py; CSV files when no sheet is configured).
+  4. Today's priorities (agents/priorities.py): the builds most worth doing next, ranked from the data, with fixes that
+     cap everything else first. They open summary.md and fill the Priorities tab. File data only (demo or url mode).
+  5. One Sheets sync with everything (scripts/sheets_sync.py; CSV files when no sheet is configured).
 
 Data modes: demo (tests/fixtures), url (a folder or https prefix with .parquet or .csv exports), and
 bigquery (the audit and tier SQL run in your warehouse through the bq command line; only aggregates
@@ -165,7 +167,9 @@ def run(mode: str = "demo", data: Optional[str] = None, briefs_dir: Path = ROOT 
     out.mkdir(parents=True, exist_ok=True)
     logged_at = _now()
     status: Dict[str, Any] = {"generated_at": logged_at, "mode": mode, "notes": [], "flows": [], "engagement": None,
-                              "deliverability": [], "errors": [], "sheets": None}
+                              "deliverability": [], "priorities": None, "errors": [], "sheets": None}
+    eng_summary: Optional[Dict[str, Any]] = None
+    analyses: Dict[str, Dict[str, Any]] = {}
     md: List[str] = [f"# Daily lifecycle health, {logged_at[:10]}", "", f"Data: {mode}" + (f" ({cohort_analyst.data_label(data)})" if data else ""), ""]
     issues: List[Dict[str, Any]] = []
     audits: List[Dict[str, Any]] = []
@@ -198,6 +202,7 @@ def run(mode: str = "demo", data: Optional[str] = None, briefs_dir: Path = ROOT 
             status["engagement"] = {"status": "skipped", "reason": "no message_events in the data"}
             md += ["## Engagement tiers", "", "Skipped: the data has no message_events table (docs/SQL_SCHEMA_CONVENTIONS.md).", ""]
         else:
+            eng_summary = summary
             status["engagement"] = {"status": "ok", "as_of": summary["as_of"], "unengaged_share": summary["unengaged_share"], "gate_band": summary["gate_band"]}
             signals["unengaged_share"] = summary["unengaged_share"]
             sheets_sync._merge(extra, sheets_sync.engagement_rows(summary, logged_at=logged_at))
@@ -220,6 +225,7 @@ def run(mode: str = "demo", data: Optional[str] = None, briefs_dir: Path = ROOT 
             md += [f"## Deliverability: {domain}: lookup failed", "", f"`{_error(e)}`", ""]
             continue
         r = res["analysis"]
+        analyses[domain] = r
         status["deliverability"].append({"domain": domain, "status": "ok", "gate": r["gate"]["verdict"],
                                          "critical": sum(1 for f in r["findings"] if f["severity"] == "critical")})
         sheets_sync._merge(extra, sheets_sync.deliverability_rows(r, res["as_of"] or logged_at[:10], logged_at))
@@ -227,6 +233,24 @@ def run(mode: str = "demo", data: Optional[str] = None, briefs_dir: Path = ROOT 
         if r["gate"]["verdict"] == "RED":
             issues.append({"title": f"Deliverability RED: {domain}", "label": "deliverability", "body_path": str(out / "deliverability" / f"{domain}.md")})
 
+    if mode == "bigquery":
+        status["priorities"] = {"status": "skipped", "reason": "priorities read file data; run them with --data on an export"}
+    else:
+        from agents import priorities
+        from agents.brief import load_brief
+        try:
+            live = [] if note else [load_brief(p) for p in briefs]
+            pr = priorities.run(data, briefs=[load_brief(p) for p in briefs], live=live, top=3, audits=audits, engagement=eng_summary,
+                                deliverability=analyses, out=out)
+            section = priorities.render(pr)
+            (out / "priorities.md").write_text(section, encoding="utf-8")
+            (out / "priorities.json").write_text(json.dumps(priorities.to_json(pr), indent=2, default=str), encoding="utf-8")
+            status["priorities"] = {"status": "ok", "top": [o.title for o in pr["top"]]}
+            sheets_sync._merge(extra, sheets_sync.priority_rows(priorities.to_json(pr), logged_at))
+            md[4:4] = [section, ""]           # right under the title: what to do today comes first
+        except Exception as e:  # noqa: BLE001
+            status["priorities"] = {"status": "error", "error": _error(e)}
+            status["errors"].append(f"priorities: {_error(e)}")
     if sheet:
         try:
             status["sheets"] = sheets_sync.sync(audits=audits, extra=extra, dry_run=dry_run, out=out / "sheets")
@@ -268,7 +292,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         traceback.print_exc()
         return 2
     print((Path(a.out) / "summary.md").read_text(encoding="utf-8"))
-    print(json.dumps({k: status[k] for k in ("mode", "flows", "engagement", "deliverability", "errors", "issues")}, indent=2, default=str))
+    print(json.dumps({k: status[k] for k in ("mode", "flows", "engagement", "deliverability", "priorities", "errors", "issues")}, indent=2, default=str))
     return 1 if (a.strict and status["errors"]) else 0
 
 

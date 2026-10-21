@@ -40,7 +40,7 @@ server = MCPServer(
     name="lcm-teammate", version=__version__,
     instructions=("Lifecycle marketing teammate from the LMM Engine. Use draft_brief when the request is vague and the marketer should confirm "
                   "assumptions; plan_campaign to produce a build-ready plan; revise_plan to change one thing in a plan (unchanged copy and "
-                  "approvals are kept); approve_variant to record the copy to ship; audit_cohort for a cohort health check; "
+                  "approvals are kept); approve_variant to record the copy to ship; priorities for what to build next and why; audit_cohort for a cohort health check; "
                   "engagement_tiers for who has stopped engaging; check_domain for a sending domain's live authentication records; "
                   "simulate_flow to dry-run a flow spec. Always show the plan's status, its 'Confirm before you build' list and any "
                   "compliance line that is not PASS. Nothing is sent to any platform by these tools."),
@@ -104,6 +104,18 @@ def engagement_tiers(data_dir: str, as_of: Optional[str] = None) -> str:
     except (ValueError, FileNotFoundError) as e:
         return f"Could not build tiers: {e}"
     return engagement.render(r["summary"])
+
+
+@server.tool()
+def priorities(data_dir: str, top: int = 3, value_per_conversion: Optional[float] = None) -> str:
+    """Today's top builds, ranked from the data with their why, size, confidence and effort; fixes that cap everything
+    else come first. Use for "what should I build next?", "what are my top 3 priorities today?", or campaign ideas."""
+    from agents import priorities as prio
+    try:
+        r = prio.run(data_dir, top=top, value=value_per_conversion, out=OUT)
+    except (ValueError, FileNotFoundError) as e:
+        return f"Could not rank priorities: {e}"
+    return prio.render(r)
 
 
 @server.tool()

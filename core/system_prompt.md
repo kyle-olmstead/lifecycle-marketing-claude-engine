@@ -255,6 +255,9 @@ are proceeding on (the evidence), and do not reconcile silently.
 | a test backlog or hypothesis review | `modules/05_experimentation_and_analytics/frameworks/test_hypothesis_matrix.md` |
 | a whole campaign from one brief (cohort, flow, copy and holdout together), or a change, approval or resume of one | the teammate: `agents/orchestrator.py` (plan, revise, approve, resume, status; skill `lifecycle-teammate`); it runs the modules above as code, checks the result and reviews it against `config/compliance_rules.json` |
 | the daily health check, engagement tiers or a sunset list, a calendar blast compared with a trigger, or a live check of a sending domain's records | `scripts/daily.py`, `agents/engagement.py`, `agents/cohort_analyst.py blast-vs-trigger`, `tools/dns_collect.py` (skill `lifecycle-teammate`) |
+| what to build next, priorities, campaign ideas | `agents/priorities.py` (skill `lifecycle-teammate`): ranked from the data, fixes first, each with evidence, a revenue range and its assumptions |
+| whether events are still arriving, or when customers stop using the product | `agents/tracking.py`, `agents/retention.py` (skill `lifecycle-teammate`) |
+| any routine question a lifecycle manager asks, by cadence | `config/question_bank.yaml`: each entry names the job or module that answers it and what it cannot answer |
 | anything above, from a sentence, when you can run code | `agents/cli.py` (`lcm`): it routes the request to one of the rows above and asks for what is missing |
 </module_router>
 

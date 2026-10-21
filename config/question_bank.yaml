@@ -1,0 +1,237 @@
+# The question bank: what a lifecycle marketing manager asks, by cadence, and what the engine does with each.
+#
+# Ask any of these in a Claude conversation with the plugin installed, or after `lcm` in a terminal. `ask` is the plain
+# version, the way you would say it; `expert` is the same question at full depth. `route` names the job `lcm` runs (CI
+# checks that each `ask` reaches it) or the skill Claude uses. `limits` is what the engine cannot answer, so nobody
+# mistakes a partial answer for a whole one. docs/QUESTION_BANK.md is written from this file:
+#   python3 tools/question_bank.py --write
+
+daily:
+  - id: priorities
+    ask: What are my top 3 priority builds today and why?
+    expert: Which flows, ranked by measured audience, baseline and value, would add the most incremental revenue per hour of build effort, and is anything capping all of them?
+    route: {job: priorities}
+    command: lcm "what are my top 3 priority builds today and why?" --data exports/
+    you_get: Fixes that cap everything else first, then up to three builds, each with the evidence, a monthly value range with its assumptions, confidence, effort, and the one command that turns it into a plan.
+    needs: users, orders and track_events exports; message_events for the list check
+    limits: The lift is assumed (10 to 25 percent relative by default, changeable); only a holdout turns the estimate into a result.
+
+  - id: overnight
+    ask: What broke overnight?
+    expert: Did any flow's audience, any sending domain or the list's engagement move outside its normal range since yesterday?
+    route: {job: daily}
+    command: lcm "what broke overnight?" --data exports/
+    you_get: The morning check, run now or read from 05:00 UTC; priorities, cohort anomalies, engagement and every domain's sending gate.
+    needs: the same exports; LCM_DOMAINS for the domain checks
+    limits: It sees what your data and DNS show; a provider-side block without bounces shows up only as a drop in engagement.
+
+  - id: inbox
+    ask: Is anything threatening our inbox placement today?
+    expert: Are Google Postmaster domain reputation, user-reported spam rate, authentication and list engagement all inside their thresholds, or is something drifting toward the spam folder?
+    route: {job: deliverability}
+    command: lcm "check deliverability for example.com"
+    you_get: A GREEN, AMBER or RED sending gate with the records looked up live, the bulk-sender checks, and the exact DNS fixes.
+    needs: the sending domain; Postmaster and bounce numbers, pasted or exported, sharpen it
+    limits: Google Postmaster Tools and Microsoft SNDS have no Claude connector, and no provider reports inbox placement per flow; seed tests measure placement, this measures the causes.
+
+  - id: events
+    ask: Are our events firing correctly, or did a release break a trigger?
+    expert: Is every event in the tracking plan arriving at its usual volume with its required properties, and is any live flow depending on one that stopped?
+    route: {job: tracking}
+    command: lcm "are our events firing correctly?" --data exports/
+    you_get: Each tracked event's last 7 days against its usual week, required properties going missing, events arriving off the plan, the flows at risk, and the webhook receiver's quarantine reasons.
+    needs: track_events; the receiver's folder for quarantine counts
+    limits: It checks shape and volume, not whether an event fires at the right moment in the product.
+
+  - id: anomalies
+    ask: Any anomalies in our flow audiences today?
+    expert: For each live flow, did signups, active users, core-action users, orders or threshold crossings move more than 3.5 robust standard deviations from their 28-day median?
+    route: {job: audit}
+    command: lcm "any anomalies in our flow audiences today?" --data exports/
+    you_get: Each metric against its 28-day median with a robust z-score, the risk bands, and the largest funnel leak.
+    needs: users, orders, track_events; a brief in briefs/active/
+    limits: Small series (a median under 5) are not judged, so quiet flows stay quiet.
+
+weekly:
+  - id: test_ready
+    ask: Is my test ready to call, or do I need more data?
+    expert: Do the arms differ beyond chance at the planned alpha with the planned power, is the split still what we set, and are we about to fall for an early peek?
+    route: {job: readout}
+    command: lcm "is my test ready to call? results in results/subject_test.json"
+    you_get: The difference with its interval, the read label (causal, inconclusive, directional), a sample-ratio check, and the gap between credited and true revenue.
+    needs: each arm's size and conversions (a short JSON file)
+    limits: Power is decided before a test, not checked after; subject-line tests should be read on clicks, never opens.
+
+  - id: onboarding_leak
+    ask: Where are new users dropping off in onboarding this week?
+    expert: At which onboarding step does this cohort's funnel lose the most people, and which trigger should have bridged signup to first value?
+    route: {job: audit}
+    command: lcm "where are new users dropping off in onboarding?" --data exports/
+    you_get: The onboarding funnel with each step's share of signups and the largest leak; plan an activation flow aimed at it from the priorities list.
+    needs: onboarding_step_completed events with step_index
+    limits: Which message failed needs per-flow send data from the ESP.
+
+  - id: stop_emailing
+    ask: Who should we stop emailing?
+    expert: Which subscribers have received five or more emails in six months and clicked none, and what does sunsetting them do to the sending gate?
+    route: {job: engagement}
+    command: lcm "who should we stop emailing?" --data exports/ --platform klaviyo
+    you_get: Engagement tiers, the sunset list as a reversible attribute, and the request files to sync it to your ESP.
+    needs: users and message_events
+    limits: Opens never count (privacy proxies open mail automatically), so people who only open are counted as unengaged.
+
+  - id: sample_size
+    ask: How many people do we need before this test can read?
+    expert: What sample size per arm detects the smallest lift worth acting on at 5 percent alpha and 80 percent power, and how long does our entry volume take to reach it?
+    route: {job: size}
+    command: lcm "how many people do we need to detect a 20% lift on a 10% baseline with a 15% holdout"
+    you_get: People per arm, and with a monthly entry volume, the months until the test can read.
+    needs: the baseline rate and the lift worth detecting
+    limits: It sizes a test; it does not say which test is worth running.
+
+  - id: underperformers
+    ask: Which flows are underperforming their holdout?
+    expert: For each flow with a persistent holdout, is the treatment arm beating the holdout on the primary metric, and by how much once the platform's attribution is set aside?
+    route: {job: readout}
+    command: lcm "read the holdout results in results/winback_q3.json"
+    you_get: Credited, true lift and the gap per flow, each read labeled.
+    needs: arm sizes and conversions per flow
+    limits: A flow with too few entrants gets "directional", not a verdict.
+
+monthly:
+  - id: churn_cliff
+    ask: When do customers stop using the product, and does it differ by plan?
+    expert: At what week after signup does our retention curve cliff or flatten for each plan tier, and where must a flow land to get ahead of it?
+    route: {job: retention}
+    command: lcm "when do customers stop using the product, by plan?" --data exports/
+    you_get: The weekly retention curve on your core action, the cliff (only when it is bigger than chance) and the floor, per segment.
+    needs: users (with plan) and track_events
+    limits: Which behavior predicts the cliff is a modeling question; the curve shows where to look, not why.
+
+  - id: list_health
+    ask: How healthy is our list, and is the unengaged share growing?
+    expert: What share of mailable subscribers is unengaged on a click basis, how is it trending, and is it pushing the sending gate toward AMBER or RED?
+    route: {job: engagement}
+    command: lcm "how healthy is our list?" --data exports/
+    you_get: Tier counts and the unengaged share with its gate band; the daily Engagement tab gives the trend.
+    needs: users and message_events
+    limits: The trend needs the daily check running; one run is one point.
+
+  - id: newsletter
+    ask: Is our monthly newsletter worth keeping, or should a trigger replace it?
+    expert: What share of each calendar send reaches people too early or too late relative to their own lapse, and how do on-time recipients act compared with late ones?
+    route: {job: blast}
+    command: lcm "is our monthly newsletter worth keeping?" --brief briefs/active/winback.yaml --data exports/
+    you_get: Each past send's recipients sorted into active, at risk, on time and late, with each band's core-action rate.
+    needs: a brief for the trigger; users and track_events
+    limits: The comparison is observed, not a test; a holdout on the trigger settles it.
+
+  - id: ltv
+    ask: What does our LTV curve look like by signup cohort?
+    expert: How does cumulative net revenue per customer grow by 30-day period for each first-order quarter, counting only periods each customer was observed for, and what share buys again after the first order?
+    route: {skill: lifecycle-sql}
+    command: ask Claude "build our LTV cohort curve in BigQuery" (or Snowflake, PostgreSQL)
+    you_get: The cohort LTV query for your warehouse, with right-censoring and the repeat share, and a reading of the curve.
+    needs: an orders table in the warehouse
+    limits: A curve, not a forecast; cohorts under 30 customers are labeled too small to read.
+
+  - id: test_backlog
+    ask: Which tests should we run next?
+    expert: Which hypotheses, ranked by expected impact, confidence and cost, fit inside this quarter's traffic and change budget?
+    route: {skill: lifecycle-measurement}
+    command: ask Claude "prioritize our test backlog"
+    you_get: A ranked hypothesis matrix with each test's size and duration.
+    needs: your candidate tests and each flow's volume
+    limits: It ranks ideas you bring and those the priorities list finds; it does not invent customer insight.
+
+quarterly:
+  - id: true_impact
+    ask: What did our flows actually add this quarter, versus what the platform credits?
+    expert: What share of the revenue our ESP attributes to automated flows is incremental against persistent holdouts, and what does that mean for where we invest next quarter?
+    route: {job: readout}
+    command: lcm "what did the win-back actually add? results in results/winback_q3.json"
+    you_get: Credited, incremental and the gap, with intervals and the read labeled.
+    needs: holdout and treatment results per flow
+    limits: Net revenue retention and expansion need account-level revenue; the engine reads what the holdouts show, not attribution models.
+
+  - id: drift
+    ask: Does our tracking plan still match the product, or has the data drifted?
+    expert: Do our event taxonomy and required properties still describe what the product does after this quarter's releases, or has drift degraded segmentation?
+    route: {job: tracking}
+    command: lcm "has the data drifted from our tracking plan?" --data exports/
+    you_get: Events stopped, dropped or never tracked, required properties going missing, and events arriving outside the plan.
+    needs: track_events
+    limits: Whether the plan matches the roadmap is a review with product; this gives that review its facts.
+
+  - id: dmarc
+    ask: Is our DMARC policy ready to move to quarantine or reject?
+    expert: Do aggregate reports and observed alignment show every legitimate sender passing aligned SPF or DKIM, so the next DMARC step will not quarantine our own mail?
+    route: {job: deliverability}
+    command: lcm "check deliverability for example.com"
+    you_get: The current policy, subdomain policy, the next safe step as a copy-paste record, and what must be true first.
+    needs: the sending domain; a received message's headers help
+    limits: It reads published records and one message's headers; aggregate reports confirm every sender.
+
+  - id: rfm
+    ask: Do our RFM segments still describe our customers?
+    expert: Do recency, frequency and monetary scores, cut at this quarter's purchase cycle, still separate customers into segments that behave differently?
+    route: {skill: lifecycle-sql}
+    command: ask Claude "rebuild our RFM segments in Snowflake"
+    you_get: RFM scores and eleven segments in your warehouse's SQL, each mapped to the flow it serves, with the sync payloads.
+    needs: an orders table
+    limits: Low-frequency businesses need the banded version the module describes.
+
+  - id: retire
+    ask: Which flows should we retire?
+    expert: Which flows show no incremental effect over enough entrants to have detected one, and which merely look weak because they cannot yet read?
+    route: {skill: lifecycle-measurement}
+    command: ask Claude "which of our flows should we retire?" with each flow's holdout results
+    you_get: Keep, change or retire per flow, separating "no effect" from "too small to tell".
+    needs: holdout results per flow
+    limits: A flow too small to read is not a failed flow.
+
+annual:
+  - id: program_worth
+    ask: What is our lifecycle program worth next year?
+    expert: What do the time returned, the inbox protection and the measurement discipline add up to for our team, at our pay, volume and email revenue?
+    route: {job: roi}
+    command: lcm "what is our lifecycle program worth next year?"
+    you_get: The business case from docs/ROI_MEMO.md at the default numbers; rerun scripts/roi_model.py with yours.
+    needs: your pay, team size and email revenue for your own figures
+    limits: Modeled, not measured; the memo says how to measure the task hours.
+
+  - id: stack
+    ask: Can our stack support real-time triggers, or is latency holding us back?
+    expert: Do our ESP, CDP and warehouse support event ingestion and personalization fast enough for the triggers we want, or is architecture capping engagement?
+    route: {skill: lifecycle-flows}
+    command: ask Claude "review our lifecycle stack for real-time triggers"
+    you_get: A checklist review of each trigger's path from event to send, where it waits, and what each platform supports.
+    needs: your stack, and which flows need real-time entry
+    limits: It cannot measure your ESP's or CDP's latency; it tells you what to measure and where.
+
+  - id: ltv_cac
+    ask: Are our lifecycle programs raising LTV enough to lower blended CAC?
+    expert: How much do retention and expansion driven by lifecycle programs raise customer lifetime value, and what does that do to the acquisition cost we can afford?
+    route: {skill: lifecycle-measurement}
+    command: ask Claude "what are our lifecycle programs doing to LTV and CAC?"
+    you_get: LTV curves from your orders, the incremental share from your holdouts, and the arithmetic with your acquisition spend.
+    needs: orders, holdout results, and acquisition spend by period
+    limits: The engine has no ad-spend data; CAC comes from you.
+
+  - id: new_domain
+    ask: What does a safe sending plan look like for a new domain?
+    expert: Given our engaged tiers and target volume, what warm-up ladder can a new domain carry without damaging its reputation, and what stops it?
+    route: {skill: deliverability-gate}
+    command: ask Claude "build a warm-up plan for our new sending domain"
+    you_get: A day-by-day ladder that starts with the most engaged, the abort criteria, and the volume that is never warmable.
+    needs: engagement tiers and target daily volume
+    limits: It never warms with unengaged people, so some target volumes are refused.
+
+  - id: compliance_review
+    ask: Which compliance questions are open across our flows?
+    expert: For every live flow, which email and texting rules apply to our audience's countries, which pass, and which need counsel's answer?
+    route: {skill: lifecycle-teammate}
+    command: ask Claude "review compliance across our live flows"
+    you_get: Each flow's compliance table, with sources, merged into one list of open questions.
+    needs: the briefs in briefs/active/ and recipients' countries
+    limits: A rules engine with sources, not legal advice; it tracks some states' texting rules, not all fifty.

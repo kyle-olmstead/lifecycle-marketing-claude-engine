@@ -1,7 +1,7 @@
 {
-  "run_id": "6617aa32ca00",
-  "generated_at": "2026-10-21T01:16:19+00:00",
-  "engine_version": "2.2.0",
+  "run_id": "c730fc449f0d",
+  "generated_at": "2026-10-21T03:07:15+00:00",
+  "engine_version": "2.3.0",
   "brief": {
     "product_name": "Ridgeview",
     "flow_type": "winback",
@@ -214,8 +214,8 @@
       "US": 0.4367,
       "AU": 0.1582,
       "CA": 0.1519,
-      "GB": 0.1266,
-      "DE": 0.1266
+      "DE": 0.1266,
+      "GB": 0.1266
     },
     "as_of": "2026-10-18",
     "trigger_payload_example": {

@@ -307,7 +307,7 @@ def test_mcp_server_tools(tmp_path, monkeypatch):
     monkeypatch.setattr(mcp_server, "OUT", tmp_path)
     names = {t.name for t in asyncio.run(mcp_server.server.list_tools())}
     assert names == {"draft_brief", "plan_campaign", "revise_plan", "approve_variant", "audit_cohort", "engagement_tiers", "check_domain",
-                     "simulate_flow"}
+                     "simulate_flow", "priorities"}
     r = asyncio.run(mcp_server.server.call_tool("plan_campaign", {"brief_path": str(ROOT / "briefs/examples/winback_14d.yaml"),
                                                                   "data_dir": str(ROOT / "tests/fixtures"), "copy_mode": "offline"}))
     text = r.content[0].text
@@ -320,6 +320,8 @@ def test_mcp_server_tools(tmp_path, monkeypatch):
     assert "a revision of" in rv.content[0].text and "(approved)" in rv.content[0].text
     tiers = asyncio.run(mcp_server.server.call_tool("engagement_tiers", {"data_dir": str(ROOT / "tests/fixtures")}))
     assert "Unengaged share" in tiers.content[0].text
+    top = asyncio.run(mcp_server.server.call_tool("priorities", {"data_dir": str(ROOT / "tests/fixtures")}))
+    assert "Top 3 priorities today" in top.content[0].text
 
 
 def test_mcp_config():

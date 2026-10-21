@@ -1,7 +1,7 @@
-"""Log teammate output to a Google Sheet: plans, cohort health, benchmarks, anomalies, engagement and deliverability.
+"""Log teammate output to a Google Sheet: plans, cohort health, benchmarks, anomalies, engagement, deliverability, priorities.
 
 The daily job (scripts/daily.py, run at 05:00 UTC by .github/workflows/daily_cohort_audit.yml) calls
-sync() once with everything it produced; the orchestrator calls it with --sheet after a plan. Six
+sync() once with everything it produced; the orchestrator calls it with --sheet after a plan. Seven
 tabs, created if missing, each with a fixed header and a key, so re-running a day updates rows in
 place instead of duplicating them:
 
@@ -11,6 +11,7 @@ place instead of duplicating them:
   Anomalies        one row per finding                   key: as_of + flow + metric
   Engagement       one row per audience per day          key: as_of + audience
   Deliverability   one row per sending domain per day    key: as_of + domain
+  Priorities       one row per ranked priority per day   key: as_of + rank
 
 Authentication is a Google Cloud service account, never a personal login:
   1. Create a service account, enable the Google Sheets API on its project, and make a JSON key.
@@ -54,6 +55,9 @@ TABS: Dict[str, Dict[str, Any]] = {
     "Engagement": {"key": ["as_of", "audience"], "header": [
         "as_of", "audience", "people", "mailable", "suppressed", "engaged_30d", "engaged_90d", "engaged_180d", "unengaged", "new",
         "unengaged_share", "gate_band", "logged_at"]},
+    "Priorities": {"key": ["as_of", "rank"], "header": [
+        "as_of", "rank", "kind", "title", "monthly_low", "monthly_high", "conversions_low", "conversions_high", "confidence", "effort",
+        "why", "next_step", "logged_at"]},
     "Deliverability": {"key": ["as_of", "domain"], "header": [
         "as_of", "domain", "gate", "auth_state", "dmarc_policy", "dmarc_effective_policy", "spf_lookups", "dkim_keys_found",
         "mta_sts_mode", "critical", "high", "primary_cause", "top_finding", "logged_at"]},
@@ -97,6 +101,15 @@ def engagement_rows(summary: Dict[str, Any], audience: str = "email subscribers"
     return {"Engagement": [{"as_of": summary["as_of"], "audience": audience, "people": summary["people"], "mailable": summary["mailable"],
                             **{k: t.get(k, 0) for k in ("suppressed", "engaged_30d", "engaged_90d", "engaged_180d", "unengaged", "new")},
                             "unengaged_share": summary["unengaged_share"], "gate_band": summary["gate_band"], "logged_at": logged_at}]}
+
+
+def priority_rows(p: Dict[str, Any], logged_at: str = "") -> Dict[str, List[Dict[str, Any]]]:
+    """Rows from agents/priorities.py (its to_json form): the ranked list for the day."""
+    return {"Priorities": [{"as_of": p["as_of"], "rank": o["rank"], "kind": o["kind"], "title": o["title"],
+                            "monthly_low": o.get("revenue_low"), "monthly_high": o.get("revenue_high"),
+                            "conversions_low": o.get("conversions_low"), "conversions_high": o.get("conversions_high"),
+                            "confidence": o["confidence"], "effort": o["effort"], "why": " | ".join(o["why"]),
+                            "next_step": o.get("next_step", ""), "logged_at": logged_at} for o in p["top"]]}
 
 
 def deliverability_rows(r: Dict[str, Any], as_of: str, logged_at: str = "") -> Dict[str, List[Dict[str, Any]]]:

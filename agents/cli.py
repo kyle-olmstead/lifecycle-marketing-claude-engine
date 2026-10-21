@@ -21,10 +21,12 @@ from __future__ import annotations
 import argparse
 import glob
 import json
+import os
 import re
 import shlex
 import sys
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -37,12 +39,23 @@ YAML_PATH = re.compile(r"[\w./-]+\.ya?ml\b")
 JSON_PATH = re.compile(r"[\w./-]+\.json\b")
 PCT = re.compile(r"(\d+(?:\.\d+)?)\s*%")
 INTENTS = (
+    ("priorities", r"priorit|what (should|do) (i|we) build|what to build|top \d+ .*(build|campaign|idea|flow)|campaign ideas|"
+                   r"biggest opportunit|opportunities|where.*(leaving|losing) (money|revenue)"),
+    ("daily", r"what broke|overnight|anything break|morning (check|brief|summary|report)|daily (check|summary|health|report)"),
+    ("tracking", r"events? (are |is )?firing|event (stream|tracking|taxonomy|schema)|tracking plan|tracking (health|break|broke)|"
+                 r"schema (drift|fidelity)|data (has )?drift|has the data drifted|webhook|null values|break a trigger|broke a trigger|"
+                 r"triggers? (stopped|broke|breaking)"),
+    ("retention", r"retention curve|churn cliff|stop using|stop doing|when do (customers|users|people) (stop|churn|drop|leave)|"
+                  r"retention (drop|cliff|by)|levels? off|flatten"),
     ("deliverability", r"deliverab|inbox|spam folder|\bspf\b|\bdkim\b|\bdmarc\b|mta-sts|authenticat|sending gate|bounce rate|blocklist|blacklist"),
-    ("engagement", r"engagement tier|unengaged|sunset|suppress|re-?permission list|inactive subscribers"),
+    ("engagement", r"engagement tier|unengaged|sunset|suppress|re-?permission list|inactive subscribers|stop (emailing|mailing|sending to)|"
+                   r"over-?mail|list (health|hygiene)|healthy is our list|dormant"),
     ("blast", r"blast|newsletter|calendar|batch(?:-and-| and )blast|one-off send|scheduled send"),
-    ("audit", r"\baudit\b|health check|cohort health|anomal"),
-    ("readout", r"read ?out|results?\b|incremental|attributed|did (it|the flow) work|holdout result|lift we got"),
+    ("audit", r"\baudit\b|health check|cohort health|anomal|unusual|drop(ping)? off in onboarding|onboarding (drop|leak|funnel)|funnel|\bleak"),
     ("size", r"sample size|how many (people|users|entrants)|power|minimum detectable|\bmde\b|how long .*holdout"),
+    ("readout", r"read ?out|results?\b|incremental|attributed|did (it|the flow) work|holdout|lift we got|ready to call|call (the|this|my) test|"
+                r"significan|actually add|platform credits|credited|underperform"),
+    ("roi", r"\broi\b|business case|program worth|engine worth|worth next year|worth it"),
     ("plan", r"\bplan\b|flow|campaign|journey|sequence|series|touch|win-?back|onboarding|welcome|activation|nurture|re-?engage"),
 )
 # Asking for a flow is a plan, whatever else the sentence mentions ("a re-engagement flow for inactive subscribers").
@@ -55,6 +68,9 @@ NEEDS: Dict[str, List[Tuple[str, str]]] = {
     "audit": [("brief", "--brief (which flow's cohort)"), ("data", "--data (a folder or URL prefix with users, orders, track_events exports)")],
     "blast": [("brief", "--brief (which flow's cohort)"), ("data", "--data (a folder or URL prefix with users, orders, track_events exports)")],
     "engagement": [("data", "--data (a folder with users and message_events exports)")],
+    "priorities": [("data", "--data (a folder or URL prefix with users, orders, track_events exports)")],
+    "tracking": [("data", "--data (a folder or URL prefix with users and track_events exports)")],
+    "retention": [("data", "--data (a folder or URL prefix with users and track_events exports)")],
     "readout": [("input", "the results file (for example: read the holdout results in results/winback.json)")],
     "size": [("baseline", "the baseline rate (for example: on a 10% baseline)"), ("mde_rel", "the lift worth detecting (for example: a 20% lift)")],
 }
@@ -71,6 +87,8 @@ class Job:
 
 def classify(text: str) -> Optional[str]:
     low = text.lower()
+    if re.search(INTENTS[0][1], low):      # "what should I build" asks for priorities, not a plan
+        return "priorities"
     if PLAN_FIRST.search(low):
         return "plan"
     for kind, pattern in INTENTS:
@@ -108,6 +126,19 @@ def route(text: str, opts: Dict[str, Any]) -> Job:
                 job.args["brief"] = active[0]
             else:
                 job.missing.append("--brief (which flow's cohort)" + (f"; active briefs: {', '.join(Path(p).name for p in active)}" if active else ""))
+    elif kind == "daily":
+        job.args = {"data": a.get("data"), "domains": a.get("domain"), "out": a.get("out", "out")}
+    elif kind == "tracking":
+        job.args = {"data": a.get("data"), "events_dir": a.get("events_dir") or os.environ.get("LCM_EVENTS_DIR"), "out": a.get("out", "out")}
+    elif kind == "retention":
+        by = a.get("by") or next((c for c, pat in (("plan", r"\bplan\b|tier|enterprise|segment"), ("country", r"countr|region"),
+                                                    ("lifecycle_stage", r"lifecycle stage")) if re.search(pat, low)), None)
+        job.args = {"data": a.get("data"), "brief": brief, "by": by, "out": a.get("out", "out")}
+    elif kind == "roi":
+        job.args = {}
+    elif kind == "priorities":
+        n = re.search(r"\btop\s+(\d+)", low)
+        job.args = {"data": a.get("data"), "brief": a.get("brief"), "top": int(n.group(1)) if n else 3, "out": a.get("out", "out")}
     elif kind == "engagement":
         plat = next((p for p in ("klaviyo", "hubspot", "braze", "customerio", "customer.io") if p in low), None)
         job.args = {"data": a.get("data"), "platform": a.get("platform") or (plat.replace(".", "") if plat else None), "out": a.get("out", "out")}
@@ -163,6 +194,35 @@ def run(job: Job) -> int:
             if k in a and not ("brief" in a and k == "product"):
                 argv += [f"--{k.replace('_', '-')}", str(a[k])]
         return orchestrator._cli(argv)
+    if job.kind == "daily":
+        from scripts import daily
+        out = Path(a.get("out", "out")) / "daily"
+        if a.get("data"):
+            daily.run("url", data=a["data"], domains=str(a.get("domains") or "").split(",") if a.get("domains") else [], out=out, sheet=False)
+        elif not (out / "summary.md").exists():
+            print("No morning check has run here yet. Give --data (a folder or URL prefix with your exports) to run one now.", file=sys.stderr)
+            return 2
+        else:
+            print(f"(from the check written {datetime.fromtimestamp((out / 'summary.md').stat().st_mtime).isoformat(timespec='minutes')})\n")
+        print((out / "summary.md").read_text(encoding="utf-8"))
+        return 0
+    if job.kind == "tracking":
+        from agents import tracking
+        return tracking._cli(["--data", a["data"]] + (["--events-dir", a["events_dir"]] if a.get("events_dir") else []))
+    if job.kind == "retention":
+        from agents import retention
+        return retention._cli(["--data", a["data"]] + (["--by", a["by"]] if a.get("by") else []) + (["--brief", a["brief"]] if a.get("brief") else []))
+    if job.kind == "roi":
+        from scripts import roi_model
+        return roi_model._cli([])
+    if job.kind == "priorities":
+        from agents import priorities
+        argv = ["--data", a["data"], "--top", str(a.get("top", 3)), "--out", str(a.get("out", "out"))]
+        if a.get("brief"):
+            argv += ["--brief", str(a["brief"])]
+        if a.get("value"):
+            argv += ["--value-per-conversion", str(a["value"])]
+        return priorities._cli(argv)
     if job.kind == "deliverability":
         from tools import dns_collect
         argv = [a["domain"], "--analyze", "--markdown"]
@@ -212,6 +272,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--envelope")
     ap.add_argument("--input")
     ap.add_argument("--copy-mode", dest="copy_mode")
+    ap.add_argument("--value", type=float, help="what one more converted person is worth, for priorities")
+    ap.add_argument("--by", choices=["plan", "country", "lifecycle_stage"], help="segment the retention curve")
+    ap.add_argument("--events-dir", dest="events_dir", help="the webhook receiver's folder, for tracking health")
     ap.add_argument("--out")
     ap.add_argument("--dry-run", action="store_true", help="show the job and its arguments without running it")
     a = ap.parse_args(argv)
