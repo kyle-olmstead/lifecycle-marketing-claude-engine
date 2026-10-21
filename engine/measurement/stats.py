@@ -18,6 +18,18 @@ by hand and reproduced anywhere:
 The method is the incrementality-and-holdouts discipline: decide the design before the flow ships,
 size honestly, never compute a lift percentage on a population too small to support one, and report
 attributed, incremental and the gap together.
+
+The sizer and the readout share one floor. readout() refuses any arm with fewer than MIN_ARM_FOR_LIFT
+entrants or MIN_EVENTS_FOR_LIFT conversions, so sample_size() and feasibility() never plan an arm below
+it: each arm gets at least 30 entrants and enough entrants that its expected conversions reach 5 at the
+baseline rate and at the treatment rate. When that floor, not power, sets the size, the output says so
+(size_set_by: "readout floor") and reports the chance that both arms actually clear the event floor.
+
+Sources: the sample size formula is the pooled-under-H0, unpooled-under-H1 normal approximation in
+Fleiss, Levin and Paik, Statistical Methods for Rates and Proportions, 3rd ed. (2003), ch. 4; the
+difference interval is Newcombe (1998), Statistics in Medicine 17:873-890, method 10; the Student t
+distribution used by the clustered and trend readouts is evaluated through the regularized incomplete
+beta function by the continued fraction in Press et al., Numerical Recipes, 3rd ed. (2007), section 6.4.
 """
 from __future__ import annotations
 
@@ -37,6 +49,7 @@ from typing import Any, Dict, List, Optional, Tuple
 Z = NormalDist()
 MIN_ARM_FOR_LIFT = 30          # below this many entrants in either arm, no lift percentage is computed
 MIN_EVENTS_FOR_LIFT = 5        # and below this many conversions in either arm
+MIN_CLUSTERS_PER_ARM = 10      # and, when accounts are randomized, below this many accounts in either arm
 
 
 def _z(p: float) -> float:
@@ -44,27 +57,201 @@ def _z(p: float) -> float:
 
 
 # ----------------------------------------------------------------------------------------------
+# Student t and binomial tails (pure Python; used by the clustered readout and the trend tests)
+# ----------------------------------------------------------------------------------------------
+
+def _betacf(a: float, b: float, x: float) -> float:
+    """Continued fraction for the incomplete beta function (modified Lentz, Numerical Recipes 6.4)."""
+    tiny = 1e-300
+    qab, qap, qam = a + b, a + 1.0, a - 1.0
+    c, d = 1.0, 1.0 - qab * x / qap
+    d = tiny if abs(d) < tiny else d
+    d = 1.0 / d
+    h = d
+    for m in range(1, 10000):
+        m2 = 2 * m
+        aa = m * (b - m) * x / ((qam + m2) * (a + m2))
+        d = 1.0 + aa * d
+        d = tiny if abs(d) < tiny else d
+        c = 1.0 + aa / c
+        c = tiny if abs(c) < tiny else c
+        d = 1.0 / d
+        h *= d * c
+        aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2))
+        d = 1.0 + aa * d
+        d = tiny if abs(d) < tiny else d
+        c = 1.0 + aa / c
+        c = tiny if abs(c) < tiny else c
+        d = 1.0 / d
+        delta = d * c
+        h *= delta
+        if abs(delta - 1.0) < 1e-15:
+            break
+    return h
+
+
+def betainc(a: float, b: float, x: float) -> float:
+    """Regularized incomplete beta I_x(a, b)."""
+    if x <= 0:
+        return 0.0
+    if x >= 1:
+        return 1.0
+    front = math.exp(math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b) + a * math.log(x) + b * math.log1p(-x))
+    if x < (a + 1) / (a + b + 2):
+        return front * _betacf(a, b, x) / a
+    return 1.0 - front * _betacf(b, a, 1 - x) / b
+
+
+def t_sf(t: float, df: float) -> float:
+    """Upper tail P(T > t) of Student's t with df degrees of freedom (df may be fractional)."""
+    if df <= 0:
+        raise ValueError("df must be positive")
+    if math.isinf(df):
+        return 1 - Z.cdf(t)
+    tail = 0.5 * betainc(df / 2.0, 0.5, df / (df + t * t))
+    return tail if t >= 0 else 1.0 - tail
+
+
+def t_cdf(t: float, df: float) -> float:
+    return 1.0 - t_sf(t, df)
+
+
+def t_ppf(q: float, df: float) -> float:
+    """Quantile of Student's t: the value with P(T <= value) = q. Bisection on t_cdf, accurate to about 1e-10."""
+    if not 0 < q < 1:
+        raise ValueError("q must be in (0, 1)")
+    if math.isinf(df):
+        return _z(q)
+    if q < 0.5:
+        return -t_ppf(1 - q, df)
+    lo, hi = 0.0, max(1.0, _z(q))
+    while t_cdf(hi, df) < q:
+        hi *= 2
+    for _ in range(200):
+        mid = (lo + hi) / 2
+        if t_cdf(mid, df) < q:
+            lo = mid
+        else:
+            hi = mid
+        if hi - lo < 1e-12:
+            break
+    return (lo + hi) / 2
+
+
+def binom_prob_at_least(k: int, n: int, p: float) -> float:
+    """P(X >= k) for X ~ Binomial(n, p), summed exactly from the lower tail."""
+    if k <= 0:
+        return 1.0
+    if n < k:
+        return 0.0
+    if p <= 0:
+        return 0.0
+    if p >= 1:
+        return 1.0
+    lower = 0.0
+    for j in range(k):
+        lower += math.exp(math.lgamma(n + 1) - math.lgamma(j + 1) - math.lgamma(n - j + 1) + j * math.log(p) + (n - j) * math.log1p(-p))
+    return max(0.0, 1.0 - lower)
+
+
+# ----------------------------------------------------------------------------------------------
 # sizing
 # ----------------------------------------------------------------------------------------------
 
+def _n_control_for(p_control: float, p_treatment: float, ratio: float, q_alpha: float, q_beta: float) -> float:
+    """Unrounded control-arm size for the pooled-under-H0 / unpooled-under-H1 formula, given the two quantiles.
+
+    sample_size() passes normal quantiles; engine/measurement/cluster.py passes Student t quantiles when the
+    number of randomized accounts is small.
+    """
+    k = ratio
+    p_bar = (p_control + k * p_treatment) / (1 + k)
+    num = (q_alpha * math.sqrt(p_bar * (1 - p_bar) * (1 + 1 / k))
+           + q_beta * math.sqrt(p_control * (1 - p_control) + p_treatment * (1 - p_treatment) / k))
+    return num ** 2 / (p_treatment - p_control) ** 2
+
+
+def readout_floor(p_control: float, p_treatment: float, ratio: float = 1.0) -> Dict[str, Any]:
+    """The smallest arms readout() will read: every arm at least MIN_ARM_FOR_LIFT entrants and enough entrants
+    that its expected conversions reach MIN_EVENTS_FOR_LIFT.
+
+    The holdout always converts at the baseline. The treatment arm converts at the treatment rate if the flow
+    works and at the baseline if it does not, so it is sized for the lower of the two. ratio = n_treatment / n_control.
+    """
+    if not (0 < p_control < 1 and 0 < p_treatment < 1):
+        raise ValueError("rates must be in (0, 1)")
+    k = ratio
+    low_t = min(p_control, p_treatment)
+    n_c = max(MIN_ARM_FOR_LIFT, math.ceil(MIN_EVENTS_FOR_LIFT / p_control - 1e-9))
+    need_t = max(MIN_ARM_FOR_LIFT, math.ceil(MIN_EVENTS_FOR_LIFT / low_t - 1e-9))
+    n_c = max(n_c, math.ceil(need_t / k - 1e-9))
+    n_t = max(need_t, math.ceil(n_c * k - 1e-9))
+    return {"n_control": n_c, "n_treatment": n_t,
+            "rule": (f"at least {MIN_ARM_FOR_LIFT} entrants and {MIN_EVENTS_FOR_LIFT} expected conversions per arm, at the baseline "
+                     f"and at the treatment rate (the readout refuses smaller arms)")}
+
+
+def p_readable(n_control: int, n_treatment: int, p_control: float, p_treatment: float) -> float:
+    """Probability that both arms clear the readout's event floor at these sizes, if the treatment rate is true."""
+    return (binom_prob_at_least(MIN_EVENTS_FOR_LIFT, n_control, p_control)
+            * binom_prob_at_least(MIN_EVENTS_FOR_LIFT, n_treatment, p_treatment))
+
+
+def _apply_floor(n_c: int, n_t: int, p_control: float, p_treatment: float, ratio: float,
+                 min_clusters: Optional[float] = None) -> Tuple[int, int, str, Dict[str, Any]]:
+    """Raise power-based arms to the readout floor. Returns (n_c, n_t, size_set_by, floor)."""
+    floor = readout_floor(p_control, p_treatment, ratio)
+    f_c, f_t = floor["n_control"], floor["n_treatment"]
+    if min_clusters:   # mean entrants per randomized account: each arm also needs MIN_CLUSTERS_PER_ARM accounts
+        f_c = max(f_c, math.ceil(MIN_CLUSTERS_PER_ARM * min_clusters - 1e-9))
+        f_t = max(f_t, math.ceil(MIN_CLUSTERS_PER_ARM * min_clusters - 1e-9), math.ceil(f_c * ratio - 1e-9))
+        floor = dict(floor, rule=floor["rule"] + f", and at least {MIN_CLUSTERS_PER_ARM} randomized accounts per arm")
+    floor = dict(floor, n_control=f_c, n_treatment=f_t)
+    if n_c >= f_c and n_t >= f_t:
+        return n_c, n_t, "power", floor
+    return max(n_c, f_c), max(n_t, f_t, math.ceil(max(n_c, f_c) * ratio - 1e-9)), "readout floor", floor
+
+
 def sample_size(p_control: float, p_treatment: float, alpha: float = 0.05, power: float = 0.80,
-                ratio: float = 1.0, two_sided: bool = True) -> Dict[str, Any]:
+                ratio: float = 1.0, two_sided: bool = True, apply_readout_floor: bool = True) -> Dict[str, Any]:
     """
     Per-arm sample sizes for a two-proportion z-test (pooled variance under H0, unpooled under H1).
     ratio = n_treatment / n_control. A 10 percent holdout is ratio 9.
+
+    With apply_readout_floor (the default) neither arm is planned below what readout() will read; size_set_by
+    says whether power or that floor set the size, and power_n_control / power_n_treatment keep the power-only
+    numbers. Pass apply_readout_floor=False only to get the raw formula (feasibility() does, because it inflates
+    by the design effect before applying the floor, which is counted in entrants).
     """
     if not (0 < p_control < 1 and 0 < p_treatment < 1) or p_control == p_treatment:
         raise ValueError("rates must be in (0, 1) and differ")
     k = ratio
     za = _z(1 - alpha / 2) if two_sided else _z(1 - alpha)
     zb = _z(power)
-    p_bar = (p_control + k * p_treatment) / (1 + k)
-    num = za * math.sqrt(p_bar * (1 - p_bar) * (1 + 1 / k)) + zb * math.sqrt(p_control * (1 - p_control) + p_treatment * (1 - p_treatment) / k)
-    n_c = math.ceil(num ** 2 / (p_treatment - p_control) ** 2)
+    n_c = math.ceil(_n_control_for(p_control, p_treatment, k, za, zb))
     n_t = math.ceil(n_c * k)
-    return {"n_control": n_c, "n_treatment": n_t, "n_total": n_c + n_t, "p_control": p_control, "p_treatment": p_treatment,
-            "alpha": alpha, "power": power, "ratio": ratio, "two_sided": two_sided,
-            "method": "two-proportion z-test, pooled variance under H0, unpooled under H1"}
+    out: Dict[str, Any] = {"n_control": n_c, "n_treatment": n_t, "n_total": n_c + n_t, "p_control": p_control, "p_treatment": p_treatment,
+                           "alpha": alpha, "power": power, "ratio": ratio, "two_sided": two_sided,
+                           "method": "two-proportion z-test, pooled variance under H0, unpooled under H1"}
+    if apply_readout_floor:
+        f_c, f_t, by, floor = _apply_floor(n_c, n_t, p_control, p_treatment, k)
+        out.update({"n_control": f_c, "n_treatment": f_t, "n_total": f_c + f_t, "power_n_control": n_c, "power_n_treatment": n_t,
+                    "size_set_by": by, "readout_floor": floor, "p_readable": round(p_readable(f_c, f_t, p_control, p_treatment), 4)})
+        if by == "readout floor":
+            out["sizing_note"] = (f"power alone needs {n_c:,} control / {n_t:,} treatment, but the readout refuses arms with fewer than "
+                                  f"{MIN_ARM_FOR_LIFT} entrants or {MIN_EVENTS_FOR_LIFT} conversions, so the plan is raised to "
+                                  f"{f_c:,} / {f_t:,}. The floor, not power, set this size; power at the planned size is higher than asked")
+        note = _readable_note(out["p_readable"])
+        if note:
+            out["readable_note"] = note
+    return out
+
+
+def _readable_note(p: float) -> Optional[str]:
+    if p >= 0.9:
+        return None
+    return (f"expected conversions meet the floor, but with counts this small there is a {1 - p:.0%} chance an arm ends below "
+            f"{MIN_EVENTS_FOR_LIFT} conversions and the read is refused; a larger sample makes the read more certain")
 
 
 def _power(n_c: int, n_t: int, p_c: float, p_t: float, alpha: float, two_sided: bool) -> float:
@@ -78,7 +265,15 @@ def _power(n_c: int, n_t: int, p_c: float, p_t: float, alpha: float, two_sided: 
 
 def minimum_detectable_effect(n_control: int, n_treatment: int, p_control: float, alpha: float = 0.05,
                               power: float = 0.80, two_sided: bool = True) -> Dict[str, Any]:
-    """Smallest absolute lift (treatment above control) detectable with the given arms, by bisection on power."""
+    """Smallest absolute lift (treatment above control) detectable with the given arms, by bisection on power.
+
+    Arms the readout would refuse (fewer than MIN_ARM_FOR_LIFT entrants, or fewer than MIN_EVENTS_FOR_LIFT
+    expected conversions at the baseline) get no MDE: no lift of any size could be read from them.
+    """
+    if min(n_control, n_treatment) < MIN_ARM_FOR_LIFT or min(n_control, n_treatment) * p_control < MIN_EVENTS_FOR_LIFT:
+        return {"mde_abs": None, "mde_rel": None, "n_control": n_control, "n_treatment": n_treatment, "p_control": p_control,
+                "note": (f"the readout refuses arms with fewer than {MIN_ARM_FOR_LIFT} entrants or {MIN_EVENTS_FOR_LIFT} expected "
+                         f"conversions at the baseline, so no lift is detectable at this sample size")}
     lo, hi = 1e-9, 1 - p_control - 1e-9
     if _power(n_control, n_treatment, p_control, p_control + hi, alpha, two_sided) < power:
         return {"mde_abs": None, "mde_rel": None, "note": "no lift within the possible range reaches the requested power at this sample size"}
@@ -94,14 +289,21 @@ def minimum_detectable_effect(n_control: int, n_treatment: int, p_control: float
 
 def feasibility(entries_per_month: float, holdout_share: float, p_control: float, mde_abs: Optional[float] = None,
                 mde_rel: Optional[float] = None, alpha: float = 0.05, power: float = 0.80, horizon_months: int = 12,
-                outcome_window_days: float = 0, design_effect: float = 1.0) -> Dict[str, Any]:
+                outcome_window_days: float = 0, design_effect: float = 1.0,
+                mean_cluster_size: Optional[float] = None) -> Dict[str, Any]:
     """How long a persistent holdout takes to read the stated lift, and the design to use if it never will.
 
     months_to_read = months of entries needed to fill the holdout + the outcome window, because the last
     entrant still has to finish the window before the read. design_effect inflates the sample when the
     randomization unit (an account, a workspace) holds more than one entrant: 1 + (m - 1) x ICC, where m
-    is entrants per unit and ICC is how alike entrants in one unit behave. Leave it at 1.0 only when each
-    unit contributes one entrant.
+    is entrants per unit and ICC is how alike entrants in one unit behave (engine/measurement/cluster.py
+    estimates both and adds the correction for unequal account sizes). Leave it at 1.0 only when each unit
+    contributes one entrant. mean_cluster_size (entrants per randomized account) adds the account counts to
+    the plan and the floor of MIN_CLUSTERS_PER_ARM accounts per arm.
+
+    No plan falls below what readout() reads: each arm is raised to at least MIN_ARM_FOR_LIFT entrants and
+    MIN_EVENTS_FOR_LIFT expected conversions (at the baseline and the treatment rate); size_set_by says
+    whether power or that floor set the size.
     """
     if mde_abs is None:
         if mde_rel is None:
@@ -109,15 +311,20 @@ def feasibility(entries_per_month: float, holdout_share: float, p_control: float
         mde_abs = p_control * mde_rel
     if design_effect < 1:
         raise ValueError("design_effect is at least 1")
+    if mean_cluster_size is not None and mean_cluster_size < 1:
+        raise ValueError("mean_cluster_size is at least 1")
     window_months = outcome_window_days / 30.44
+    p_t = p_control + mde_abs
 
-    def months_for(share: float) -> Tuple[int, int, float, float]:
-        need = sample_size(p_control, p_control + mde_abs, alpha, power, (1 - share) / share)
-        n_c, n_t = math.ceil(need["n_control"] * design_effect), math.ceil(need["n_treatment"] * design_effect)
+    def months_for(share: float) -> Tuple[int, int, float, float, int, int, str, Dict[str, Any]]:
+        ratio = (1 - share) / share
+        need = sample_size(p_control, p_t, alpha, power, ratio, apply_readout_floor=False)
+        pw_c, pw_t = math.ceil(need["n_control"] * design_effect), math.ceil(need["n_treatment"] * design_effect)
+        n_c, n_t, by, floor = _apply_floor(pw_c, pw_t, p_control, p_t, ratio, mean_cluster_size)
         enroll = n_c / (entries_per_month * share) if entries_per_month > 0 else math.inf
-        return n_c, n_t, enroll, enroll + window_months
+        return n_c, n_t, enroll, enroll + window_months, pw_c, pw_t, by, floor
 
-    n_c, n_t, enroll, months = months_for(holdout_share)
+    n_c, n_t, enroll, months, pw_c, pw_t, size_set_by, floor = months_for(holdout_share)
     if entries_per_month < 10:
         design, read = "no statistical read exists; report qualitatively and do not compute a lift percentage", "not readable"
     elif months <= 3:
@@ -138,13 +345,26 @@ def feasibility(entries_per_month: float, holdout_share: float, p_control: float
         m = months_for(share)[3]
         alternatives.append({"holdout_share": share, "months_to_read": None if math.isinf(m) else round(m, 1),
                              "fits_horizon": m <= horizon_months, "cost": f"withholds {share:.0%} of entrants from the flow while it reads"})
-    return {"entries_per_month": entries_per_month, "holdout_share": holdout_share, "p_control": p_control, "mde_abs": mde_abs,
-            "design_effect": design_effect, "required_holdout_n": n_c, "required_treatment_n": n_t,
-            "enrollment_months": None if math.isinf(enroll) else round(enroll, 1), "outcome_window_days": outcome_window_days,
-            "months_to_read": None if math.isinf(months) else round(months, 1), "recommended_design": design, "expected_read": read,
-            "alternatives": alternatives, "horizon_months": horizon_months,
-            "randomization_unit": ("account (company or workspace) where the buying unit is an account; entrants in one unit are not "
-                                   "independent, so set design_effect = 1 + (entrants per unit - 1) x ICC")}
+    out = {"entries_per_month": entries_per_month, "holdout_share": holdout_share, "p_control": p_control, "mde_abs": mde_abs,
+           "design_effect": design_effect, "required_holdout_n": n_c, "required_treatment_n": n_t,
+           "power_holdout_n": pw_c, "power_treatment_n": pw_t, "size_set_by": size_set_by, "readout_floor": floor,
+           "p_readable": round(p_readable(n_c, n_t, p_control, p_t), 4),
+           "enrollment_months": None if math.isinf(enroll) else round(enroll, 1), "outcome_window_days": outcome_window_days,
+           "months_to_read": None if math.isinf(months) else round(months, 1), "recommended_design": design, "expected_read": read,
+           "alternatives": alternatives, "horizon_months": horizon_months,
+           "randomization_unit": ("account (company or workspace) where the buying unit is an account; entrants in one unit are not "
+                                  "independent, so set design_effect = 1 + (entrants per unit - 1) x ICC")}
+    if size_set_by == "readout floor":
+        out["sizing_note"] = (f"power alone needs {pw_c:,} holdout entrants, but the readout needs {floor['rule']}; "
+                              f"the floor, not power, set the size at {n_c:,} holdout / {n_t:,} treatment entrants")
+    note = _readable_note(out["p_readable"])
+    if note:
+        out["readable_note"] = note
+    if mean_cluster_size:
+        out["mean_cluster_size"] = mean_cluster_size
+        out["required_holdout_clusters"] = math.ceil(n_c / mean_cluster_size - 1e-9)
+        out["required_treatment_clusters"] = math.ceil(n_t / mean_cluster_size - 1e-9)
+    return out
 
 
 # ----------------------------------------------------------------------------------------------
