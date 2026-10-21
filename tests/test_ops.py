@@ -40,6 +40,8 @@ def _tier_con():
            ("u4", "email", "complained", "2026-09-01"), ("u4", "email", "clicked", "2026-10-06"),   # suppressed wins
            ("u6", "email", "clicked", "2026-10-06")]                                           # no consent: not listed
     con.executemany("INSERT INTO message_events VALUES (?, ?, ?, ?)", ev)
+    con.execute("ALTER TABLE message_events ADD COLUMN smtp_status VARCHAR")   # optional canonical columns, left empty
+    con.execute("ALTER TABLE message_events ADD COLUMN diagnostic VARCHAR")
     return con
 
 

@@ -380,3 +380,27 @@ def test_cli_entry_points_run(tmp_path):
     assert (tmp_path / "m" / "monitor.json").exists() and "DROP BACK" in (tmp_path / "m" / "monitor.md").read_text()
     r = subprocess.run([sys.executable, "engine/deliverability/monitor.py", "--data", str(tmp_path / "nope")], cwd=ROOT, capture_output=True, text=True)
     assert r.returncode == 2 and "error" in r.stderr
+
+
+def test_engagement_suppresses_only_hard_bounces(tmp_path):
+    # a block or a deferral is the sender's problem; only an address problem (or a bounce with no detail) suppresses
+    import csv
+    from engine.agents import engagement
+    users = [{"user_id": f"u{i}", "email": f"u{i}@example.test", "created_at": "2026-01-01 00:00:00", "email_consent_at": "2026-01-01 00:00:00"}
+             for i in range(4)]
+    events = [("u0", "bounced", "5.1.1", "550 5.1.1 The email account that you tried to reach does not exist"),
+              ("u1", "bounced", "5.7.26", "550 5.7.26 Unauthenticated email from example.com is not accepted"),
+              ("u2", "bounced", "4.7.28", "421 4.7.28 rate limited"), ("u3", "bounced", "", "")]
+    with open(tmp_path / "users.csv", "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(users[0])); w.writeheader(); w.writerows(users)
+    with open(tmp_path / "track_events.csv", "w", newline="") as f:
+        f.write("event_id,user_id,anonymous_id,event_name,event_at,properties\ne1,u0,,signed_up,2026-01-01 00:00:00,{}\n")
+    with open(tmp_path / "message_events.csv", "w", newline="") as f:
+        w = csv.writer(f); w.writerow(["event_id", "user_id", "channel", "event_name", "event_at", "smtp_status", "diagnostic"])
+        for i, (u, e, s, d) in enumerate(events):
+            w.writerow([f"m{i}", u, "email", e, "2026-06-01 00:00:00", s, d])
+    from engine.data.load import connect
+    con, _ = connect(str(tmp_path))
+    rows = {r[0]: r[2] for r in con.execute(engagement.tiers_sql("duckdb", "2026-06-02")).fetchall()}
+    assert rows["u0"] == "suppressed" and rows["u3"] == "suppressed"
+    assert rows["u1"] != "suppressed" and rows["u2"] != "suppressed"

@@ -102,8 +102,10 @@ def _num(token: str) -> Optional[int]:
     return int(token) if token.isdigit() else NUMBER_WORDS.get(token)
 
 
-def parse_text(text: str, product_name: Optional[str] = None, overrides: Optional[Dict[str, Any]] = None) -> Brief:
-    """Rule-based parse of a one-sentence brief. Unstated values become recorded assumptions."""
+def parse_text(text: str, product_name: Optional[str] = None, overrides: Optional[Dict[str, Any]] = None,
+               defaults: Optional[Dict[str, Any]] = None) -> Brief:
+    """Rule-based parse of a one-sentence brief. The sentence wins, then the workspace's lmm.yaml (`defaults`, read from the
+    workspace when None), then the engine's defaults; values that came from none of these become recorded assumptions."""
     t = " ".join(text.split())
     low = t.lower().replace("’", "'")
     data: Dict[str, Any] = {}
@@ -265,6 +267,9 @@ def parse_text(text: str, product_name: Optional[str] = None, overrides: Optiona
                                       why=f"the sentence named {c.event} for both who qualifies and the core action; qualifying set to "
                                           f"{fallback.event}. Confirm who should be eligible"))
     data["goal"] = t
+    from engine import workspace
+    filled = workspace.apply_defaults(data, {a.field for a in assumptions}, defaults)
+    assumptions = [a for a in assumptions if a.field not in filled]
     for k, v in (overrides or {}).items():
         data[k] = v
         assumptions = [a for a in assumptions if a.field != k]
@@ -300,12 +305,15 @@ def _event(value: Any) -> Any:
     return value
 
 
-def load_brief(path: Path) -> Brief:
-    """Load and validate a YAML brief. Raises ValueError with every problem listed, in plain words."""
+def load_brief(path: Path, defaults: Optional[Dict[str, Any]] = None) -> Brief:
+    """Load and validate a YAML brief, filling unstated fields from the workspace's lmm.yaml (`defaults`, read from the
+    workspace when None). Raises ValueError with every problem listed, in plain words."""
     raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
     if not isinstance(raw, dict):
         raise ValueError(f"{path}: a brief is a set of 'field: value' lines")
     raw = {k: v for k, v in raw.items() if v is not None and v != ""}
+    from engine import workspace
+    workspace.apply_defaults(raw, set(), defaults)
     missing = [k for k in REQUIRED_YAML if k not in raw and not (k == "churn_threshold_days" and raw.get("flow_type") == "activation")]
     if missing:
         raise ValueError(f"{path}: fill in {', '.join(missing)} (see the comments in templates/brief.yaml)")

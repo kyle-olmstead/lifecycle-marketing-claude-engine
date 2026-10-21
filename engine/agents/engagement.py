@@ -44,6 +44,15 @@ MIN_DELIVERIES = 5
 PLATFORMS = ("klaviyo", "hubspot", "braze", "customerio")
 
 
+# Only a hard bounce suppresses the address. A bounce with no detail is treated as hard (most ESP exports record only hard
+# bounces as 'bounced'); with detail, an address problem (RFC 3463 class 5.1.x, or 5.2.1 mailbox disabled) or a server text
+# saying the mailbox does not exist is hard. Blocks, authentication failures and deferrals are the sender's problem, not the
+# address's: suppressing them would remove good people (engine/deliverability/bounces.py classifies them in full).
+HARD_BOUNCE = ("(m.smtp_status IS NULL AND m.diagnostic IS NULL) OR m.smtp_status LIKE '5.1.%' OR m.smtp_status LIKE '5.2.1%' "
+               "OR LOWER(m.diagnostic) LIKE '%does not exist%' OR LOWER(m.diagnostic) LIKE '%user unknown%' "
+               "OR LOWER(m.diagnostic) LIKE '%no such user%' OR LOWER(m.diagnostic) LIKE '%mailbox not found%'")
+
+
 def tiers_sql(dialect_name: str, as_of: Optional[str] = None, min_deliveries: int = MIN_DELIVERIES, order: bool = True) -> str:
     D = dialect(dialect_name)
     a = D.date_literal(as_of) if as_of else D.current_date
@@ -55,7 +64,7 @@ def tiers_sql(dialect_name: str, as_of: Optional[str] = None, min_deliveries: in
             f"  SELECT m.user_id,\n"
             f"         MAX(CASE WHEN m.event_name = 'clicked' AND {upto} THEN m.event_at END) AS last_click_at,\n"
             f"         SUM(CASE WHEN m.event_name = 'delivered' AND {since(180)} AND {upto} THEN 1 ELSE 0 END) AS deliveries_180d,\n"
-            f"         MAX(CASE WHEN m.event_name = 'bounced' AND {upto} THEN 1 ELSE 0 END) AS hard_bounced,\n"
+            f"         MAX(CASE WHEN m.event_name = 'bounced' AND {upto} AND ({HARD_BOUNCE}) THEN 1 ELSE 0 END) AS hard_bounced,\n"
             f"         MAX(CASE WHEN m.event_name = 'complained' AND {upto} THEN 1 ELSE 0 END) AS complained,\n"
             f"         MAX(CASE WHEN m.event_name = 'unsubscribed' AND {upto} THEN 1 ELSE 0 END) AS unsubscribed\n"
             f"  FROM message_events m\n"
