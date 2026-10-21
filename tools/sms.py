@@ -24,11 +24,13 @@ GSM7_BASIC = set(
 GSM7_EXTENSION = set("^{}\\[~]|€\f")  # each costs two septets
 REPLACEMENTS = {chr(0x2018): "'", chr(0x2019): "'", chr(0x201C): '"', chr(0x201D): '"', chr(0x2013): "-", chr(0x2014): "-", chr(0x2026): "...", chr(0x00A0): " "}
 KEYWORDS = r"(STOP|STOPALL|UNSUBSCRIBE|END|QUIT|CANCEL|OPTOUT|REVOKE)"
-# An opt-out instruction, not any use of the word: "Reply STOP", "Text END to 12345", "STOP to opt out", or the
-# keyword written in capitals. "Stop by our store" is not an opt-out instruction.
-OPT_OUT = re.compile(r"\b(?:reply|replying|text|txt|send|msg)\s+(?:with\s+)?['\"]?" + KEYWORDS + r"\b"
-                     r"|\b" + KEYWORDS + r"\b['\"]?\s+(?:to|2)\s+(?:opt|unsub|end|stop|cancel|quit)"
-                     r"|(?-i:\b(?:STOP|UNSUBSCRIBE|OPTOUT)\b)", re.I)
+STRONG = r"(STOP|STOPALL|UNSUBSCRIBE|OPTOUT)"
+# An opt-out instruction, not any use of the word: "Reply STOP", "Text END to 12345", "STOP to opt out", "STOP=stop".
+# "Stop by our store", "NON-STOP savings", "end to end encrypted" and "cancel to end your trial" are not instructions.
+Q = "['\"\u201c\u201d\u2018\u2019]?"   # straight or curly quotes around the keyword
+OPT_OUT = re.compile(r"\b(?:reply|replying|respond|responding|text|txt|send|msg)\s+(?:with\s+)?" + Q + KEYWORDS + r"\b"
+                     r"|(?<![\w-])" + STRONG + Q + r"\s+(?:to|2)\s+(?:opt|unsub|stop|cancel|quit|end)"
+                     r"|(?<![\w-])" + STRONG + r"\s*=\s*(?:stop|opt|unsub|cancel|end|quit)", re.I)
 
 
 def has_opt_out(text: str) -> bool:

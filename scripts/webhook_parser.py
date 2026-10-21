@@ -425,8 +425,12 @@ class Forwarder:
                     continue
                 if b.platform == "hubspot" and not ev["email"]:
                     reason = "HubSpot custom events need the contact's email on the event"
-                req = event_payloads.build(b.platform, ev, hub_id=self.env.get("HUBSPOT_HUB_ID", "0"),
-                                           braze_instance=self.env.get("BRAZE_INSTANCE", "iad-01"), eu=self.env.get("CUSTOMERIO_EU") == "1")
+                try:
+                    req = event_payloads.build(b.platform, ev, hub_id=self.env.get("HUBSPOT_HUB_ID", "0").strip(),
+                                               braze_instance=self.env.get("BRAZE_INSTANCE", "iad-01").strip(), eu=self.env.get("CUSTOMERIO_EU") == "1")
+                except Exception as err:  # noqa: BLE001 - one brief's bad setting must not stop the others
+                    out.append((b, {"event": ev}, f"could not build the request: {type(err).__name__}: {err}"))
+                    continue
                 missing = sorted({m for v in req["headers"].values() for m in PLACEHOLDER.findall(v) if not self.env.get(m)})
                 if b.platform == "hubspot" and not self.env.get("HUBSPOT_HUB_ID"):
                     missing.append("HUBSPOT_HUB_ID")

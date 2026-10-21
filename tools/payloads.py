@@ -18,7 +18,7 @@ lcm_sunset) for all four platforms, as complete requests with ${PLACEHOLDER} sec
   Braze        POST https://rest.<instance>.braze.com/users/track    up to 75 attribute objects per request;
                _update_existing_only keeps the sync from creating users
   Customer.io  POST https://cdp.customer.io/v1/batch (Pipelines API identify calls; cdp-eu for EU workspaces)
-               packed under 500 KB per request and 32 KB per call (half the documented 1 MB and 64 KB)
+               packed to 450,000 bytes per request and 30,000 per call (the limits are 500 KB and 32 KB)
 
 Values are written as they appear in the source, with one exception each way: numbers are sent as
 numbers only when they are plainly numbers (a ZIP code like 02134 or a 16-digit id stays a string),
@@ -49,8 +49,8 @@ HUBSPOT_MAX_INPUTS = 100
 HUBSPOT_VERSION = "2026-09"
 HUBSPOT_PROPERTY = re.compile(r"^[a-z][a-z0-9_]*$")
 BRAZE_MAX_OBJECTS = 75
-CIO_MAX_BATCH_BYTES = 500 * 1024      # documented: 1 MB per batch and 64 KB per call; packed to half for margin
-CIO_MAX_CALL_BYTES = 32 * 1024
+CIO_MAX_BATCH_BYTES = 450_000      # documented: 500 KB per request and 32 KB per call (the batch endpoint's page); margin for the envelope
+CIO_MAX_CALL_BYTES = 30_000
 KLAVIYO_REVISION = "2026-10-15"
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 PLATFORMS = ("klaviyo", "hubspot", "braze", "customerio")

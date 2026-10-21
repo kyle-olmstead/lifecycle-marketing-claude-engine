@@ -227,6 +227,11 @@ def _latest(path: Path) -> Path:
     raise FileNotFoundError(f"{path}: not a run directory (no state.json) and no runs/latest")
 
 
+def _root(run_dir: Path) -> Path:
+    """The output folder a run belongs to: <root>/<flow>/runs/<run_id>."""
+    return Path(run_dir).resolve().parents[2]
+
+
 def _cli(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(description="LMM Engine teammate: one brief in, a build-ready plan out")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -251,16 +256,16 @@ def _cli(argv: Optional[List[str]] = None) -> int:
     rs = sub.add_parser("resume", help="continue a run that failed part way, from the failed stage")
     rs.add_argument("--run", required=True, help="a run directory, or a flow folder for its newest run")
     rs.add_argument("--data", help="replace the data location (when that was the cause of the failure)")
-    rs.add_argument("--out", default="out")
+    rs.add_argument("--out", help="default: the folder the run lives in")
     rv = sub.add_parser("revise", help="start a new run from an old one with brief fields changed; unchanged copy is kept")
     rv.add_argument("--run", required=True)
     rv.add_argument("--set", action="append", default=[], metavar="FIELD=VALUE", help="e.g. touches=4, channels=[email,sms], holdout_pct=20")
-    rv.add_argument("--out", default="out")
+    rv.add_argument("--out", help="default: the folder the run lives in")
     apv = sub.add_parser("approve", help="mark a copy variant as approved; revisions keep it while its touch is unchanged")
     apv.add_argument("--run", required=True)
     apv.add_argument("--step", required=True)
     apv.add_argument("--variant", required=True)
-    apv.add_argument("--out", default="out")
+    apv.add_argument("--out", help="default: the folder the run lives in")
     st = sub.add_parser("status", help="show a run's stages")
     st.add_argument("--run", required=True)
     a = ap.parse_args(argv)
@@ -297,25 +302,30 @@ def _cli(argv: Optional[List[str]] = None) -> int:
             run_dir = _latest(Path(a.run))
             approve(run_dir, a.step, a.variant)
             r = Run.load(run_dir)
-            write_outputs(r.plan(), Path(a.out))
+            write_outputs(r.plan(), Path(a.out) if a.out else _root(run_dir))
             print(f"approved {a.step} variant {a.variant} in run {r.state.run_id}")
             return 0
         if a.cmd == "resume":
-            r = Run.load(_latest(Path(a.run)))
+            run_dir = _latest(Path(a.run))
+            r = Run.load(run_dir)
             if a.data:
                 r.state.data = a.data
             plan = r.execute()
-            _report(plan, write_outputs(plan, Path(a.out)), r.dir)
+            _report(plan, write_outputs(plan, Path(a.out) if a.out else _root(run_dir)), r.dir)
             return 3 if plan.qa.status == "BLOCKED" else 0
         if a.cmd == "revise":
-            r, plan = revise(_latest(Path(a.run)), sets(a.set), Path(a.out))
-            _report(plan, write_outputs(plan, Path(a.out)), r.dir)
+            run_dir = _latest(Path(a.run))
+            out = Path(a.out) if a.out else _root(run_dir)
+            r, plan = revise(run_dir, sets(a.set), out)
+            _report(plan, write_outputs(plan, out), r.dir)
             return 3 if plan.qa.status == "BLOCKED" else 0
         changes = sets(a.set)
         if a.brief:
             brief = load_brief(Path(a.brief))
             if changes:
-                brief = Brief.model_validate({**brief.model_dump(), **changes})
+                data = {**brief.model_dump(), **changes}
+                data["assumptions"] = [x for x in data["assumptions"] if x["field"] not in changes]   # a value set is no longer assumed
+                brief = Brief.model_validate(data)
         else:
             brief = parse_text(a.text, a.product, changes or None)
         drafts = json.loads(Path(a.drafts).read_text(encoding="utf-8")) if a.drafts else None

@@ -102,3 +102,8 @@ def test_no_larger_holdout_suggested_when_already_at_25_percent():
     at_25 = S.feasibility(entries_per_month=1500, holdout_share=0.25, p_control=0.10, mde_rel=0.20)
     assert at_15["expected_read"] == "causal, slow" and "a 25% holdout would read" in at_15["recommended_design"]
     assert at_25["expected_read"] == "causal, slow" and "a 25% holdout would read" not in at_25["recommended_design"]
+
+
+def test_fractional_interval_levels_are_not_rounded():
+    doc = {"flow": "f", "period": "q", "alpha": 0.025, "treatment": {"n": 4000, "conversions": 480}, "holdout": {"n": 1000, "conversions": 100}}
+    assert "97.5% CI" in S.render_incrementality(S.incrementality(doc))

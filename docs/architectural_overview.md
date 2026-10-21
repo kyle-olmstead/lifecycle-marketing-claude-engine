@@ -51,17 +51,24 @@ stage before it, and the inputs that stage reads: the brief, the data location a
 its files, the copy mode). `runs/latest` points at the newest run.
 
 - **Failure.** An exception is recorded with its type, message and source line; the stages after it
-  are marked skipped and the CLI exits 4. Timeouts and connection errors are retried (analyst twice,
-  copywriter once, with backoff); a missing file or a validation error is not, since retrying cannot
-  fix it.
+  are marked skipped and the CLI exits 4. A remote data load that fails with a network or server error
+  is retried twice with backoff; a missing file or a validation error is not, since retrying cannot
+  fix it. Claude calls are retried by the Anthropic SDK; if they still fail, the copywriter falls back
+  to offline drafts and the copy note says so.
 - **Resume.** `orchestrator resume --run out/<flow> [--data ...]` loads the run and executes again: a
-  stage whose input hash is unchanged is reused, so it restarts at the failed stage.
+  stage whose input hash is unchanged is reused, so it restarts at the failed stage. A stage that runs
+  again reads only the outputs of the stages before it, never its own earlier output, so new data
+  replaces old estimates rather than mixing with them.
 - **Revise.** `orchestrator revise --run out/<flow> --set touches=4` starts a new run with the brief
-  changed and the old run as its parent. Copy is keyed on what shaped it (role, channel, job, goal,
+  changed and the old run as its parent (a revision that is itself resumed reloads its parent). Copy is
+  keyed on what shaped it (role, channel, job, goal, flow type, qualifying and core events, threshold,
   product, offer policy, voice, sender, variant count, dialect, mode); a touch whose key is unchanged
   keeps its words, re-rendered and re-linted, and its approval.
 - **Approve.** `orchestrator approve --run out/<flow> --step t1_email --variant B` records the variant
-  to ship; the plan marks it.
+  to ship; the plan marks it. An approval belongs to words: when a revision or a resume rewrites them,
+  it is dropped and logged under "Why the plan looks like this".
+- `resume`, `revise` and `approve` write the plan back to the folder the run lives in, unless `--out`
+  says otherwise.
 
 ## 2. The absence trigger
 
@@ -129,7 +136,7 @@ newsletter slot for a trigger, computed on their own data.
 | Trigger payload | the example request validates against `config/esp_payload_schemas.json` |
 | Copy | every variant: dialect lint (`tools/template_lint.py`), unsubscribe and address present, SMS segments and opt-out (`tools/sms.py`), offer policy, fake urgency, deceptive subjects, unknown tokens, text-to-image |
 | Holdout read | causal, causal and slow, directional only, or not readable (`tools/stats.py feasible`) |
-| Compliance | the rules for every jurisdiction in the audience: postal address, unsubscribe, sender identity, SMS hours (the strictest state window), SMS frequency, SMS and email consent, honest subjects, suppression, and the confirmations only a person can give |
+| Compliance | the rules for every jurisdiction in the audience: postal address, unsubscribe, sender identity, SMS hours (the strictest state window the rules track; Sundays flagged), SMS frequency, SMS and email consent, honest subjects, suppression, and the confirmations only a person can give |
 
 ## 4. The plumbing
 
@@ -173,7 +180,7 @@ subdomains).
 | The Claude copy path works | a stub client exercises structured output parsing, the repair round, drop and block rules, and API failure fallback | a live API call in CI (no key in CI); the call uses the SDK's documented `messages.parse(output_format=...)` |
 | Sheets sync is idempotent | an in-memory worksheet; retry on a synthetic 429 | a live Google Sheet |
 | The MCP server works | tools listed and called in-process | a Claude Desktop session |
-| Runs survive failure and change | `tests/test_pipeline_and_agents.py`: a failed analyst stage, then resume; a transient error retried once; a revision that reuses all copy and keeps an approval; refusal of unknown fields, steps and variants | concurrent writers to one run folder |
+| Runs survive failure and change | `tests/test_pipeline_and_agents.py`: a failed analyst stage, then resume; a transient error retried once; a revision that reuses all copy and keeps an approval; a resume on new data that drops stale estimates and an approval whose words changed; a failed revision resumed with its parent; refusal of unknown fields, steps and variants | concurrent writers to one run folder |
 | Compliance applies the right rules | every rule names a check that exists and a source; jurisdictions from countries; the SMS window at four send hours | the law itself, which changes |
 | The daily job holds up | demo mode end to end with one domain failing; BigQuery mode with its SQL transpiled to DuckDB; a dataset without message events | a live BigQuery or live DNS run in CI |
 

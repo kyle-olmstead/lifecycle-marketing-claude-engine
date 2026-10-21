@@ -191,3 +191,23 @@ def test_dmarc_version_tag_is_case_sensitive():
 def test_mta_sts_mode_none_skips_mx_coverage():
     r = D.parse_mta_sts("v=STSv1; id=1", "version: STSv1\nmode: none\nmx: *.mail.example.com\nmax_age: 86400\n", ["mx.other.example.net"])
     assert not [m for _, m in r["issues"] if "mx.other.example.net" in m]
+
+
+def test_one_click_unsubscribe_reads_the_verdict_of_the_covering_signature():
+    sigs = ("DKIM-Signature: v=1; a=rsa-sha256; d=example.com; s=s1; h=from:list-unsubscribe:list-unsubscribe-post; bh=x; b=AAAA1111\n"
+            "DKIM-Signature: v=1; a=rsa-sha256; d=example.com; s=s2; h=from:subject; bh=y; b=BBBB2222\n")
+    base = "From: News <news@example.com>\nList-Unsubscribe: <https://example.com/u/1>\nList-Unsubscribe-Post: List-Unsubscribe=One-Click\n"
+    covering_fails = ("Authentication-Results: mx.google.com; dkim=fail header.d=example.com header.s=s1; "
+                      "dkim=pass header.d=example.com header.s=s2\n")
+    covering_passes = ("Authentication-Results: mx.google.com; dkim=pass header.d=example.com header.s=s1; "
+                       "dkim=fail header.d=example.com header.s=s2\n")
+    assert D.one_click_unsubscribe(D.parse_headers(covering_fails + base + sigs + "\nbody\n"))["rfc8058_compliant"] is False
+    assert D.one_click_unsubscribe(D.parse_headers(covering_passes + base + sigs + "\nbody\n"))["rfc8058_compliant"] is True
+    no_selector = "Authentication-Results: mx.google.com; dkim=fail header.d=example.com; dkim=pass header.d=example.com\n"
+    assert D.one_click_unsubscribe(D.parse_headers(no_selector + base + sigs + "\nbody\n"))["rfc8058_compliant"] is None
+
+
+def test_subdomain_testing_phase_ends_by_dropping_t():
+    rec = D.parse_dmarc("v=DMARC1; p=reject; sp=quarantine; t=y; rua=mailto:d@example.com")
+    step = D.next_dmarc_step(rec, "example.com", aligned_pass_observed=True, subdomain=True)
+    assert step["value"] == "v=DMARC1; p=reject; sp=quarantine; rua=mailto:d@example.com"

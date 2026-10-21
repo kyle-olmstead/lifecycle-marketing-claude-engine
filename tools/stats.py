@@ -284,7 +284,7 @@ def render_incrementality(x: Dict[str, Any]) -> str:
     def money(v: Optional[float]) -> str:
         return "not computed" if v is None else f"${v:,.0f}"
     r = x["conversion_readout"]
-    level = f"{1 - r.get('alpha', 0.05):.0%}"   # the interval level follows the readout's alpha, not a fixed 95%
+    level = f"{round((1 - r.get('alpha', 0.05)) * 100, 2):g}%"   # the interval level follows the readout's alpha: 95%, 90%, 97.5%
     verdict = (f"; not distinguishable from zero at {level}" if x["read"] == "causal, inconclusive" else
                "; directional only" if x["read"] == "directional" else "")
     conv = (f"{r['rate_treatment']:.2%} vs {r['rate_holdout']:.2%}; difference {r['diff_abs'] * 100:+.2f} pts, {level} CI "

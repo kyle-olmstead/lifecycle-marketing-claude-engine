@@ -17,8 +17,8 @@ segment math, experiment statistics, template and SQL syntax.
   cohort SQL, a multi-channel flow that has been simulated, linted copy, and a holdout with its read
   date. Every assumption it made is listed for you to confirm. [Quickstart](docs/quickstart_for_marketers.md).
 - **New in 2.2:** one command for everything, in plain English (`lcm "check deliverability for
-  example.com"`); a five-stage pipeline (Analyst, Strategist, Copywriter, QA, Compliance) that saves
-  its state after every stage, so a failed run resumes and a change re-runs only what it affects;
+  example.com"`); an agent pipeline (Analyst, Strategist, Architect, Copywriter, Experiment, QA,
+  Compliance) that saves its state after every stage, so a failed run resumes and a change re-runs only what it affects;
   a Compliance agent that checks CAN-SPAM, TCPA and state texting laws, CASL, PECR, ePrivacy, Germany
   and Australia against your audience's countries; live SPF, DKIM, DMARC and MTA-STS checks; and
   engagement tiers that take people who never click out of marketing sends. A daily job at 05:00 UTC
@@ -240,7 +240,7 @@ lifecycle-marketing-claude-engine/
 ├── config/
 │   ├── mcp_server_config.json               local and remote MCP servers for live data      [2.1]
 │   ├── esp_payload_schemas.json             event and attribute request bodies per ESP      [2.1]
-│   └── compliance_rules.json                21 rules, each with its source and check date   [2.2]
+│   └── compliance_rules.json                22 rules, each with its source and check date   [2.2]
 ├── scripts/
 │   ├── daily.py                             the 05:00 UTC job: audits, tiers, DNS, Sheets   [2.2]
 │   ├── campaign_simulator.py                dry-run: structure, synthetic journeys, payloads [2.1]
@@ -345,8 +345,8 @@ Details, and the paths for tools without a connector: [`CONNECTORS.md`](CONNECTO
 | every generated flow passes the simulator: holdout gets nothing, no send without consent, nothing after the core action, frequency cap, send hour, quiet hours; the simulator catches each of those defects when they are injected | your platform's own flow engine |
 | every rendered template lints in its dialect for all five platforms; trigger payloads validate against schemas written from vendor documentation (2026-10-20) | a live send or API call |
 | the Claude copy path (structured output, repair round, fallback) against a stub client | a live Claude API call in CI |
-| a run that fails at any stage resumes from that stage; a revision reuses copy only for touches whose copy brief is unchanged; approvals carry over | a long-running production deployment |
-| the compliance rules each name a check that exists and a source; the strictest state texting window is enforced | legal advice: it is a rules engine, and laws change |
+| a run that fails at any stage resumes from that stage, without reusing its own stale output; a revision reuses copy only for touches whose job, channel, audience and voice are unchanged; an approval is kept only while its words are | a long-running production deployment |
+| the compliance rules each name a check that exists and a source; the SMS send hour is held to the strictest state window the rules track | legal advice: it is a rules engine, it tracks some states and not all, and laws change |
 | the DNS collector against a fake resolver (SPF includes, DKIM, MTA-STS policy, a domain that does not resolve); the daily job end to end in demo mode and in BigQuery mode (its SQL transpiled to DuckDB) | live DNS and a live BigQuery run in CI |
 | the repository contains no em dashes (house style) | taste |
 

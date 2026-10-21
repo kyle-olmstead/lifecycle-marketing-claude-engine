@@ -101,7 +101,7 @@
       "source": "https://www.ecfr.gov/current/title-47/chapter-I/subchapter-B/part-64/subpart-L/section-64.1200"
     },
     {
-      "id": "state texting hours (strictest applied)",
+      "id": "state texting hours (strictest tracked)",
       "jurisdiction": "US",
       "channel": "sms",
       "check": "sms_hours",
@@ -109,7 +109,7 @@
         9,
         20
       ],
-      "requirement": "States set narrower windows than the TCPA: Connecticut 9 a.m. to 8 p.m. (texts covered); Oregon 8 a.m. to 8 p.m. (texts covered from 1 January 2026); Florida, Oklahoma and Maryland 8 a.m. to 8 p.m.; Texas 9 a.m. to 9 p.m., noon on Sundays. Recipient state is not known per person, so the plan holds everyone to 9 a.m. to 8 p.m. local time, and from noon on Sundays.",
+      "requirement": "States set narrower windows than the TCPA: Connecticut 9 a.m. to 8 p.m. (texts covered); Oregon 8 a.m. to 8 p.m. (texts covered from 1 January 2026); Florida, Oklahoma and Maryland 8 a.m. to 8 p.m.; Texas 9 a.m. to 9 p.m., noon on Sundays. Recipient state is not known per person, so the send hour must fall inside 9 a.m. to 8 p.m. local, and a send before noon is flagged for Sundays. These are the state rules this file tracks, not every state's.",
       "source": "https://prdext3.cga.ct.gov/2025/pub/chap_743m.htm",
       "sources": [
         "https://www.oregonlegislature.gov/bills_laws/lawsstatutes/2025orlaw0580.pdf",
@@ -121,7 +121,16 @@
       "sunday_start": 12
     },
     {
-      "id": "state texting frequency (strictest applied)",
+      "id": "Sunday texting",
+      "jurisdiction": "US",
+      "channel": "sms",
+      "check": "confirm",
+      "requirement": "Texas limits telephone solicitation to noon to 9 p.m. on Sundays, and several other states restrict Sunday solicitation further or ban it; whether those rules reach texts is not settled.",
+      "confirm": "Decide with counsel whether marketing texts skip Sundays (most ESPs can exclude a weekday from a flow's send window).",
+      "source": "https://sll.texas.gov/faqs/how-late-can-telemarketers-call"
+    },
+    {
+      "id": "state texting frequency (strictest tracked)",
       "jurisdiction": "US",
       "channel": "sms",
       "check": "sms_frequency",

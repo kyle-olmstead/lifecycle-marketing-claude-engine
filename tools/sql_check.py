@@ -62,12 +62,12 @@ def parse(sql: str, dialect: str) -> Tuple[bool, str]:
         return False, str(e).splitlines()[0]
 
 
-def connect(fixtures: Path = FIXTURES):
+def connect(fixtures: Path = FIXTURES, integer_division: bool = True):
+    """DuckDB over the fixtures. integer_division=True matches PostgreSQL (integer / integer truncates), for the reference
+    SQL; pass False for SQL transpiled from Snowflake or BigQuery, where integer / integer is a decimal."""
     import duckdb
     con = duckdb.connect()
-    # the reference SQL is PostgreSQL, where integer / integer truncates; DuckDB's default returns a float, which would
-    # let an integer-division bug pass here and fail in the warehouse
-    con.execute("SET integer_division = true")
+    con.execute(f"SET integer_division = {'true' if integer_division else 'false'}")
     for table, cols in TABLE_DDL.items():
         path = fixtures / f"{table}.csv"
         con.execute(f"CREATE TABLE {table} ({cols})")

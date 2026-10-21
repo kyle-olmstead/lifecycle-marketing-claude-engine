@@ -434,3 +434,15 @@ def test_http_app_forwards_after_responding(tmp_path, monkeypatch):
     r = client.post("/webhooks/segment", content=raw, headers={"X-Signature": hmac.new(b"s3cret", raw, hashlib.sha1).hexdigest()})
     assert r.json()["accepted"] == 1 and r.json()["forwarding"] == 1 and len(sent) == 1
     assert client.get("/healthz").json()["forwarding"] == ["acme_activation (klaviyo): signed_up"]
+
+
+def test_one_briefs_bad_setting_does_not_stop_the_others(tmp_path):
+    import httpx
+    sent = []
+    fw = webhook_parser.Forwarder([_activation("hubspot"), _activation("klaviyo")], tmp_path,
+                                  env={"HUBSPOT_PRIVATE_APP_TOKEN": "t", "HUBSPOT_HUB_ID": "not-digits", "KLAVIYO_PRIVATE_KEY": "pk"},
+                                  transport=httpx.MockTransport(lambda r: sent.append(r) or httpx.Response(202)))
+    ev = {"event_id": "e1", "user_id": "u_1", "event_name": "signed_up", "event_at": TS, "properties": {"email": "a@example.com"}}
+    assert fw.forward([ev]) == {"forwarded": 1, "not_sent": 1, "failed": 0} and len(sent) == 1
+    kept = next((tmp_path / "forward_failed").glob("*.ndjson")).read_text()
+    assert "could not build the request" in kept

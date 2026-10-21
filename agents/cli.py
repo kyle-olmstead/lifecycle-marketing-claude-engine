@@ -26,7 +26,7 @@ import shlex
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -45,7 +45,20 @@ INTENTS = (
     ("size", r"sample size|how many (people|users|entrants)|power|minimum detectable|\bmde\b|how long .*holdout"),
     ("plan", r"\bplan\b|flow|campaign|journey|sequence|series|touch|win-?back|onboarding|welcome|activation|nurture|re-?engage"),
 )
+# Asking for a flow is a plan, whatever else the sentence mentions ("a re-engagement flow for inactive subscribers").
+PLAN_FIRST = re.compile(r"\b(plan|build|design|create|draft|write|set up|map out)\b[^.?!]*\b(flow|campaign|journey|sequence|series|cadence|drip|"
+                        r"win-?back|onboarding|welcome|nurture|re-?engagement|reactivation|activation)\b", re.I)
 NOT_DOMAINS = {"e.g", "i.e"}
+# what each job needs, and how to ask for it
+NEEDS: Dict[str, List[Tuple[str, str]]] = {
+    "deliverability": [("domain", "the sending domain (for example: check deliverability for example.com)")],
+    "audit": [("brief", "--brief (which flow's cohort)"), ("data", "--data (a folder or URL prefix with users, orders, track_events exports)")],
+    "blast": [("brief", "--brief (which flow's cohort)"), ("data", "--data (a folder or URL prefix with users, orders, track_events exports)")],
+    "engagement": [("data", "--data (a folder with users and message_events exports)")],
+    "readout": [("input", "the results file (for example: read the holdout results in results/winback.json)")],
+    "size": [("baseline", "the baseline rate (for example: on a 10% baseline)"), ("mde_rel", "the lift worth detecting (for example: a 20% lift)")],
+}
+DEFAULTS: Dict[str, Dict[str, Any]] = {"size": {"holdout": 0.15}}
 
 
 @dataclass
@@ -58,6 +71,8 @@ class Job:
 
 def classify(text: str) -> Optional[str]:
     low = text.lower()
+    if PLAN_FIRST.search(low):
+        return "plan"
     for kind, pattern in INTENTS:
         if re.search(pattern, low):
             return kind
@@ -83,8 +98,6 @@ def route(text: str, opts: Dict[str, Any]) -> Job:
         sel = re.search(r"selectors?\s+([\w,\s-]+?)(?:\.|$| and )", text, re.I)
         job.args = {"domain": a.get("domain") or (domains[0] if domains else None), "selectors": a.get("selectors") or (sel.group(1).replace(" ", "") if sel else None),
                     "signals": a.get("signals"), "envelope": a.get("envelope")}
-        if not job.args["domain"]:
-            job.missing.append("the sending domain (for example: check deliverability for example.com)")
     elif kind in ("audit", "blast"):
         job.args = {"brief": brief, "data": a.get("data"), "out": a.get("out", "out")}
         if kind == "blast":
@@ -95,18 +108,12 @@ def route(text: str, opts: Dict[str, Any]) -> Job:
                 job.args["brief"] = active[0]
             else:
                 job.missing.append("--brief (which flow's cohort)" + (f"; active briefs: {', '.join(Path(p).name for p in active)}" if active else ""))
-        if not job.args["data"]:
-            job.missing.append("--data (a folder or URL prefix with users, orders, track_events exports)")
     elif kind == "engagement":
         plat = next((p for p in ("klaviyo", "hubspot", "braze", "customerio", "customer.io") if p in low), None)
         job.args = {"data": a.get("data"), "platform": a.get("platform") or (plat.replace(".", "") if plat else None), "out": a.get("out", "out")}
-        if not job.args["data"]:
-            job.missing.append("--data (a folder with users and message_events exports)")
     elif kind == "readout":
         path = a.get("input") or next(iter(JSON_PATH.findall(text)), None)
         job.args = {"input": path}
-        if not path:
-            job.missing.append("the results file (for example: read the holdout results in results/winback.json)")
     elif kind == "size":
         pcts = [float(x) / 100 for x in PCT.findall(text)]
         lift = next((p for p, m in zip(pcts, PCT.finditer(text)) if re.search(r"lift|increase|improve", text[m.end():m.end() + 25], re.I)), None)
@@ -115,26 +122,36 @@ def route(text: str, opts: Dict[str, Any]) -> Job:
         entrants = re.search(r"(\d[\d,]*)\s*(entrants|people|users|signups)\s*(a|per)\s*month", text, re.I)
         job.args = {"baseline": base, "mde_rel": lift, "holdout": hold or 0.15,
                     "entries_per_month": int(entrants.group(1).replace(",", "")) if entrants else None}
-        if base is None:
-            job.missing.append("the baseline rate (for example: on a 10% baseline)")
-        if lift is None:
-            job.missing.append("the lift worth detecting (for example: a 20% lift)")
+    return check(job)
+
+
+def check(job: Job) -> Job:
+    """Fill defaults and list what the job still needs, so nothing runs half-specified."""
+    for k, v in DEFAULTS.get(job.kind, {}).items():
+        if job.args.get(k) in (None, ""):
+            job.args[k] = v
+    job.args.setdefault("out", "out")
+    for key, ask in NEEDS.get(job.kind, []):
+        if job.args.get(key) in (None, "", []) and not any(m.startswith(ask.split(" (")[0]) for m in job.missing):
+            job.missing.append(ask)
     return job
 
 
 def from_yaml(path: Path, opts: Dict[str, Any]) -> Job:
     import yaml
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if not isinstance(raw, dict):
+        return Job("help", why=f"{path}: a job file is YAML keys and values (kind: ..., then the job's settings)")
     kind = raw.pop("kind", None)
+    given = {k: v for k, v in opts.items() if v not in (None, False, [])}
     if kind is None and "product_name" in raw:   # a campaign brief is a plan job
-        return Job("plan", {"brief": str(path), "data": opts.get("data"), "copy_mode": opts.get("copy_mode", "auto"), "out": opts.get("out", "out")},
-                   why="a campaign brief")
+        return check(Job("plan", {"brief": str(path), "data": given.get("data"), "copy_mode": given.get("copy_mode", "auto"),
+                                  "out": given.get("out", "out")}, why="a campaign brief"))
     if kind == "plan" and "brief" not in raw:
         return Job("help", why=f"{path}: a plan job names its brief (brief: briefs/my_flow.yaml)")
-    job = Job(kind or "help", {**opts, **raw}, why=f"kind: {kind}")
-    if kind == "plan":
-        job.args.setdefault("out", "out")
-    return job
+    if kind not in {k for k, _ in INTENTS}:
+        return Job("help", why=f"{path}: kind must be one of {', '.join(k for k, _ in INTENTS)} (got {kind!r})")
+    return check(Job(kind, {**given, **raw}, why=f"kind: {kind}"))
 
 
 def run(job: Job) -> int:
@@ -204,6 +221,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(__doc__)
         return 0
     job = from_yaml(Path(text), opts) if YAML_PATH.fullmatch(text) and Path(text).exists() else route(text, opts)
+    if job.kind == "help" and job.why not in ("", "no job matched"):
+        print(f"error: {job.why}", file=sys.stderr)
+        return 2
     if a.dry_run or job.missing:
         print(json.dumps({"job": job.kind, "why": job.why, "args": {k: v for k, v in job.args.items() if v is not None},
                           **({"needs": job.missing} if job.missing else {})}, indent=2))

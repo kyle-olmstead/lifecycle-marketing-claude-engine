@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import statistics
 import sys
 from datetime import date, datetime, timedelta, timezone
@@ -80,6 +81,10 @@ LEDGER = "lcm_flow_entries"
 # data access
 # ----------------------------------------------------------------------------------------------
 
+TRANSIENT_LOAD = re.compile(r"HTTP 5\d\d|\(HTTP 429\)|\b(429|500|502|503|504)\b|timed? ?out|connection (refused|reset|aborted)|"
+                            r"could not resolve|temporar", re.I)
+
+
 def connect(data: Optional[str]):
     """DuckDB over the canonical tables, from a folder or URL prefix holding users, orders and track_events (.parquet or .csv).
 
@@ -109,7 +114,11 @@ def connect(data: Optional[str]):
             except Exception as e:  # noqa: BLE001
                 errors.append(f"{source}: {str(e).splitlines()[0]}")
         if not loaded and table not in ("orders",) + sql_check.OPTIONAL_TABLES:
-            raise FileNotFoundError(f"{data}: could not load {table} from .parquet or .csv ({'; '.join(errors) or 'no file'})")
+            msg = f"{data}: could not load {table} from .parquet or .csv ({'; '.join(errors) or 'no file'})"
+            # a server error or a dropped connection can pass on retry; a missing file cannot
+            if remote and any(TRANSIENT_LOAD.search(e) for e in errors):
+                raise ConnectionError(msg)
+            raise FileNotFoundError(msg)
     return con
 
 

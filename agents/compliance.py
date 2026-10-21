@@ -32,11 +32,19 @@ def load_rules() -> Dict[str, Any]:
 
 def jurisdictions(brief: Brief, cohort: CohortDefinition) -> Tuple[List[str], Optional[str]]:
     """Jurisdictions in the audience, and a note when they had to be assumed."""
-    countries = {c.upper() for c, share in (cohort.countries or {}).items() if share >= MIN_SHARE}
+    shares = {str(c).upper(): s for c, s in (cohort.countries or {}).items()}
+    unknown = sum(s for c, s in shares.items() if c in ("UNKNOWN", "", "NONE", "NULL"))
+    countries = {c for c, s in shares.items() if s >= MIN_SHARE and c not in ("UNKNOWN", "", "NONE", "NULL")}
     countries |= {c.upper() for c in (brief.recipient_countries or [])}
     note = None
     if not countries:
-        countries, note = {"US"}, "recipient geography unknown: assumed United States only. Add recipient_countries to the brief or run with --data"
+        countries = {"US"}
+        note = ("recipient geography unknown" + (f" ({unknown:.0%} of people have no country on record)" if unknown else "") +
+                ": assumed United States only. Add recipient_countries to the brief, or fill users.country")
+    elif unknown >= 0.05:
+        countries.add("US")
+        note = (f"{unknown:.0%} of people have no country on record: United States rules are applied to them as well. "
+                f"Fill users.country, or list every country in recipient_countries")
     out = set()
     for c in countries:
         if c in ("US", "CA", "AU"):

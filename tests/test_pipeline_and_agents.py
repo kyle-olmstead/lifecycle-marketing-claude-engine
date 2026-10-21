@@ -167,7 +167,7 @@ def test_every_rule_has_a_check_and_a_source():
 def test_sms_send_hour_is_held_to_the_strictest_state_window(brief, hour, status):
     b = brief.model_copy(update={"channels": ["email", "sms"], "send_hour_local": hour, "quiet_hours": "22:00-07:00"})
     plan = orchestrator.run(b, copy_mode="offline")
-    states = [f for f in plan.compliance.findings if f.rule == "state texting hours (strictest applied)"]
+    states = [f for f in plan.compliance.findings if f.rule == "state texting hours (strictest tracked)"]
     if not any(t.channel == "sms" for t in plan.flow.touches):
         pytest.skip("SMS not placed in this flow")
     assert states and states[0].status == status, states
@@ -179,3 +179,101 @@ def test_uncovered_countries_are_named(brief, cohort):
     report = compliance.review(brief, c, plan.flow, plan.copy_plan)
     other = [f for f in report.findings if f.rule == "uncovered jurisdictions"]
     assert other and "BR" in other[0].detail and report.status in ("warn", "fail")
+
+
+# ----------------------------------------------------------------------------------------------
+# regressions from the v2.2 review
+# ----------------------------------------------------------------------------------------------
+
+def test_an_approval_is_dropped_when_a_resume_rewrites_its_words(tmp_path, brief):
+    run = Run.new(brief, tmp_path, data=FIXTURES, copy_mode="offline")
+    plan = run.execute()
+    approve(run.dir, "t1_email", "B")
+    approve(run.dir, "t2_email", "A")
+    drafts = {tc.step_id: [{**v.fields, "framework": v.framework, "hypothesis": v.hypothesis} for v in tc.variants] for tc in plan.copy_plan}
+    drafts["t1_email"][1]["subject"] = "A different subject line entirely"
+    r = Run.load(run.dir)
+    r.state.drafts = drafts
+    p2 = r.execute()
+    assert p2.approvals == {"t2_email": "A"}
+    assert any(d.decision == "approval of t1_email variant B dropped" for d in p2.decisions)
+
+
+def test_a_failed_revision_resumes_with_its_parent(tmp_path, brief, monkeypatch):
+    run = Run.new(brief, tmp_path, data=FIXTURES, copy_mode="offline")
+    run.execute()
+    approve(run.dir, "t1_email", "B")
+
+    def boom(r):
+        raise ValueError("simulated strategist failure")
+
+    real = stages.FUNCS["strategist"]
+    monkeypatch.setitem(stages.FUNCS, "strategist", boom)
+    with pytest.raises(PipelineError) as err:
+        revise(run.dir, {"holdout_pct": 20}, tmp_path)
+    monkeypatch.setitem(stages.FUNCS, "strategist", real)
+    resumed = Run.load(err.value.run_dir)
+    assert resumed.parent is not None and resumed.parent.state.run_id == run.state.run_id
+    p2 = resumed.execute()
+    assert p2.approvals == {"t1_email": "B"} and all("reused from run" in (c.note or "") for c in p2.copy_plan if c.variants)
+
+
+def test_resume_on_new_data_does_not_keep_old_estimates(tmp_path, brief):
+    run = Run.new(brief, tmp_path, data=FIXTURES, copy_mode="offline")
+    run.execute()
+    first = {a.field: a.value for a in run.plan().brief.assumptions if a.field in ("monthly_entrants", "baseline_conversion_rate")}
+    assert first and all(v is not None for v in first.values())
+    short = tmp_path / "short"
+    short.mkdir()
+    for t in ("users", "orders"):
+        (short / f"{t}.csv").write_text((Path(FIXTURES) / f"{t}.csv").read_text())
+    lines = (Path(FIXTURES) / "track_events.csv").read_text().splitlines()
+    head = lines[0].split(",")
+    at = head.index("event_at")
+    recent = [line for line in lines[1:] if line.split(",")[at] >= "2026-09-28"]   # 20 days: too short to estimate from
+    (short / "track_events.csv").write_text("\n".join([lines[0]] + recent) + "\n")
+    r = Run.load(run.dir)
+    r.state.data = str(short)
+    p2 = r.execute()
+    again = {a.field: a.value for a in p2.brief.assumptions if a.field in ("monthly_entrants", "baseline_conversion_rate")}
+    assert all(v is None for v in again.values()), again
+
+
+def test_revise_rewrites_copy_when_the_audience_changes(tmp_path, brief):
+    run = Run.new(brief, tmp_path, data=FIXTURES, copy_mode="offline")
+    run.execute()
+    _, p2 = revise(run.dir, {"churn_threshold_days": 90}, tmp_path)
+    assert not any("reused from run" in (c.note or "") for c in p2.copy_plan)
+
+
+def test_run_commands_write_back_to_the_runs_own_folder(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    plans = tmp_path / "plans"
+    assert orchestrator._cli(["plan", "--brief", str(EXAMPLE), "--copy-mode", "offline", "--out", str(plans)]) == 0
+    flow = plans / "ridgeview_winback_14d"
+    assert orchestrator._cli(["revise", "--run", str(flow), "--set", "holdout_pct=20"]) == 0
+    assert orchestrator._cli(["approve", "--run", str(flow), "--step", "t1_email", "--variant", "B"]) == 0
+    assert not (tmp_path / "out").exists()
+    assert len(list((flow / "runs").iterdir())) == 3 and "(approved)" in (flow / "plan.md").read_text()
+
+
+def test_plan_set_removes_the_assumption_it_answers(tmp_path):
+    assert orchestrator._cli(["plan", "--brief", str(EXAMPLE), "--copy-mode", "offline", "--set", "monthly_entrants=500",
+                              "--out", str(tmp_path)]) == 0
+    plan = json.loads(next(tmp_path.glob("*/plan.json")).read_text())
+    assert plan["brief"]["monthly_entrants"] == 500
+    assert "monthly_entrants" not in {a["field"] for a in plan["brief"]["assumptions"]}
+
+
+def test_remote_load_failures_that_can_pass_on_retry_are_transient():
+    from agents.pipeline import _transient
+    assert cohort_analyst.TRANSIENT_LOAD.search("HTTP GET error: 503 Service Unavailable")
+    assert not cohort_analyst.TRANSIENT_LOAD.search("HTTP GET error: 404 Not Found")
+    assert _transient(ConnectionError("x")) and not _transient(FileNotFoundError("x"))
+
+
+def test_unknown_countries_fall_back_to_us_rules(brief, cohort):
+    juris, note = compliance.jurisdictions(brief, cohort.model_copy(update={"countries": {"UNKNOWN": 1.0}}))
+    assert juris == ["US"] and "assumed United States" in note
+    juris, note = compliance.jurisdictions(brief, cohort.model_copy(update={"countries": {"CA": 0.7, "UNKNOWN": 0.3}}))
+    assert juris == ["CA", "US"] and "30% of people have no country" in note

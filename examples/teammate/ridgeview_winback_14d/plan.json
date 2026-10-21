@@ -1,6 +1,6 @@
 {
-  "run_id": "0d48435bc899",
-  "generated_at": "2026-10-21T00:39:30+00:00",
+  "run_id": "6617aa32ca00",
+  "generated_at": "2026-10-21T01:16:19+00:00",
   "engine_version": "2.2.0",
   "brief": {
     "product_name": "Ridgeview",
@@ -214,8 +214,8 @@
       "US": 0.4367,
       "AU": 0.1582,
       "CA": 0.1519,
-      "DE": 0.1266,
-      "GB": 0.1266
+      "GB": 0.1266,
+      "DE": 0.1266
     },
     "as_of": "2026-10-18",
     "trigger_payload_example": {

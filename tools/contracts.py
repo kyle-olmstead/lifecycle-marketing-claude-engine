@@ -42,11 +42,11 @@ class DnsRecords(BaseModel):
     """What is published for one domain. Leave a key out when it was not looked up; an empty list means looked up, none found."""
     model_config = ConfigDict(extra="forbid")
     txt: Optional[List[str]] = Field(None, description="TXT records at the domain itself (SPF lives here)")
-    dmarc: Optional[str] = Field(None, description="the TXT record at _dmarc.<domain>")
+    dmarc: Optional[Union[str, List[str]]] = Field(None, description="the TXT record at _dmarc.<domain>; a list when more than one is published (an error)")
     mx: Optional[List[str]] = None
-    mta_sts: Optional[str] = Field(None, description="the TXT record at _mta-sts.<domain>")
-    tlsrpt: Optional[str] = Field(None, description="the TXT record at _smtp._tls.<domain>")
-    bimi: Optional[str] = Field(None, description="the TXT record at default._bimi.<domain>")
+    mta_sts: Optional[Union[str, List[str]]] = Field(None, description="the TXT record at _mta-sts.<domain>")
+    tlsrpt: Optional[Union[str, List[str]]] = Field(None, description="the TXT record at _smtp._tls.<domain>")
+    bimi: Optional[Union[str, List[str]]] = Field(None, description="the TXT record at default._bimi.<domain>")
 
 
 class HeadersRef(BaseModel):

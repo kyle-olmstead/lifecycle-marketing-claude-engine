@@ -448,12 +448,12 @@
           "Authorization": "Basic base64(<pipelines API key>:)"
         },
         "recommended": "Customer.io recommends the Pipelines API over the Track API v1",
-        "limits": "64 KB per call and 1 MB per batch; the engine packs to 32 KB and 500 KB, leaving room for the envelope the API adds",
+        "limits": "500 KB per request and 32 KB per call (batch endpoint documentation); the engine packs batches to 450,000 bytes and calls to 30,000",
         "idempotency": "messageId",
         "docs": [
           "https://docs.customer.io/integrations/api/cdp/",
           "https://docs.customer.io/integrations/data-in/connections/http-api.md",
-          "https://docs.customer.io/integrations/api/track-vs-cdp-api/"
+          "https://docs.customer.io/integrations/api/cdp/tag/default/batch/"
         ],
         "checked": "2026-10-20"
       },
@@ -703,11 +703,11 @@
         "headers": {
           "Authorization": "Basic base64(<pipelines API key>:)"
         },
-        "limits": "64 KB per call and 1 MB per batch; the engine packs to 32 KB and 500 KB, leaving room for the envelope the API adds",
+        "limits": "500 KB per request and 32 KB per call (batch endpoint documentation); the engine packs batches to 450,000 bytes and calls to 30,000",
         "docs": [
           "https://docs.customer.io/integrations/api/cdp/",
           "https://docs.customer.io/integrations/data-in/connections/http-api.md",
-          "https://docs.customer.io/integrations/api/track-vs-cdp-api/"
+          "https://docs.customer.io/integrations/api/cdp/tag/default/batch/"
         ],
         "checked": "2026-10-20"
       },

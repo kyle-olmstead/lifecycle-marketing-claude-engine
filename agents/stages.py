@@ -65,22 +65,38 @@ def copywriter_stage(run) -> Dict[str, Any]:
     key = lambda t: copy_key(t, brief, run.state.copy_mode)  # noqa: E731
     plan = copywriter.write(brief, run.out["flow"], run.state.copy_mode, run.state.drafts, run.client, reuse=reuse, reuse_key=key)
     touches = {t.step_id: t for t in run.out["flow"].touches}
-    carried: Dict[str, str] = {}
-    kept_old = set()
-    reused = 0
-    for tc in plan:
-        if tc.note and "reused from run" in tc.note:
-            reused += 1
-            old_tc, approval, _rid = reuse[key(touches[tc.step_id])]
-            if approval:
-                carried[tc.step_id] = approval
-                kept_old.add(old_tc.step_id)
-    if run.parent:
+    reused = sum(1 for tc in plan if tc.note and "reused from run" in tc.note)
+    # An approval names words, not a slot: it stands only while the approved words do.
+    kept: Dict[str, str] = {}
+    dropped: Dict[str, str] = {}
+    if run.prior.get("copy_plan") is not None:
+        # this run wrote copy before (a resume that reruns the copywriter): keep an approval if its variant's words are unchanged
+        def words(plan_: List[Any], step: str, variant: str) -> Any:
+            tc = next((c for c in plan_ if c.step_id == step), None)
+            v = next((x for x in (tc.variants if tc else []) if x.variant_id == variant), None)
+            return None if v is None else (v.fields, v.framework, v.hypothesis)
+        for step, variant in run.state.approvals.items():
+            same = words(run.prior["copy_plan"], step, variant) is not None and \
+                words(run.prior["copy_plan"], step, variant) == words(plan, step, variant)
+            (kept if same else dropped)[step] = variant
+    elif run.parent is not None:
+        # a revision: an approval follows its words to whichever touch reused them
+        carried = {}
+        for tc in plan:
+            if tc.note and "reused from run" in tc.note:
+                carried[reuse[key(touches[tc.step_id])][0].step_id] = tc.step_id
         for step, variant in run.parent.state.approvals.items():
-            if step not in kept_old:
-                run.decisions.append(Decision(stage="copywriter", decision=f"approval of {step} variant {variant} dropped",
-                                              why="that touch's job or channel changed in this revision, so its copy was rewritten"))
-        run.state.approvals = carried
+            if step in carried:
+                kept[carried[step]] = variant
+            else:
+                dropped[step] = variant
+    else:
+        kept = dict(run.state.approvals)
+    for step, variant in dropped.items():
+        run.decisions.append(Decision(stage="copywriter", decision=f"approval of {step} variant {variant} dropped",
+                                      why="its words were rewritten in this run (the touch's job, channel or audience changed, or the "
+                                          "copy was written again); approve the new copy if it should ship"))
+    run.state.approvals = kept
     if reused:
         run.decisions.append(Decision(stage="copywriter", decision=f"copy carried over for {reused} touch(es)",
                                       why="their job and channel did not change, so the existing (and any approved) copy stands"))

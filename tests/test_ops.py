@@ -212,7 +212,7 @@ def test_daily_demo_run_logs_every_tab_and_keeps_going_past_a_failure(tmp_path):
 
 
 def test_daily_bigquery_mode_runs_the_warehouse_sql(tmp_path):
-    con = sql_check.connect()
+    con = sql_check.connect(integer_division=False)   # BigQuery divides integers to a decimal
 
     def bq(sql):   # BigQuery SQL, run on the fixtures through a transpile, returned the way bq --format=json returns rows
         cur = con.execute(sqlglot.transpile(sql, read="bigquery", write="duckdb")[0])
@@ -246,3 +246,44 @@ def test_sheet_rows_for_the_new_tabs_match_their_headers():
     assert set(drow) == set(sheets_sync.TABS["Deliverability"]["header"]) and drow["gate"] == "GREEN" and drow["auth_state"] == "verified"
     with pytest.raises(ValueError, match="no tab named"):
         sheets_sync.sync(extra={"Nope": [{}]}, dry_run=True)
+
+
+# ----------------------------------------------------------------------------------------------
+# regressions from the v2.2 review
+# ----------------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("text,kind", [
+    ("plan a re-engagement flow for inactive subscribers", "plan"),
+    ("plan a welcome series that suppresses people who bounce", "plan"),
+    ("plan a win-back that protects our inbox placement", "plan"),
+])
+def test_asking_for_a_flow_is_always_a_plan(text, kind):
+    assert cli.classify(text) == kind
+
+
+def test_yaml_jobs_name_what_is_missing(tmp_path, capsys):
+    job = tmp_path / "job.yaml"
+    job.write_text("kind: engagement\n")
+    assert cli.main([str(job)]) == 2 and "--data" in capsys.readouterr().out
+    job.write_text("kind: size\nbaseline: 0.1\nmde_rel: 0.2\n")
+    assert cli.from_yaml(job, {}).args["holdout"] == 0.15
+    job.write_text("kind: nope\n")
+    assert cli.main([str(job)]) == 2
+
+
+def test_duplicate_dmarc_records_mean_no_dmarc():
+    zone = dict(ZONE)
+    zone[("_dmarc.example.org", "TXT")] = ["v=DMARC1; p=reject; rua=mailto:d@example.org", "v=DMARC1; p=none"]
+    doc = dns_collect.collect("example.org", ["s1"], resolve=lambda n, t: list(zone.get((n, t), [])), today="2026-10-20", fetch=lambda u: None)
+    doc.pop("_lookups")
+    r = deliverability.analyze(contracts.validate_deliverability(doc))
+    ids = {f["id"]: f["severity"] for f in r["findings"]}
+    assert ids.get("dmarc.multiple") == "critical" and "dmarc.missing" not in ids and r["gate"]["verdict"] == "RED"
+
+
+def test_customerio_batches_stay_under_the_documented_limit():
+    from tools.payloads import _bytes, attribute_sync
+    rows = [{"user_id": f"user_{i:06d}", "email": f"user_{i:06d}@example.com", "lcm_engagement_tier": "engaged_90d", "lcm_sunset": False}
+            for i in range(20000)]
+    reqs, _ = attribute_sync("customerio", rows)
+    assert len(reqs) > 1 and all(_bytes(r["body"]) <= 450_000 for r in reqs)

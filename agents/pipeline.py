@@ -10,17 +10,21 @@ A run directory keeps everything the agents know about a campaign, so work carri
   out/<flow>/runs/latest                       the id of the newest run
 
 Fault tolerance
-  * A stage that raises is retried when its work can fail transiently (loading remote data, calling
-    Claude), then recorded as failed with its error; the stages after it are skipped. Nothing is lost:
-    `resume` re-runs from the failed stage once the cause is fixed.
-  * Each stage records a hash of its inputs. On resume, a finished stage whose inputs have not changed
-    is reused rather than recomputed.
+  * The analyst stage is retried twice when loading remote data fails with a network or server error.
+    (Calls to Claude are retried by the Anthropic SDK; if they still fail, the copywriter falls back to
+    offline drafts and the plan says so.) A stage that still fails is recorded with its error, and the
+    stages after it are skipped. Nothing is lost: `resume` re-runs from the failed stage once the cause
+    is fixed.
+  * Each stage records a hash of its inputs and reads only the outputs of the stages before it. On
+    resume, a finished stage whose inputs have not changed is reused rather than recomputed.
 
 Context across steps
   * `revise` starts a new run from an old one with some brief fields changed. Copy for any touch whose
-    copy brief did not change is carried over (no new Claude call, hand edits kept), with its approval.
-  * `approve` records which variant of a touch the marketer approved; the plan marks it, and a revision
-    that changes that touch's brief drops the approval and says so.
+    job, channel, audience and voice did not change is carried over (no new Claude call, hand edits
+    kept), re-rendered and re-linted for the new plan.
+  * `approve` records which variant of a touch the marketer approved; the plan marks it. An approval
+    stands only while the approved words stand: when a revision or a resume rewrites them, it is
+    dropped and the plan says so.
   * Every agent logs its decisions and the reasons; the plan prints them under "Why the plan looks
     like this".
 """
@@ -42,7 +46,7 @@ from agents.models import (Brief, CohortDefinition, ComplianceReport, Decision, 
                            Strategy, TouchCopy)
 
 STAGES = ("intake", "analyst", "strategist", "architect", "copywriter", "experiment", "qa", "compliance")
-RETRIES = {"analyst": 2, "copywriter": 1}
+RETRIES = {"analyst": 2}
 _now = lambda: datetime.now(timezone.utc).replace(microsecond=0).isoformat()  # noqa: E731
 
 # what each stage writes, and how to read it back
@@ -118,10 +122,12 @@ def _data_fingerprint(data: Optional[str]) -> Any:
 
 
 def copy_key(touch: Any, brief: Brief, mode: str) -> str:
-    """Identity of one touch's words: its job and channel, and the brief fields copy is written from. Position, links and
-    the postal address are not part of it: reused words are re-rendered and re-linted for the new plan."""
-    return _h(touch.role, touch.channel, touch.job, touch.goal, brief.product_name, brief.offer_policy, brief.brand_voice,
-              brief.sender_name, brief.copy_variants, brief.template_dialect, mode)
+    """Identity of one touch's words: its job and channel, the audience it is written to (flow type, qualifying and core
+    events, threshold), and the brief fields copy is written from. The touch's position, links and the postal address are not
+    part of it: reused words are re-rendered and re-linted for the new plan."""
+    return _h(touch.role, touch.channel, touch.job, touch.goal, brief.flow_type, brief.qualifying_event.model_dump(),
+              brief.core_conversion_event.model_dump(), brief.churn_threshold_days, brief.product_name, brief.offer_policy,
+              brief.brand_voice, brief.sender_name, brief.copy_variants, brief.template_dialect, mode)
 
 
 class Run:
@@ -130,8 +136,19 @@ class Run:
     def __init__(self, state: RunState, run_dir: Optional[Path] = None, client: Any = None,
                  parent: Optional["Run"] = None, sleep: Callable[[float], None] = time.sleep):
         self.state, self.dir, self.client, self.parent, self.sleep = state, run_dir, client, parent, sleep
-        self.out: Dict[str, Any] = {}
+        self.stage_out: Dict[str, Dict[str, Any]] = {}       # each finished stage's own outputs
+        self.stage_dec: Dict[str, List[Decision]] = {}       # and its decisions
+        self.out: Dict[str, Any] = {}                        # what the running stage may read: the stages before it
         self.decisions: List[Decision] = []
+        self.prior: Dict[str, Any] = {}                      # the running stage's own outputs from an earlier attempt, if any
+
+    def _view(self, upto: Optional[str] = None) -> None:
+        """Make out and decisions the merged outputs of the stages before `upto` (all stages when None), in order."""
+        names = STAGES[: STAGES.index(upto)] if upto else STAGES
+        self.out, self.decisions = {}, []
+        for s in names:
+            self.out.update(self.stage_out.get(s, {}))
+            self.decisions += self.stage_dec.get(s, [])
 
     # ------------------------------------------------------------------------------------------
     # persistence
@@ -147,17 +164,21 @@ class Run:
         return cls(state, run_dir, **kw)
 
     @classmethod
-    def load(cls, run_dir: Path, **kw: Any) -> "Run":
+    def load(cls, run_dir: Path, load_parent: bool = True, **kw: Any) -> "Run":
         run_dir = Path(run_dir)
         state = RunState.model_validate_json((run_dir / "state.json").read_text(encoding="utf-8"))
         run = cls(state, run_dir, **kw)
         for stage, types in OUTPUT_TYPES.items():
             path = run_dir / "stages" / f"{stage}.json"
-            if state.stages[stage].status in ("ok", "reused") and path.exists():
+            if path.exists():   # kept even for a failed or skipped stage: a rerun compares against it (approvals)
                 raw = json.loads(path.read_text(encoding="utf-8"))
-                for key, typ in types.items():
-                    run.out[key] = TypeAdapter(typ).validate_python(raw[key])
-                run.decisions += [Decision(**d) for d in raw.get("_decisions", [])]
+                run.stage_out[stage] = {key: TypeAdapter(typ).validate_python(raw[key]) for key, typ in types.items()}
+                run.stage_dec[stage] = [Decision(**d) for d in raw.get("_decisions", [])]
+        # a revision keeps its parent, so resuming it still reuses the parent's copy and approvals
+        parent_dir = run_dir.parent / state.parent_run_id if state.parent_run_id else None
+        if load_parent and parent_dir is not None and (parent_dir / "state.json").exists():
+            run.parent = cls.load(parent_dir, load_parent=False)
+        run._view()
         return run
 
     def save(self) -> None:
@@ -203,19 +224,23 @@ class Run:
                 rec.status, rec.error = "skipped", f"not run: {failed} failed"
                 continue
             h = self._input_hash(stage)
-            if rec.status in ("ok", "reused") and rec.input_hash == h and all(k in self.out for k in OUTPUT_TYPES[stage]):
+            if rec.status in ("ok", "reused") and rec.input_hash == h and all(k in self.stage_out.get(stage, {}) for k in OUTPUT_TYPES[stage]):
                 rec.status = "reused"
                 continue
             rec.input_hash, rec.error = h, None
             started = time.monotonic()
+            self.prior = self.stage_out.pop(stage, {})
+            self.stage_dec.pop(stage, None)
             for attempt in range(1, RETRIES.get(stage, 0) + 2):
                 rec.attempts = attempt
+                self._view(stage)                 # a stage sees only the stages before it, never its own earlier output
                 before = len(self.decisions)
                 try:
                     outputs = stage_fns.FUNCS[stage](self)
-                    self.out.update(outputs)
+                    self.stage_out[stage] = outputs
+                    self.stage_dec[stage] = self.decisions[before:]
                     rec.status, rec.finished_at = "ok", _now()
-                    self._save_stage(stage, outputs, self.decisions[before:])
+                    self._save_stage(stage, outputs, self.stage_dec[stage])
                     break
                 except Exception as e:  # noqa: BLE001  (every failure is recorded, nothing is swallowed silently)
                     del self.decisions[before:]
@@ -229,6 +254,8 @@ class Run:
                     break
             rec.seconds = round(time.monotonic() - started, 3)
             self.save()
+        self.prior = {}
+        self._view()
         if failed:
             self.state.status, self.state.failed_stage = "failed", failed
             self.save()

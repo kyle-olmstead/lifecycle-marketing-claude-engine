@@ -43,11 +43,17 @@
 - Stats and warm-up: interval labels follow alpha; no 25% suggestion at 25%; `days=0` and zero
   engaged capacity.
 
+- Found by the independent review of this release and fixed: compliance with an empty country column,
+  RFC 8058 verdict matching, SMS opt-out false positives, stale state on resume, copy reuse across an
+  audience change, duplicate DMARC records, Customer.io batch size, remote-load retries, YAML jobs
+  missing settings, router priority for flow requests, and smaller items (`docs/AUDIT.md`, section 5).
+
 **Changed behavior**
 
 - A plan whose emails have no postal address is BLOCKED (CAN-SPAM), not passed. Customer.io has no
   address token: add `postal_address` to the brief, or `--set postal_address=...`.
-- The plan's SMS window is 9 a.m. to 8 p.m. recipient local (the strictest state rule).
+- The plan's SMS send hour must fall inside 9 a.m. to 8 p.m. recipient local (the strictest state window the rules track), and a
+  Sunday-texting rule asks you to decide on Sundays with counsel.
 
 ## 2.1.0 (2026-10)
 

@@ -106,6 +106,8 @@ def test_sms_escape_characters_never_split_across_segments():
 
 def test_sms_opt_out_needs_an_instruction_not_the_word():
     from tools.sms import has_opt_out
-    assert not has_opt_out("Acme: stop by our store this weekend")
+    for text in ("Acme: stop by our store this weekend", "NON-STOP savings", "end to end encrypted", "cancel to end your trial", "DON'T STOP NOW"):
+        assert not has_opt_out(text), text
+    assert has_opt_out("Acme: To opt out, respond Stop") and has_opt_out("reply \u201cstop\u201d") and has_opt_out("STOP=stop")
     assert has_opt_out("Acme: 20% off. Reply STOP to opt out") and has_opt_out("Text END to 55555 to cancel")
     assert has_opt_out("STOP to unsubscribe")

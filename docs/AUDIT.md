@@ -14,10 +14,10 @@ evidence away.
 
 | Finding in v2.1 | Change in v2.2 | Where |
 |---|---|---|
-| The orchestrator called the agents in one function. A failure anywhere lost all the work before it, and nothing recorded which step failed or why. | A stage loop (intake, analyst, strategist, architect, copywriter, experiment, QA, compliance) that saves every stage's output and an input hash to disk. A failed stage stops the run, the stages after it are marked skipped, and `orchestrator resume` restarts from the failed stage. Network and timeout errors are retried (analyst twice, copywriter once); a wrong path or bad input is not. | `agents/pipeline.py`, `agents/stages.py` |
-| No way to change one thing in a plan without regenerating all of it, so approved copy was rewritten by every edit. | `orchestrator revise --set touches=4` starts a new run linked to its parent. Copy is reused for every touch whose copy brief is unchanged (re-rendered and re-linted, never trusted blind), and approvals made with `orchestrator approve` carry over. | `agents/pipeline.py` |
+| The orchestrator called the agents in one function. A failure anywhere lost all the work before it, and nothing recorded which step failed or why. | A stage loop (intake, analyst, strategist, architect, copywriter, experiment, QA, compliance) that saves every stage's output and an input hash to disk. A failed stage stops the run, the stages after it are marked skipped, and `orchestrator resume` restarts from the failed stage. A remote data load that fails with a network or server error is retried twice; a wrong path or bad input is not. Claude calls are retried by the Anthropic SDK, then fall back to offline drafts, and the plan says so. | `agents/pipeline.py`, `agents/stages.py` |
+| No way to change one thing in a plan without regenerating all of it, so approved copy was rewritten by every edit. | `orchestrator revise --set touches=4` starts a new run linked to its parent. Copy is reused for every touch whose job, channel, audience and voice are unchanged (re-rendered and re-linted, never trusted blind), and an approval made with `orchestrator approve` carries over while its words do. | `agents/pipeline.py` |
 | Strategic choices (which job each touch does, which channel, when, whether to offer anything) were buried in the architect and never explained. | A Strategist agent decides them and logs each decision with its reason. It drops a channel the data cannot support (SMS consent under 5%, push or sessions not tracked) instead of building touches that would all fall back to email. The plan opens with "Why the plan looks like this". | `agents/strategist.py` |
-| QA checked mechanics, not law. A plan with no postal address passed. | A Compliance agent checks the plan against 21 rules in `config/compliance_rules.json` for the jurisdictions in the audience (from `users.country`, or the brief), each rule with its source. A failing rule blocks the plan. | `agents/compliance.py` |
+| QA checked mechanics, not law. A plan with no postal address passed. | A Compliance agent checks the plan against 22 rules in `config/compliance_rules.json` for the jurisdictions in the audience (from `users.country`, or the brief), each rule with its source. A failing rule blocks the plan. | `agents/compliance.py` |
 | Behavioral triggers were designed, but nothing showed a marketer what they buy over the calendar newsletter. | `blast-vs-trigger` sorts each past blast's recipients into active, at risk, on time and late against the trigger's threshold, with the core-action rate of each band. | `agents/cohort_analyst.py` |
 | Activation flows asked the event sender to add the holdout fields, and nothing did. | Opt-in real-time forwarding in the webhook parser: a qualifying event for an activation brief goes on to the ESP with `holdout_bucket` and `in_holdout` computed by the warehouse formula. Off unless `LCM_FORWARD=1`; never sends without credentials. | `scripts/webhook_parser.py` |
 
@@ -61,12 +61,15 @@ sources on 2026-10-20. Changes that followed:
 
 - State texting laws: Connecticut (9 a.m. to 8 p.m., texts covered) is now the earliest start, and
   Oregon (8 p.m. end and 3 per 24 hours, texts covered from 1 January 2026) joins Florida, Oklahoma and
-  Maryland. The plan holds every SMS to 9 a.m. to 8 p.m. local, and warns about Sunday mornings
-  (Texas). Whether the Florida, Maryland, Oklahoma and Texas hour limits reach texts is not settled;
-  the rules file says so, and they are applied anyway.
-- New rules: bulk-sender authentication (Gmail, Yahoo, Microsoft), CAN-SPAM ad identification, and
-  SMS opt-out retention (Virginia: 10 years).
-- Customer.io Pipelines limits are 64 KB per call and 1 MB per batch; the engine packs to half.
+  Maryland. The plan's SMS send hour must fall inside 9 a.m. to 8 p.m. local, and a send before noon
+  is flagged for Sundays (Texas). Whether the Florida, Maryland, Oklahoma and Texas hour limits reach
+  texts is not settled; the rules file says so, and they are applied anyway. These are the states the
+  file tracks, not all fifty.
+- New rules: bulk-sender authentication (Gmail, Yahoo, Microsoft), CAN-SPAM ad identification, SMS
+  opt-out retention (Virginia: 10 years), and Sunday texting (some states restrict Sunday solicitation
+  further or ban it; a question for counsel).
+- Customer.io Pipelines batch requests are limited to 500 KB per request and 32 KB per call (the batch
+  endpoint's own page); the engine packs to 450,000 and 30,000 bytes.
 - DKIM selectors: the old default list guessed (`cio`, `kl`, `pm`, `smtp`); the new one has only
   selectors each provider documents, and says which providers need `--selectors`.
 - GitHub Actions: `checkout` and `setup-python` v7, `upload-artifact` v7, Google auth and gcloud v3
@@ -97,9 +100,25 @@ sources on 2026-10-20. Changes that followed:
 
 ## 5. Verification
 
-- 285 tests (v2.1 had 206), including PostgreSQL 16 for the PostgreSQL SQL, run in CI with
+- 303 tests (v2.1 had 206), including PostgreSQL 16 for the PostgreSQL SQL, run in CI with
   `tools/repo_check.py` and smoke runs of `lcm`, `revise`, `status`, the daily job and the schema
   generator.
 - Every number in the worked example (`examples/teammate/ridgeview_winback_14d/`) is regenerated by CI
   and compared.
-- An independent review pass was run over the v2.2 changes before release.
+- An independent reviewer, working only from the diff, reproduced 20 defects in the first v2.2 build.
+  All are fixed, each with a regression test. The ones that mattered most:
+  - a `users.country` column that was empty made the Compliance agent apply no country's rules (now
+    United States rules are assumed, with a warning, as when there is no data);
+  - the one-click unsubscribe check matched receiver verdicts to signatures by domain only, so a
+    second signature's pass could stand in for a failing one (now matched by selector and signature);
+  - the SMS opt-out check accepted "NON-STOP savings" and "end to end", so a text could ship without
+    STOP language (now it needs an instruction, such as "Reply STOP");
+  - a resumed run could reuse its own stale estimates, lose its parent's copy, or keep an approval on
+    rewritten words (stages now read only the stages before them, a revision reloads its parent, and
+    an approval stands only while its words do);
+  - copy was reused when the audience changed (the copy key now includes the flow type, the events
+    and the threshold);
+  - two `_dmarc` records were reported as one valid policy (receivers apply none; now critical);
+  - Customer.io's batch limit is 500 KB, not 1 MB (batches now pack to 450,000 bytes);
+  - remote data loads were never retried, and the docs said they were (a server error is now
+    retried twice).

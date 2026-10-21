@@ -34,7 +34,8 @@ def _equivalent(path, dialect, duck, key_cols, val_cols):
     pg_cols, pg_rows = sql_check.run(_first(path, "postgres"), duck)
     src = _first(path, dialect)
     assert sql_check.parse(src, dialect)[0]
-    cur = duck.execute(sqlglot.transpile(src, read=dialect, write="duckdb")[0])
+    # Snowflake and BigQuery divide integers to a decimal, so their transpiled SQL runs without PostgreSQL's integer division
+    cur = sql_check.connect(integer_division=False).execute(sqlglot.transpile(src, read=dialect, write="duckdb")[0])
     cols = [d[0] for d in cur.description]
     other = cur.fetchall()
 
@@ -67,8 +68,9 @@ def test_parse_rejects_wrong_dialect_syntax():
     assert not sql_check.parse("SELECT FROM WHERE", "postgres")[0]
 
 
-def test_duckdb_divides_integers_like_postgres(duck):
-    assert duck.execute("SELECT 7 / 2").fetchone()[0] == 3
+def test_duckdb_divides_integers_like_each_warehouse(duck):
+    assert duck.execute("SELECT 7 / 2").fetchone()[0] == 3                                           # PostgreSQL
+    assert sql_check.connect(integer_division=False).execute("SELECT 7 / 2").fetchone()[0] == 3.5    # Snowflake, BigQuery
 
 
 def test_ltv_repeat_share_is_not_trivially_one(duck):

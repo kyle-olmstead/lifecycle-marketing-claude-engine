@@ -386,7 +386,7 @@ def write(brief: Brief, plan: FlowPlan, mode: str = "auto", drafts: Optional[Dic
             variants = [check_variant(t.channel, {**v.fields, "framework": v.framework, "hypothesis": v.hypothesis}, brief, t.step_id, v.variant_id)
                         for v in old.variants]
             out.append(TouchCopy(step_id=t.step_id, channel=t.channel, mode=old.mode, copy_brief=cb, variants=variants,
-                                 note=f"reused from run {rid} (copy brief unchanged; re-rendered and re-linted)"))
+                                 note=f"reused from run {rid} (same job, channel, audience and voice; re-rendered and re-linted for this plan)"))
             continue
         if mode == "handoff":
             out.append(TouchCopy(step_id=t.step_id, channel=t.channel, mode="handoff", copy_brief=cb,

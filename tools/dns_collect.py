@@ -90,9 +90,10 @@ def https_fetch(url: str, timeout: float = 5.0) -> Optional[str]:
     return resp.text if resp.status_code == 200 else None
 
 
-def _one(records: Iterable[str], prefix: str) -> Optional[str]:
+def _one(records: Iterable[str], prefix: str) -> Optional[Any]:
+    """The record that starts with prefix; a list when several do, which the analysis reports, since then none applies."""
     found = [t for t in records if t.lower().replace(" ", "").startswith(prefix)]
-    return found[0] if found else None
+    return None if not found else (found[0] if len(found) == 1 else found)
 
 
 def _spf_targets(record: str) -> List[str]:
@@ -138,6 +139,7 @@ def collect(domain: str, selectors: Optional[Iterable[str]] = None, envelope_dom
             sts = _one(txt(f"_mta-sts.{d}"), "v=stsv1")
             if sts:
                 rec["mta_sts"] = sts
+            if isinstance(sts, str):
                 policy = fetch(f"https://mta-sts.{d}/.well-known/mta-sts.txt")
                 if policy:
                     doc["mta_sts_policies"][d] = policy
@@ -153,8 +155,8 @@ def collect(domain: str, selectors: Optional[Iterable[str]] = None, envelope_dom
     queue = []
     for d in (doc.get("envelope_domain"), domain):
         spf = _one((doc["dns"].get(d) or {}).get("txt") or [], "v=spf1") if d else None
-        if spf:
-            queue += _spf_targets(spf)
+        for record in ([spf] if isinstance(spf, str) else spf or []):
+            queue += _spf_targets(record)
     seen = set()
     while queue and len(seen) < 3 * MAX_SPF_LOOKUPS:
         target = queue.pop(0)
@@ -162,6 +164,8 @@ def collect(domain: str, selectors: Optional[Iterable[str]] = None, envelope_dom
             continue
         seen.add(target)
         spf = _one(txt(target), "v=spf1")
+        if isinstance(spf, list):
+            spf = spf[0]   # an include with two SPF records is a permerror at the receiver; the analysis sees only the first
         if spf:
             doc["spf_includes"][target] = spf
             queue += _spf_targets(spf)

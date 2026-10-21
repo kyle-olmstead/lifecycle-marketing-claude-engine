@@ -335,7 +335,8 @@ def next_dmarc_step(current: DMARCResult, domain: str, aligned_pass_observed: bo
     else:
         return None
     if step_sp:
-        nxt = {"p": current.tags.get("p", "none").lower(), "sp": nxt["p"], **({"t": keep["t"]} if "t" in keep else {})}
+        # t= belongs to the whole record: keep an existing t=y while stepping sp up, drop it when the step is ending the test
+        nxt = {"p": current.tags.get("p", "none").lower(), "sp": nxt["p"], **({"t": keep["t"]} if "t" in keep and "t" in nxt else {})}
         note = "Mail from this subdomain gets sp=, not p=. " + note.replace("p=none", "sp=none")
     keep.pop("t", None)
     ordered = {"v": "DMARC1", **nxt, **{k: keep[k] for k in ("sp", "np", "adkim", "aspf", "rua", "ruf", "fo") if k in keep and k not in nxt}}
@@ -569,7 +570,7 @@ def parse_headers(raw: str) -> Dict[str, Any]:
     dkim_sigs = []
     for h in msg.get_all("DKIM-Signature", []):
         t = _tags(_norm(h))
-        dkim_sigs.append({"d": (t.get("d") or "").lower(), "s": t.get("s"), "a": t.get("a"),
+        dkim_sigs.append({"d": (t.get("d") or "").lower(), "s": t.get("s"), "a": t.get("a"), "b": re.sub(r"\s+", "", t.get("b") or ""),
                           "h": [x.strip().lower() for x in (t.get("h") or "").split(":") if x.strip()]})
     ars = [parse_authentication_results(h) for h in msg.get_all("Authentication-Results", [])]
     received = [_norm(h) for h in msg.get_all("Received", [])]
@@ -643,17 +644,38 @@ def one_click_unsubscribe(h: Dict[str, Any]) -> Dict[str, Any]:
     covering = [s for s in h.get("dkim_signatures", []) if "list-unsubscribe" in s["h"] and "list-unsubscribe-post" in s["h"]]
     # RFC 8058 section 4: both headers must be in the h= tag of a VALID DKIM signature; validity comes from the receiver's verdict
     ar = h["authentication_results"][0] if h.get("authentication_results") else None
-    verdicts = {}
-    for r in (ar or {}).get("results", []):
-        if r["method"] == "dkim":
-            d = (r["props"].get("header.d") or _domain_of(r["props"].get("header.i", "")) or "").lower()
-            verdicts[d] = verdicts.get(d) == "pass" or r["result"] == "pass"
+    results = [r for r in (ar or {}).get("results", []) if r["method"] == "dkim"]
+
+    def verdict(sig: Dict[str, Any]) -> Optional[bool]:
+        """The receiver's verdict on this one signature: matched on d=, then on the selector (header.s) and the signature
+        prefix (header.b) when the receiver reports them. None when it cannot be told apart from another signature."""
+        mine = []
+        for r in results:
+            p = r["props"]
+            if (p.get("header.d") or _domain_of(p.get("header.i", "")) or "").lower() != sig["d"]:
+                continue
+            if p.get("header.s") and sig.get("s") and p["header.s"].lower() != str(sig["s"]).lower():
+                continue
+            if p.get("header.b") and sig.get("b") and not sig["b"].startswith(re.sub(r"\s+", "", p["header.b"])):
+                continue
+            mine.append(r)
+        precise = [r for r in mine if r["props"].get("header.s") or r["props"].get("header.b")]
+        if precise:
+            return any(r["result"] == "pass" for r in precise)
+        same_d = [x for x in h.get("dkim_signatures", []) if x["d"] == sig["d"]]
+        if mine and (len(same_d) == 1 or len({r["result"] for r in mine}) == 1):
+            return any(r["result"] == "pass" for r in mine)
+        return None
+
+    seen = [verdict(sig) for sig in covering]
     if not covering:
         valid: Optional[bool] = False
-    elif not verdicts:
-        valid = None   # signatures cover both headers, but no receiver verdict says whether they verify
+    elif any(v is True for v in seen):
+        valid = True
+    elif seen and all(v is False for v in seen):
+        valid = False
     else:
-        valid = any(verdicts.get((s.get("d") or "").lower()) for s in covering)
+        valid = None   # signatures cover both headers, but no receiver verdict says whether they verify
     compliant = (has_https and post_ok and valid) if valid is not None else (None if (has_https and post_ok) else False)
     return {"list_unsubscribe": bool(lu), "https_uri": has_https, "mailto_uri": has_mailto, "post_header_ok": post_ok,
             "dkim_covers_both": bool(covering), "covering_signature_verified": valid, "rfc8058_compliant": compliant}
@@ -781,10 +803,34 @@ def _issues_to_findings(prefix: str, issues: List[Tuple[str, str]], cause: str, 
     return out
 
 
+SINGLE_RECORDS = {"dmarc": ("_dmarc", "RFC 7489 section 6.6.3: receivers apply no DMARC policy at all"),
+                  "mta_sts": ("_mta-sts", "RFC 8461 section 3.1: senders assume there is no MTA-STS policy"),
+                  "tlsrpt": ("_smtp._tls", "RFC 8460 section 3: senders assume there is no TLS-RPT policy"),
+                  "bimi": ("default._bimi", "BIMI: mailbox providers show no logo")}
+
+
 def analyze(doc: Dict[str, Any]) -> Dict[str, Any]:
     label = _label(doc)
-    dns = doc.get("dns", {})
     findings: List[Finding] = []
+    # one record per name, or none at all: more than one means none applies, so report it and treat the name as empty
+    dns: Dict[str, Any] = {}
+    multi_dmarc = set()
+    for host, rec in (doc.get("dns") or {}).items():
+        rec = dict(rec)
+        for key, (prefix, effect) in SINGLE_RECORDS.items():
+            v = rec.get(key)
+            if isinstance(v, list):
+                if len(v) > 1:
+                    if key == "dmarc":
+                        multi_dmarc.add(host)
+                    findings.append(Finding(f"{key}.multiple", "critical" if key == "dmarc" else "high", "identity" if key == "dmarc" else "content_infrastructure",
+                                            f"{len(v)} records at {prefix}.{host}",
+                                            f"There are {len(v)} records where exactly one is allowed ({effect}). Delete all but one: "
+                                            + " | ".join(v), label, f"dig +short TXT {prefix}.{host}"))
+                    rec.pop(key)
+                else:
+                    rec[key] = v[0] if v else None
+        dns[host] = rec
     raw = doc.get("headers")
     if isinstance(raw, dict) and raw.get("path"):
         raw = Path(raw["path"]).read_text(encoding="utf-8")
@@ -804,7 +850,7 @@ def analyze(doc: Dict[str, Any]) -> Dict[str, Any]:
         if rec:
             dmarc, dmarc_host = parse_dmarc(rec), cand
             break
-    if from_domain and dmarc is None:
+    if from_domain and dmarc is None and not (multi_dmarc & {from_domain, org}):
         findings.append(Finding("dmarc.missing", "critical", "identity", "No DMARC record",
                                 f"No record at _dmarc.{from_domain} or _dmarc.{org}. Every major mailbox provider requires one for bulk mail.",
                                 "UNKNOWN" if not dns else label, f"dig +short TXT _dmarc.{org}",

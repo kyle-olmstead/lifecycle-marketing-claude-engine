@@ -61,7 +61,7 @@ Nothing below is sent by the engine on its own. The tools build complete request
 | Request | Klaviyo | HubSpot | Braze | Customer.io |
 |---|---|---|---|---|
 | Trigger event (`tools/event_payloads.py`) | `POST /api/events`, revision 2026-10-15 | `POST /events/2026-09/send/batch`, 500 per request | `POST /users/track`, 75 objects per request | Pipelines `POST /v1/track` |
-| Person attributes (`tools/payloads.py attribute_sync`, the engagement tier and sunset flag) | `POST /api/profile-bulk-import-jobs`, 10,000 profiles and 5 MB per job | `POST /crm/objects/2026-09/contacts/batch/upsert`, 100 per request, values as strings | `POST /users/track` `attributes`, 75 per request, `_update_existing_only: true` | Pipelines `POST /v1/batch` of `identify` calls, packed to 500 KB (the limit is 1 MB) |
+| Person attributes (`tools/payloads.py attribute_sync`, the engagement tier and sunset flag) | `POST /api/profile-bulk-import-jobs`, 10,000 profiles and 5 MB per job | `POST /crm/objects/2026-09/contacts/batch/upsert`, 100 per request, values as strings | `POST /users/track` `attributes`, 75 per request, `_update_existing_only: true` | Pipelines `POST /v1/batch` of `identify` calls, packed to 450,000 bytes (the limit is 500 KB, 32 KB per call) |
 
 HubSpot's changelog lists the 2026-09 date-versioned APIs as released on 8 September 2026, while its
 versioning page still called 2026-03 the latest when this was checked; if a 2026-09 path is refused,
