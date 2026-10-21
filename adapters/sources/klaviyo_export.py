@@ -131,6 +131,17 @@ def _consent_value(value: str) -> Optional[str]:
 def _classify(path: Path) -> Optional[str]:
     name = path.name.lower()
     if name.endswith((".jsonl", ".jsonl.gz")):
+        # a JSON-lines file is Klaviyo events unless its first row is another tool's (a GA4 export carries event_params
+        # and user_pseudo_id; a Segment or RudderStack dump carries anonymousId or messageId)
+        import gzip
+        opener = gzip.open if name.endswith(".gz") else open
+        try:
+            with opener(path, "rt", encoding="utf-8") as fh:
+                first = json.loads(next((ln for ln in fh if ln.strip()), "{}"))
+        except Exception:  # noqa: BLE001
+            return None
+        if not isinstance(first, dict) or {"event_params", "user_pseudo_id", "anonymousId", "messageId", "event_timestamp"} & set(first):
+            return None
         return "events"
     if name.endswith(".json"):
         try:

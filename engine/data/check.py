@@ -5,7 +5,7 @@ them with engine/data/schema.py and reports, column by column, what would break 
 
   structure     required tables and columns present; columns the engine does not know (ignored, listed as notes)
   types         values that do not parse as the column's type, counted with DuckDB TRY_CAST: TIMESTAMP (ISO 8601 with
-                Z works; a non-zero UTC offset is read as clock time with the offset dropped, so it is flagged), DECIMAL,
+                Z works; a non-zero UTC offset is converted to UTC by the loader and noted), DECIMAL,
                 INTEGER, BOOLEAN, DATE, and JSON objects in track_events.properties
   keys          primary keys unique (users.user_id, track_events.event_id, orders.order_id, invoices.invoice_id,
                 subscriptions.subscription_id, refunds.refund_id, and the other id columns the schema calls unique)
@@ -294,11 +294,12 @@ def _column_checks(t: _Loaded, as_of: datetime) -> List[Tuple[str, str, str, str
         if typ == "TIMESTAMP":
             out.append(("error", "type", col.name, f"{nonnull} AND TRY_CAST({c} AS TIMESTAMP) IS NULL",
                         "values that do not parse as a timestamp (the loader stops on the first one)", "TIMESTAMP"))
-            out.append(("warning", "utc_offset", col.name,
+            out.append(("info", "utc_offset", col.name,
                         f"{nonnull} AND TRY_CAST({c} AS TIMESTAMP) IS NOT NULL AND regexp_matches({c}, {_lit(OFFSET_SQL)}) "
                         f"AND NOT regexp_matches({c}, {_lit(ZERO_OFFSET_SQL)})",
-                        "timestamps with a UTC offset: the loader keeps the clock time and drops the offset, so they are off by that many hours",
-                        "convert to UTC before loading ('2026-03-15 14:22:10+02:00' becomes '2026-03-15 12:22:10')"))
+                        "timestamps with a UTC offset: the engine converts them to UTC when it loads the folder; a warehouse column "
+                        "should hold UTC too, so the SQL the plans write agrees with what the engine measured",
+                        "store UTC at the source ('2026-03-15 14:22:10+02:00' is '2026-03-15 12:22:10' UTC)"))
         elif typ.startswith("DECIMAL"):
             out.append(("error", "type", col.name, f"{nonnull} AND TRY_CAST({c} AS {col.type}) IS NULL",
                         "values that do not parse as a number",

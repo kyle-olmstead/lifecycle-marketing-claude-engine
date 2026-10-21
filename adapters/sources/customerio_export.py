@@ -21,7 +21,7 @@ What it writes
                   cio_id (ASSUMED, counted). email, created_at (the created_at attribute, a Unix timestamp in
                   Customer.io), plan, country (ISO code or common name), timezone (IANA), phone (E.164 only),
                   lifecycle_stage and account_id when those attributes exist.
-  consent_events  one revoked email row (source esp_unsubscribe) per person whose unsubscribed attribute is true.
+  consent_events  one revoked email row (source import_undated (the export carries no time)) per person whose unsubscribed attribute is true.
   message_events  one row per state a delivery reached: delivered, opened, clicked, bounced, spammed (as
                   complained), unsubscribed and topic_unsubscribed (as unsubscribed). Ids are cio:<delivery>:<state>.
                   message_id is template_id (the message, shared by its recipients), campaign is the campaign,
@@ -55,6 +55,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from adapters.sources._mapping import (Sheet, TimeParser, country_iso2, csv_files, csv_header, email, norm, phone_e164,
                                        rel, truthy, write_table)
+from adapters.sources.export_io import UNDATED_SOURCE
 from adapters.sources.report import MappingReport
 
 NAME = "customerio"
@@ -218,7 +219,7 @@ def map(folder: Path, out_dir: Path) -> MappingReport:  # noqa: A001
                 unsubscribed.append(uid)
         report.unmapped_columns[rel(sheet.path, folder)] = sheet.unused()
 
-    consent = [{"user_id": u, "channel": "email", "status": "revoked", "purpose": "marketing", "source": "esp_unsubscribe",
+    consent = [{"user_id": u, "channel": "email", "status": "revoked", "purpose": "marketing", "source": UNDATED_SOURCE,
                 "occurred_at": last_unsub.get(u) or newest} for u in unsubscribed]
     dated_by_export = sum(1 for u in unsubscribed if u not in last_unsub)
 

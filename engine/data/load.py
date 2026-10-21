@@ -2,6 +2,10 @@
 
 A file may carry extra columns (ignored) or leave out optional ones (left empty); a missing required column
 or required table raises an error that names it. Each table is read from <name>.parquet, else <name>.csv.
+
+Timestamps are stored in UTC. A value with an offset (2026-01-01T10:00:00-05:00) is converted to UTC; a value without
+one is read as UTC already, which is what lcm import writes. (A plain cast would keep the wall-clock time and drop
+the offset, moving every event by the offset's hours.)
 """
 from __future__ import annotations
 
@@ -30,6 +34,7 @@ def connect(data: Optional[str], integer_division: bool = False, require: Tuple[
     if data is None:
         return None, []
     con = duckdb.connect()
+    con.execute("SET TimeZone = 'UTC'")
     if integer_division:
         con.execute("SET integer_division = true")
     remote = _remote(data)
@@ -58,7 +63,14 @@ def connect(data: Optional[str], integer_division: bool = False, require: Tuple[
             extra = [c for c in cols if c.lower() not in set(table.column_names)]
             if extra:
                 notes.append(f"{name}: ignored column(s) {', '.join(extra)}")
-            select = ", ".join(f'"{by_lower[c]}"' for c in use)
+            types = {c.name: c.type.upper() for c in table.columns}
+
+            def col(c: str) -> str:
+                q = f'"{by_lower[c]}"'
+                if types[c].startswith("TIMESTAMP"):
+                    return f"COALESCE(CAST(TRY_CAST({q} AS TIMESTAMPTZ) AS TIMESTAMP), CAST({q} AS TIMESTAMP))"
+                return q
+            select = ", ".join(col(c) for c in use)
             try:
                 con.execute(f"INSERT INTO {name} ({', '.join(use)}) SELECT {select} FROM {_reader(source)}")
             except Exception as e:  # noqa: BLE001

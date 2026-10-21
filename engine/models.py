@@ -382,7 +382,12 @@ class Brief(BaseModel):
             base = f"{self.flow_type}-{self.abandon_after_hours:g}h"
         else:
             base = self.flow_type
-        name = re.sub(r"[^a-z0-9]+", "_", self.product_name.lower()).strip("_")[:24] or "product"
+        words, name = re.sub(r"[^a-z0-9]+", "_", self.product_name.lower()).strip("_").split("_"), ""
+        for w in words:                       # whole words up to 24 characters: northfield_coffee, not northfield_coffee_roaste
+            if name and len(name) + 1 + len(w) > 24:
+                break
+            name = f"{name}_{w}" if name else w[:24]
+        name = name or "product"
         return f"{name}_{base}".replace("-", "_").replace(".", "_")
 
     def assumed(self, field: str) -> bool:

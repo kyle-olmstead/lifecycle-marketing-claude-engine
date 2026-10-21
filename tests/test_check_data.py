@@ -80,7 +80,7 @@ def _plant(folder: Path, table: str, column: str, row: int, value: str) -> None:
     ("users", "email_consent_at", 0, "2027-01-01 00:00:00", "consent_future", "error"),    # consent in the future
     ("users", "country", 0, "United States", "country", "warning"),
     ("users", "email", 0, "U_0001@Example.test", "email_case", "warning"),
-    ("users", "created_at", 0, "2026-01-05 10:00:00+02:00", "utc_offset", "warning"),
+    ("users", "created_at", 0, "2026-01-05 10:00:00+02:00", "utc_offset", "info"),
     ("orders", "status", 0, "paid", "enum", "warning"),
     ("orders", "currency", 0, "usd", "currency", "warning"),
     ("track_events", "event_at", 2, "2026-12-01 00:00:00", "future_event", "warning"),

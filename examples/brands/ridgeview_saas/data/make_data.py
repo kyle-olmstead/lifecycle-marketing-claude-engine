@@ -52,7 +52,7 @@ def main() -> None:
         country = rng.choice(COUNTRIES)
         plan = rng.choice(PLANS)
         email_consent = created if rng.random() < 0.85 else None
-        sms_consent = created + timedelta(days=rng.randint(0, 30)) if rng.random() < 0.25 else None
+        sms_consent = min(created + timedelta(days=rng.randint(0, 30)), AS_OF - timedelta(hours=1)) if rng.random() < 0.25 else None
 
         # anonymous activity before signup, then signup
         event(None, anon, "page_viewed", created - timedelta(hours=rng.randint(1, 72)), {"path": "/pricing"})

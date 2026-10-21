@@ -216,8 +216,11 @@ def merge(runs: List[Tuple[str, Dict[str, List[Dict[str, str]]]]],
     return dict(out), notes
 
 
-def run_import(source: str, folders: Sequence[Path], out_dir: Path) -> Dict[str, Any]:
-    """Map, merge and write. Returns {sources: [mapping reports], merge: [notes], tables: {table: rows}, out: path}."""
+def run_import(source: str, folders: Sequence[Path], out_dir: Path, options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Map, merge and write. Returns {sources: [mapping reports], merge: [notes], tables: {table: rows}, out: path}.
+    options: keyword arguments passed to any mapper whose map() accepts them (timezone= for HubSpot's portal time zone)."""
+    import inspect
+    options = {k: v for k, v in (options or {}).items() if v is not None}
     runs = plan_runs(source, folders)
     if not runs:
         raise LookupError("no export recognized in " + ", ".join(str(f) for f in folders) +
@@ -228,7 +231,8 @@ def run_import(source: str, folders: Sequence[Path], out_dir: Path) -> Dict[str,
     with tempfile.TemporaryDirectory(prefix="lcm_import_") as tmp:
         for i, (module, folder) in enumerate(runs):
             target = Path(tmp) / f"{i}_{module.NAME}"
-            report = module.map(folder, target)
+            accepts = inspect.signature(module.map).parameters
+            report = module.map(folder, target, **{k: v for k, v in options.items() if k in accepts})
             reports.append(report)
             assumed.append(getattr(report, "assumed_values", {}) or {})
             results.append((str(module.NAME), read_canonical(target)))
@@ -280,6 +284,8 @@ def _cli(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--no-check", action="store_true", help="skip check-data on the result")
     ap.add_argument("--as-of", help="check-data: judge future dates and freshness against this UTC time")
     ap.add_argument("--list", action="store_true", help="list the source mappers and exit")
+    ap.add_argument("--timezone", help="IANA time zone of exports written in local time without an offset (HubSpot uses the "
+                                       "portal's zone), e.g. America/New_York; default UTC")
     a = ap.parse_args(argv)
     if a.list:
         for m in registry.all():
@@ -294,7 +300,7 @@ def _cli(argv: Optional[List[str]] = None) -> int:
         print(f"not a folder: {', '.join(missing)}", file=sys.stderr)
         return 2
     try:
-        summary = run_import(a.source, a.folders, a.out)
+        summary = run_import(a.source, a.folders, a.out, {"timezone": a.timezone})
     except (KeyError, LookupError) as e:
         print(str(e).strip("'\""), file=sys.stderr)
         return 2

@@ -17,7 +17,7 @@ What it writes
                   "External ID", "App User ID", a custom property you add to the export), so HubSpot rows join your
                   event data; otherwise it is the HubSpot Record ID, and the report says so.
   consent_events  one revoked email row per contact who is "Unsubscribed from all email" or opted out of any
-                  subscription type, source esp_unsubscribe, purpose marketing.
+                  subscription type, source import_undated (the export carries no time), purpose marketing.
 
 What it assumes, and why
   * Times: HubSpot exports datetimes in the account's time zone (HubSpot community answer,
@@ -53,6 +53,7 @@ from typing import Any, Dict, List, Optional
 
 from adapters.sources._mapping import (Sheet, TimeParser, country_iso2, csv_files, csv_header, email, norm, phone_e164,
                                        rel, snake, truthy, write_table)
+from adapters.sources.export_io import UNDATED_SOURCE
 from adapters.sources.report import MappingReport
 
 NAME = "hubspot"
@@ -183,7 +184,7 @@ def map(folder: Path, out_dir: Path, timezone: Optional[str] = None) -> MappingR
 
     for p in pending:
         optouts.append({"user_id": p["user_id"], "channel": "email", "status": "revoked", "purpose": "marketing",
-                        "source": "esp_unsubscribe", "occurred_at": p["modified"] or newest})
+                        "source": UNDATED_SOURCE, "occurred_at": p["modified"] or newest})
     dated_by_export = sum(1 for p in pending if not p["modified"])
 
     if by_record_id:
@@ -208,7 +209,7 @@ def map(folder: Path, out_dir: Path, timezone: Optional[str] = None) -> MappingR
                                   "email; each is written as a revocation of all marketing email (conservative), since "
                                   "consent_events has no subscription-type column.")
     if all_optout:
-        report.assumptions.append(f"{all_optout} contact(s) are unsubscribed from all email: revoked, source esp_unsubscribe.")
+        report.assumptions.append(f"{all_optout} contact(s) are unsubscribed from all email: revoked, source import_undated (the export carries no time).")
     report.assumptions.append("No consent was inferred: marketing contact status is a HubSpot billing flag and 'not opted "
                               "out' is not an opt-in, so email_consent_at is empty for every contact.")
     if non_marketing:

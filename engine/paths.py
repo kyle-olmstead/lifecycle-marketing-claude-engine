@@ -22,3 +22,8 @@ DEMO = EXAMPLES / "brands" / "ridgeview_saas"
 DEMO_DATA = DEMO / "data"
 DEMO_BRIEF = DEMO / "briefs" / "winback_14d.yaml"
 DEMO_ACTIVE_BRIEFS = DEMO / "briefs" / "active"
+
+# The second demo workspace: a fictional direct-to-consumer coffee brand, from vendor exports (Shopify, Klaviyo) to plans.
+NORTHFIELD = EXAMPLES / "brands" / "northfield_dtc"
+NORTHFIELD_DATA = NORTHFIELD / "data"
+NORTHFIELD_EXPORTS = NORTHFIELD / "exports"

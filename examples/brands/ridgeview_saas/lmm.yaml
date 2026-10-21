@@ -1,0 +1,41 @@
+# Ridgeview (fictional): a B2B SaaS reporting tool on Customer.io with a Postgres warehouse.
+# The bundled demo workspace. Every brief planned here starts from these values; a brief can override any of them.
+
+brand:
+  name: Ridgeview
+  business_model: subscription
+  postal_address: 100 Example Way, Suite 400, Springfield, OR 97477
+  sender_name: Dana Ortiz at Ridgeview
+  brand_voice: plain, specific, second person, no exclamation marks; operations vocabulary (reports, data sources, teammates)
+  recipient_countries: [US]
+
+brand_kit: brand.yaml
+
+platform: customerio
+esp:
+  tier: Premium
+warehouse_dialect: postgres
+
+# Supplied, not observed: 400,000 of 600,000 contacts are unengaged, so plans mail engaged people only.
+sending_gate: AMBER
+
+frequency:
+  caps:
+    - {channels: [email, sms, push], max: 3, window: P7D}
+  send_windows:
+    - {channel: email, allowed_from: "08:00", allowed_until: "21:00"}
+    - {channel: sms, allowed_from: "09:00", allowed_until: "20:00"}
+    - {channel: push, allowed_from: "09:00", allowed_until: "21:00"}
+  flow_priority: [dunning, trial_convert, activation, welcome, winback, sunset]
+  collision_rule: higher_priority_preempts
+
+offer_policy:
+  offers: []
+  never_in_first_touch: true
+
+measurement:
+  randomization_unit: user
+  global_holdout_pct: 0
+  stopping_rule: fixed_horizon
+
+data: data

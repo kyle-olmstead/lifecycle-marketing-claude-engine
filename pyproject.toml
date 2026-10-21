@@ -40,5 +40,8 @@ lcm = "engine.cli.main:main"
 [tool.setuptools.packages.find]
 include = ["engine*", "adapters*"]
 
+[tool.setuptools.package-data]
+"adapters.sources" = ["sql/*/*.sql"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

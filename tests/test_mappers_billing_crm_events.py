@@ -282,7 +282,7 @@ def test_hubspot_users_and_conservative_opt_outs(mapped):
     consent = {r["user_id"]: r for r in rows(out / "consent_events.csv")}
     assert set(consent) == {"u_0004", "u_0006"}
     assert consent["u_0006"]["occurred_at"] == "2026-06-01T10:30:00Z" and consent["u_0006"]["status"] == "revoked"
-    assert consent["u_0004"]["source"] == "esp_unsubscribe" and consent["u_0004"]["purpose"] == "marketing"
+    assert consent["u_0004"]["source"] == "import_undated" and consent["u_0004"]["purpose"] == "marketing"
     assert any("subscription types but not all" in a for a in report.assumptions)
     assert any("non-marketing" in w and "schema gap" in w for w in report.warnings)
 
@@ -319,7 +319,7 @@ def test_customerio_message_events_and_unsubscribe(mapped):
     assert not any(r["event_name"] == "sent" for r in msgs.values())
     consent = rows(out / "consent_events.csv")
     assert consent == [{"user_id": "u_0006", "channel": "email", "status": "revoked", "purpose": "marketing",
-                        "source": "esp_unsubscribe", "occurred_at": "2026-06-01T10:30:00Z"}]
+                        "source": "import_undated", "occurred_at": "2026-06-01T10:30:00Z"}]
     assert any("sent (10)" in a for a in report.assumptions)
 
 
