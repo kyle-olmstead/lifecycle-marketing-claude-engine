@@ -1076,6 +1076,25 @@ def _auth_state(dmarc: Optional[DMARCResult], al: Optional[Dict[str, Any]], labe
 # rendering and CLI
 # ----------------------------------------------------------------------------------------------
 
+def gate_record(result: Dict[str, Any], doc: Dict[str, Any], source: Optional[str] = None) -> Dict[str, Any]:
+    """The sending gate as a dated record (schemas/sending_gate.schema.json) that lmm.yaml can point to. GREEN needs observed
+    evidence: a document without observed_at (pasted, not looked up) can record AMBER at best."""
+    from datetime import datetime, timezone
+    from engine.policy.contracts import SendingGateRecord
+    g = result["gate"]
+    live = bool(doc.get("observed_at"))
+    verdict = g["verdict"] if (live or g["verdict"] != "GREEN") else "AMBER"
+    critical = [f["title"] for f in result.get("findings", []) if f.get("severity") == "critical"]
+    if verdict == "GREEN" and critical:
+        verdict = "AMBER"
+    rec = SendingGateRecord(verdict=verdict, assessed_at=datetime.now(timezone.utc).replace(microsecond=0),
+                            auth_label="LIVE PULL" if live else "SUPPLIED", domain=doc.get("from_domain"),
+                            source=source or f"lcm deliverability check {doc.get('from_domain', '')}".strip(),
+                            signals={r["signal"]: r["value"] for r in g.get("signals", []) if r.get("value") is not None},
+                            critical_findings=critical)
+    return rec.model_dump(mode="json")
+
+
 def render_markdown(r: Dict[str, Any]) -> str:
     g = r["gate"]
     L = [f"## Sending gate: {g['verdict']}", "", f"**Permitted:** {g['permitted']}", ""]

@@ -180,16 +180,18 @@ def collect(domain: str, selectors: Optional[Iterable[str]] = None, envelope_dom
 
 
 def _cli(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Look up a domain's authentication records for engine/deliverability/analyze.py")
-    ap.add_argument("domain")
+    ap = argparse.ArgumentParser(prog="lcm deliverability check",
+                                 description="Look up a domain's authentication records (SPF, DKIM, DMARC, MTA-STS, TLS-RPT, BIMI) and issue a sending gate")
+    ap.add_argument("domain", help="the From domain you send as, e.g. example.com")
     ap.add_argument("--selectors", help="comma-separated DKIM selectors (default: the common ESP selectors)")
     ap.add_argument("--hubspot-hub-id", help="also probe HubSpot's hs1-<hub id> and hs2-<hub id> selectors")
     ap.add_argument("--envelope", help="the Return-Path (bounce) domain, when it differs from the From domain")
     ap.add_argument("--signals", help="JSON with sending-gate signals to merge in (for example out/engagement/summary.json)")
-    ap.add_argument("--nameserver")
-    ap.add_argument("--out", help="write the input document here")
-    ap.add_argument("--analyze", action="store_true", help="run engine/deliverability/analyze.py analyze on the result")
-    ap.add_argument("--markdown", action="store_true")
+    ap.add_argument("--nameserver", help="resolve through this DNS server instead of the system resolver")
+    ap.add_argument("--out", help="write the collected records here (the input analyze reads)")
+    ap.add_argument("--analyze", action="store_true", help="analyze the records and print the gate and findings")
+    ap.add_argument("--markdown", action="store_true", help="print the analysis as a readable report instead of JSON")
+    ap.add_argument("--write-gate", metavar="GATE_JSON", help="write the dated gate record here; point lmm.yaml's sending_gate at it")
     a = ap.parse_args(argv)
     try:
         selectors = a.selectors.split(",") if a.selectors else list(DEFAULT_SELECTORS)
@@ -212,10 +214,17 @@ def _cli(argv: Optional[List[str]] = None) -> int:
         Path(a.out).parent.mkdir(parents=True, exist_ok=True)
         Path(a.out).write_text(json.dumps(doc, indent=2), encoding="utf-8")
         print(f"wrote {a.out} ({lookups} lookups, {len(doc['dkim_keys'])} DKIM key(s) found)", file=sys.stderr)
-    if a.analyze:
+    if a.analyze or a.write_gate:
         from engine.deliverability import analyze as deliverability
         r = deliverability.analyze(doc)
-        print(deliverability.render_markdown(r) if a.markdown else json.dumps(r, indent=2, default=str))
+        if a.write_gate:
+            rec = deliverability.gate_record(r, doc)
+            Path(a.write_gate).parent.mkdir(parents=True, exist_ok=True)
+            Path(a.write_gate).write_text(json.dumps(rec, indent=2) + "\n", encoding="utf-8")
+            print(f"wrote {a.write_gate}: {rec['verdict']} ({rec['auth_label']}, {rec['assessed_at']}). Set sending_gate: {a.write_gate} in "
+                  f"lmm.yaml; it reads AMBER after 30 days, so re-run this monthly.", file=sys.stderr)
+        if a.analyze:
+            print(deliverability.render_markdown(r) if a.markdown else json.dumps(r, indent=2, default=str))
     elif not a.out:
         print(json.dumps(doc, indent=2))
     return 0

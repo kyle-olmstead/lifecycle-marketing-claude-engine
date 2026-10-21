@@ -1,5 +1,9 @@
-"""lcm: one command for the whole engine, in plain English or with a YAML job file.
+"""lcm: one command for the whole engine, as a subcommand, in plain English, or with a YAML job file.
 
+    lcm init my-brand --platform klaviyo        # every subcommand: lcm --help; each one's options: lcm plan --help
+    lcm doctor
+    lcm plan --text "a 3-touch abandoned cart flow" --data data
+    lcm "make it 4 touches"                     # revises the newest run
     lcm "plan a 5-touch win-back for users who completed onboarding but haven't created a report in 14 days" --product Acme
     lcm "check deliverability for example.com"
     lcm "audit the cohort for briefs/active/winback.yaml" --data exports/
@@ -7,7 +11,7 @@
     lcm "build the engagement tiers and the sunset list" --data exports/ --platform klaviyo
     lcm "read the holdout results in results/winback_q3.json"
     lcm "how many people do we need to detect a 20% lift on a 10% baseline with a 15% holdout"
-    lcm job.yaml                      # kind: plan | deliverability | audit | blast | engagement | readout | size
+    lcm job.yaml                      # kind: plan | revise | deliverability | audit | blast | engagement | readout | size
     lcm --dry-run "..."               # say which job it would run, and with what, without running it
 
 (Without installing: python3 -m engine.cli.main "...". pip install -e . puts lcm on your PATH.)
@@ -74,6 +78,14 @@ PLAN_NOUN = re.compile(r"^\s*(?:(?:i|we) (?:need|want|would like) )?(?:an? |the 
 PLAN_IMPERATIVE = re.compile(r"^\s*(?:please )?(?:re-?engage|win back|bring back|reactivate)\b", re.I)
 QUESTION = re.compile(r"^\s*(what|which|when|where|why|who|how|is|are|do|does|did|should|can|could|would|will)\b|\?\s*$", re.I)
 NOT_DOMAINS = {"e.g", "i.e"}
+# Changing a plan just made is a revision of the newest run, not a new plan: "make it 4 touches", "add SMS", "use a 20% holdout"
+REVISE = re.compile(r"^\s*(?:ok(?:ay)?,? |now |please |and |actually,? |then )*(?:make it|make the (?:flow|holdout|wait)|change|add|remove|drop|"
+                    r"switch|increase|decrease|cut|bump|lower|raise|use|go with|set(?! up)|only)\b", re.I)
+REVISABLE = re.compile(r"\b(touch(?:es)?|steps?|messages?|emails?|sms|texts?|push|in-?app|hold-?out|days?|weeks?|klaviyo|braze|hubspot|"
+                       r"customer\.?io|sfmc|salesforce|iterable)\b", re.I)
+WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8}
+PLATFORM_WORDS = (("klaviyo", "klaviyo"), ("braze", "braze"), ("hubspot", "hubspot"), ("customer.io", "customerio"), ("customerio", "customerio"),
+                  ("salesforce", "sfmc"), ("sfmc", "sfmc"), ("iterable", "iterable"))
 # what each job needs, and how to ask for it
 NEEDS: Dict[str, List[Tuple[str, str]]] = {
     "deliverability": [("domain", "the sending domain (for example: check deliverability for example.com)")],
@@ -102,6 +114,8 @@ def classify(text: str) -> Optional[str]:
     whose words appear. A question that only mentions a flow ("which flows should we retire?") matches no job: lcm
     says so and points to Claude, instead of starting a campaign plan nobody asked for."""
     low = text.lower()
+    if REVISE.search(low) and REVISABLE.search(low) and not PLAN_FIRST.search(low):
+        return "revise"
     if PLAN_FIRST.search(low):
         return "plan"
     if re.search(INTENTS[0][1], low):      # "what should I build" asks for priorities, not a plan
@@ -125,12 +139,21 @@ def route(text: str, opts: Dict[str, Any]) -> Job:
     a: Dict[str, Any] = {k: v for k, v in opts.items() if v not in (None, False, [])}
     brief = a.get("brief") or next(iter(YAML_PATH.findall(text)), None)
     job = Job(kind, why=f"matched '{kind}'")
+    if kind == "revise":
+        job.args = {"run": a.get("run") or newest_run(), "changes": revision(text, a.get("run") or newest_run())}
+        if not job.args["run"]:
+            job.missing.append("--run (no plan has been run here yet; plan one first, or name the run folder)")
+        elif not job.args["changes"]:
+            job.missing.append("what to change (for example: make it 4 touches, add SMS, use a 20% holdout, switch to Klaviyo)")
+        return job
     if kind == "plan":
         job.args = {"text": text, "product": a.get("product"), "data": a.get("data"), "copy_mode": a.get("copy_mode", "auto"), "out": a.get("out", "out")}
         if brief:
             job.args = {"brief": brief, **{k: v for k, v in job.args.items() if k != "text"}}
         elif not a.get("product"):
-            job.missing.append("--product (the product name customers know)")
+            from engine import workspace
+            if not workspace.brief_defaults().get("product_name"):
+                job.missing.append("--product (the product name customers know; or set brand.name in lmm.yaml)")
     elif kind == "deliverability":
         domains = [d for d in DOMAIN.findall(text) if d.lower() not in NOT_DOMAINS and not d.lower().endswith((".yaml", ".yml", ".json"))]
         sel = re.search(r"selectors?\s+([\w,\s-]+?)(?:\.|$| and )", text, re.I)
@@ -178,6 +201,56 @@ def route(text: str, opts: Dict[str, Any]) -> Job:
     return check(job)
 
 
+def newest_run() -> Optional[str]:
+    """The most recent run under the default output folder (the workspace's runs/, or ./out)."""
+    from engine.pipeline.orchestrator import default_out
+    states = sorted(Path(default_out()).glob("*/runs/*/state.json"), key=lambda p: p.stat().st_mtime)
+    return str(states[-1].parent) if states else None
+
+
+def revision(text: str, run: Optional[str]) -> Dict[str, Any]:
+    """Brief fields a revision sentence changes. Channels are edited against the run's own channels."""
+    low = text.lower()
+    out: Dict[str, Any] = {}
+    m = re.search(r"\b(\d+|one|two|three|four|five|six|seven|eight)[- ]?(?:touch(?:es)?|steps?|messages?|emails?)\b", low)
+    if m:
+        out["touches"] = int(m.group(1)) if m.group(1).isdigit() else WORDS[m.group(1)]
+    m = re.search(r"(\d+(?:\.\d+)?)\s*%\s*hold-?out|hold-?out\s+(?:to|of|at)\s+(\d+(?:\.\d+)?)\s*%?|no hold-?out", low)
+    if m:
+        out["holdout_pct"] = 0.0 if m.group(0).startswith("no") else float(m.group(1) or m.group(2))
+    plat = next((v for k, v in PLATFORM_WORDS if k in low), None)
+    if plat:
+        out["platform"] = plat
+    m = re.search(r"\b(\d+)[- ]?(day|week)s?\b(?! (?:hold|read))", low)
+    if m and not re.search(r"touch|step|message", low[m.end():m.end() + 12]):
+        days = int(m.group(1)) * (7 if m.group(2) == "week" else 1)
+        out["_days"] = days
+    chans = {"sms": r"\bsms\b|\btexts?\b", "push": r"\bpush\b", "in_app": r"in-?app"}
+    named = [c for c, pat in chans.items() if re.search(pat, low)]
+    if named or re.search(r"\bemail only\b|\bonly email\b", low):
+        current: List[str] = ["email"]
+        brief: Dict[str, Any] = {}
+        if run and (Path(run) / "state.json").exists():
+            brief = json.loads((Path(run) / "state.json").read_text(encoding="utf-8")).get("brief", {})
+            current = list(brief.get("channels") or ["email"])
+        if re.search(r"\bemail only\b|\bonly email\b", low):
+            out["channels"] = ["email"]
+        elif re.search(r"\b(remove|drop|no|without|cut)\b", low):
+            out["channels"] = [c for c in current if c not in named] or ["email"]
+        else:
+            out["channels"] = current + [c for c in named if c not in current]
+    if "_days" in out:
+        days = out.pop("_days")
+        ft = None
+        if run and (Path(run) / "state.json").exists():
+            ft = json.loads((Path(run) / "state.json").read_text(encoding="utf-8")).get("brief", {}).get("flow_type")
+        field_for = {"winback": "churn_threshold_days", "sunset": "churn_threshold_days", "replenishment": "replenish_after_days",
+                     "trial_convert": "trial_days"}
+        if ft in field_for:
+            out[field_for[ft]] = days
+    return out
+
+
 def check(job: Job) -> Job:
     """Fill defaults and list what the job still needs, so nothing runs half-specified."""
     for k, v in DEFAULTS.get(job.kind, {}).items():
@@ -202,13 +275,24 @@ def from_yaml(path: Path, opts: Dict[str, Any]) -> Job:
                                   "out": given.get("out", "out")}, why="a campaign brief"))
     if kind == "plan" and "brief" not in raw:
         return Job("help", why=f"{path}: a plan job names its brief (brief: briefs/my_flow.yaml)")
+    if kind == "revise":
+        if "run" not in raw or "set" not in raw:
+            return Job("help", why=f"{path}: a revise job names its run and the fields to set (run: ..., set: {{touches: 4}})")
+        return Job("revise", {"run": str(raw["run"]), "changes": dict(raw["set"])}, why="kind: revise")
     if kind not in {k for k, _ in INTENTS}:
-        return Job("help", why=f"{path}: kind must be one of {', '.join(k for k, _ in INTENTS)} (got {kind!r})")
+        return Job("help", why=f"{path}: kind must be one of revise, {', '.join(k for k, _ in INTENTS)} (got {kind!r})")
     return check(Job(kind, {**given, **raw}, why=f"kind: {kind}"))
 
 
 def run(job: Job) -> int:
     a = {k: v for k, v in job.args.items() if v not in (None, "", [])}
+    if job.kind == "revise":
+        from engine.pipeline import orchestrator
+        argv = ["revise", "--run", a["run"]]
+        for k, v in a["changes"].items():
+            argv += ["--set", f"{k}={json.dumps(v) if isinstance(v, list) else v}"]
+        print(f"revising {a['run']}: " + ", ".join(f"{k} = {v}" for k, v in a["changes"].items()))
+        return orchestrator._cli(argv)
     if job.kind == "plan":
         from engine.pipeline import orchestrator
         argv = ["plan"] + (["--brief", a["brief"]] if "brief" in a else ["--text", a["text"]])
@@ -282,34 +366,54 @@ def run(job: Job) -> int:
     if job.kind == "help" and job.why == "no job matched":
         print("lcm runs the engine's jobs; this does not ask for one. Ask it in a Claude conversation with the plugin installed, "
               "or see docs/QUESTION_BANK.md for what to type here.\n", file=sys.stderr)
-    print(__doc__)
+    from engine.cli.commands import overview
+    print(overview())
     return 0 if job.kind == "help" else 2
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(prog="lcm", description="One command for the LMM Engine", add_help=True)
+    from engine.cli.commands import COMMANDS, overview
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if not argv or argv[0] in ("-h", "--help", "help"):
+        print(overview())
+        return 0
+    if argv[0] in ("-V", "--version"):
+        from engine import __version__
+        print(f"lcm (LMM Engine) {__version__}")
+        return 0
+    if argv[0] in COMMANDS:
+        return COMMANDS[argv[0]].run(argv[1:])
+    return natural(argv)
+
+
+def natural(argv: List[str]) -> int:
+    """lcm "a sentence": the rule-based router picks the job and fills its arguments."""
+    ap = argparse.ArgumentParser(prog="lcm", description="One command for the LMM Engine: a subcommand (lcm --help lists them) or a sentence")
     ap.add_argument("request", nargs="*", help="what you want, in plain English, or a YAML job file")
-    ap.add_argument("--product")
-    ap.add_argument("--brief")
-    ap.add_argument("--data")
-    ap.add_argument("--platform")
-    ap.add_argument("--dates")
-    ap.add_argument("--domain")
-    ap.add_argument("--selectors")
-    ap.add_argument("--signals")
-    ap.add_argument("--envelope")
-    ap.add_argument("--input")
-    ap.add_argument("--copy-mode", dest="copy_mode")
-    ap.add_argument("--value", type=float, help="what one more converted person is worth, for priorities")
+    ap.add_argument("--product", help="the product or brand name customers know (default: brand.name in lmm.yaml)")
+    ap.add_argument("--brief", help="a brief YAML: which flow to plan, audit or compare")
+    ap.add_argument("--run", help="the run to revise (default: the newest run)")
+    ap.add_argument("--data", help="a folder or URL prefix with your exports (users, orders, track_events, message_events)")
+    ap.add_argument("--platform", help="the messaging platform, for engagement tiers")
+    ap.add_argument("--dates", help="comma-separated send dates, for a blast comparison")
+    ap.add_argument("--domain", help="the sending domain, for deliverability and priorities")
+    ap.add_argument("--selectors", help="comma-separated DKIM selectors to look up")
+    ap.add_argument("--signals", help="a JSON of sending signals to merge into the deliverability check")
+    ap.add_argument("--envelope", help="the Return-Path domain, when it differs from the From domain")
+    ap.add_argument("--input", help="a results JSON, for a readout")
+    ap.add_argument("--copy-mode", dest="copy_mode", choices=["auto", "claude", "handoff", "offline"], help="who writes the copy (see lcm plan --help)")
+    ap.add_argument("--value", "--value-per-conversion", dest="value", type=float,
+                    help="what one more converted person is worth, in your currency, for priorities")
     ap.add_argument("--by", choices=["plan", "country", "lifecycle_stage"], help="segment the retention curve")
     ap.add_argument("--events-dir", dest="events_dir", help="the webhook receiver's folder, for tracking health")
-    ap.add_argument("--out")
+    ap.add_argument("--out", help="where outputs are written (default: the workspace's runs/, or ./out)")
     ap.add_argument("--dry-run", action="store_true", help="show the job and its arguments without running it")
     a = ap.parse_args(argv)
     opts = {k: v for k, v in vars(a).items() if k not in ("request", "dry_run")}
     text = " ".join(a.request).strip()
     if not text:
-        print(__doc__)
+        from engine.cli.commands import overview
+        print(overview())
         return 0
     job = from_yaml(Path(text), opts) if YAML_PATH.fullmatch(text) and Path(text).exists() else route(text, opts)
     if job.kind == "help" and job.why not in ("", "no job matched"):

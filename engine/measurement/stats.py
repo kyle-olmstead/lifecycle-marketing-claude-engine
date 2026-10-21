@@ -539,52 +539,116 @@ def render_incrementality(x: Dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _n(x: float) -> str:
+    return f"{x:,.0f}"
+
+
+def render_size(r: Dict[str, Any], holdout: Optional[float]) -> str:
+    """The sample-size answer in sentences a marketer can repeat."""
+    pc, pt = r["p_control"], r["p_treatment"]
+    lines = [f"To detect a move from {pc:.1%} to {pt:.1%} ({(pt - pc) / pc:+.0%} relative, {(pt - pc) * 100:.1f} points) "
+             f"with {r['power']:.0%} power at a {r['alpha']:.0%} false-alarm rate ({'two' if r['two_sided'] else 'one'}-sided):", "",
+             f"  holdout   {_n(r['n_control']):>10} people",
+             f"  treatment {_n(r['n_treatment']):>10} people",
+             f"  total     {_n(r['n_total']):>10} entrants" + (f" at a {holdout:.0%} holdout" if holdout else " split evenly"), ""]
+    if r.get("size_set_by") == "readout_floor":
+        lines.append(f"The readout floor set the size, not power: {r['readout_floor']['rule']}.")
+    lines.append(f"Method: {r['method']}. Divide the total by monthly entrants to get months to read, or run "
+                 f"`lcm size --entries-per-month N` for that and the alternatives.")
+    return "\n".join(lines) + "\n"
+
+
+def render_feasible(r: Dict[str, Any]) -> str:
+    lines = [f"{_n(r['entries_per_month'])} entrants a month, {r['holdout_share']:.0%} holdout, {r['p_control']:.1%} baseline, "
+             f"detecting {r['mde_abs'] * 100:.1f} points:", "",
+             f"  needs     {_n(r['required_holdout_n'])} in the holdout and {_n(r['required_treatment_n'])} in treatment",
+             f"  enrolls   in {r['enrollment_months']} months" if r.get("enrollment_months") is not None else "  enrolls   never at this volume",
+             (f"  reads     in about {r['months_to_read']} months, including the {r['outcome_window_days']:g}-day outcome window"
+              if r.get("months_to_read") is not None else "  reads     not within the horizon"), "",
+             f"{r['recommended_design']}. Expected read: {r['expected_read']}."]
+    alts = r.get("alternatives") or []
+    if alts:
+        lines += ["", "  Holdout  Months to read  Cost"]
+        lines += [f"  {x['holdout_share']:>6.0%}  {('never' if x['months_to_read'] is None else x['months_to_read']):>14}  {x['cost']}" for x in alts]
+    if r.get("design_effect", 1) != 1:
+        lines.append(f"\nDesign effect {r['design_effect']:g} applied (people clustered in accounts).")
+    return "\n".join(lines) + "\n"
+
+
+def render_mde(r: Dict[str, Any]) -> str:
+    return (f"With {_n(r['n_control'])} in the holdout and {_n(r['n_treatment'])} in treatment at a {r['p_control']:.1%} baseline, the "
+            f"smallest lift you can reliably detect is {r['mde_abs'] * 100:.1f} points ({r['mde_rel']:.0%} relative), at "
+            f"{r['power']:.0%} power and a {r['alpha']:.0%} false-alarm rate. A smaller true lift will usually read as no difference.\n")
+
+
+def render_readout(r: Dict[str, Any]) -> str:
+    if "diff_ci" not in r:
+        return (f"Treatment {_n(r['treatment']['conversions'])} of {_n(r['treatment']['n'])}, holdout {_n(r['holdout']['conversions'])} of "
+                f"{_n(r['holdout']['n'])}: {r.get('read', 'not readable')}. {r.get('note') or r.get('error') or ''}".rstrip() + "\n")
+    lo, hi = r["diff_ci"]
+    sig = r["p_value"] < r["alpha"]
+    return (f"Treatment {r['rate_treatment']:.1%} ({_n(r['treatment']['conversions'])} of {_n(r['treatment']['n'])}) vs holdout "
+            f"{r['rate_holdout']:.1%} ({_n(r['holdout']['conversions'])} of {_n(r['holdout']['n'])}): "
+            f"{r['diff_abs'] * 100:+.1f} points ({r['lift_rel']:+.0%} relative), {1 - r['alpha']:.0%} interval "
+            f"{lo * 100:+.1f} to {hi * 100:+.1f} points, p = {r['p_value']:.3f}. "
+            + ("The difference is unlikely to be chance." if sig else "This could be chance: do not report it as a lift.")
+            + (f" Read: {r['read']}." if r.get("read") else "") + "\n")
+
+
 def _cli(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Experiment sizing and readout")
+    ap = argparse.ArgumentParser(prog="lcm size", description="Experiment sizing and readout. Rates are shares (0.10 means 10%%).")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("size")
-    s.add_argument("--baseline", type=float, required=True)
+    s = sub.add_parser("size", help="people needed in each arm to detect a lift")
+    s.add_argument("--baseline", type=float, required=True, help="share who convert with no flow (the holdout's rate), e.g. 0.10")
     g = s.add_mutually_exclusive_group(required=True)
-    g.add_argument("--mde-abs", type=float)
-    g.add_argument("--mde-rel", type=float)
-    s.add_argument("--alpha", type=float, default=0.05)
-    s.add_argument("--power", type=float, default=0.80)
-    s.add_argument("--holdout", type=float, help="holdout share, e.g. 0.10 (sets the allocation ratio)")
-    s.add_argument("--one-sided", action="store_true")
-    m = sub.add_parser("mde")
-    m.add_argument("--baseline", type=float, required=True)
-    m.add_argument("--nc", type=int, required=True)
-    m.add_argument("--nt", type=int, required=True)
-    m.add_argument("--alpha", type=float, default=0.05)
-    m.add_argument("--power", type=float, default=0.80)
-    f = sub.add_parser("feasible")
-    f.add_argument("--entries-per-month", type=float, required=True)
-    f.add_argument("--holdout", type=float, default=0.10)
-    f.add_argument("--baseline", type=float, required=True)
+    g.add_argument("--mde-abs", type=float, help="smallest lift worth detecting, in points as a share (0.02 = 2 points)")
+    g.add_argument("--mde-rel", type=float, help="smallest lift worth detecting, relative to the baseline (0.20 = 20%%)")
+    s.add_argument("--alpha", type=float, default=0.05, help="false-alarm rate (default 0.05)")
+    s.add_argument("--power", type=float, default=0.80, help="chance of detecting a true lift of that size (default 0.80)")
+    s.add_argument("--holdout", type=float, help="holdout share, e.g. 0.10 (sets the allocation ratio; default an even split)")
+    s.add_argument("--one-sided", action="store_true", help="test for a lift only, not a drop (rarely right for lifecycle)")
+    s.add_argument("--json", action="store_true", help="print the full result as JSON")
+    m = sub.add_parser("mde", help="the smallest lift a given sample can detect")
+    m.add_argument("--baseline", type=float, required=True, help="share who convert with no flow, e.g. 0.10")
+    m.add_argument("--nc", type=int, required=True, help="people in the holdout")
+    m.add_argument("--nt", type=int, required=True, help="people in treatment")
+    m.add_argument("--alpha", type=float, default=0.05, help="false-alarm rate (default 0.05)")
+    m.add_argument("--power", type=float, default=0.80, help="detection probability (default 0.80)")
+    m.add_argument("--json", action="store_true", help="print the full result as JSON")
+    f = sub.add_parser("feasible", help="months to read at your entry volume, with faster alternatives")
+    f.add_argument("--entries-per-month", type=float, required=True, help="people entering the flow each month")
+    f.add_argument("--holdout", type=float, default=0.10, help="holdout share (default 0.10)")
+    f.add_argument("--baseline", type=float, required=True, help="share who convert with no flow, e.g. 0.10")
     gf = f.add_mutually_exclusive_group(required=True)
-    gf.add_argument("--mde-abs", type=float)
-    gf.add_argument("--mde-rel", type=float)
+    gf.add_argument("--mde-abs", type=float, help="smallest lift worth detecting, in points as a share")
+    gf.add_argument("--mde-rel", type=float, help="smallest lift worth detecting, relative to the baseline")
     f.add_argument("--outcome-window-days", type=float, default=0, help="days each entrant is followed before the metric is final")
     f.add_argument("--design-effect", type=float, default=1.0, help="1 + (entrants per randomized unit - 1) x ICC; 1.0 when one entrant per unit")
-    r = sub.add_parser("readout")
-    for k in ("xt", "nt", "xc", "nc"):
-        r.add_argument(f"--{k}", type=int, required=True)
-    r.add_argument("--expected-holdout", type=float)
-    i = sub.add_parser("incrementality")
-    i.add_argument("input")
-    i.add_argument("--markdown", action="store_true")
+    f.add_argument("--json", action="store_true", help="print the full result as JSON")
+    r = sub.add_parser("readout", help="read a finished holdout from four counts")
+    for k, h in (("xt", "conversions in treatment"), ("nt", "people in treatment"), ("xc", "conversions in the holdout"), ("nc", "people in the holdout")):
+        r.add_argument(f"--{k}", type=int, required=True, help=h)
+    r.add_argument("--expected-holdout", type=float, help="the holdout share you set, to check the split (sample ratio mismatch)")
+    r.add_argument("--json", action="store_true", help="print the full result as JSON")
+    i = sub.add_parser("incrementality", help="incremental vs attributed conversions from a results file")
+    i.add_argument("input", help="results JSON (schemas/readout_input.schema.json)")
+    i.add_argument("--markdown", action="store_true", help="print a marketer-readable table instead of JSON")
     a = ap.parse_args(argv)
     if a.cmd == "size":
         p2 = a.baseline + (a.mde_abs if a.mde_abs is not None else a.baseline * a.mde_rel)
         ratio = (1 - a.holdout) / a.holdout if a.holdout else 1.0
-        print(json.dumps(sample_size(a.baseline, p2, a.alpha, a.power, ratio, not a.one_sided), indent=2))
+        res = sample_size(a.baseline, p2, a.alpha, a.power, ratio, not a.one_sided)
+        print(json.dumps(res, indent=2) if a.json else render_size(res, a.holdout), end="" if not a.json else "\n")
     elif a.cmd == "mde":
-        print(json.dumps(minimum_detectable_effect(a.nc, a.nt, a.baseline, a.alpha, a.power), indent=2))
+        res = minimum_detectable_effect(a.nc, a.nt, a.baseline, a.alpha, a.power)
+        print(json.dumps(res, indent=2) if a.json else render_mde(res), end="" if not a.json else "\n")
     elif a.cmd == "feasible":
-        print(json.dumps(feasibility(a.entries_per_month, a.holdout, a.baseline, a.mde_abs, a.mde_rel,
-                                     outcome_window_days=a.outcome_window_days, design_effect=a.design_effect), indent=2))
+        res = feasibility(a.entries_per_month, a.holdout, a.baseline, a.mde_abs, a.mde_rel,
+                          outcome_window_days=a.outcome_window_days, design_effect=a.design_effect)
+        print(json.dumps(res, indent=2) if a.json else render_feasible(res), end="" if not a.json else "\n")
     elif a.cmd == "readout":
-        print(json.dumps(readout(a.xt, a.nt, a.xc, a.nc, expected_holdout=a.expected_holdout), indent=2))
+        res = readout(a.xt, a.nt, a.xc, a.nc, expected_holdout=a.expected_holdout)
+        print(json.dumps(res, indent=2) if a.json else render_readout(res), end="" if not a.json else "\n")
     elif a.cmd == "incrementality":
         from engine.contracts import InputError, validate_readout
         try:

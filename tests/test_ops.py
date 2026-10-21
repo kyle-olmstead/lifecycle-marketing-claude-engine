@@ -167,7 +167,7 @@ def test_router_fills_arguments_and_asks_for_what_is_missing():
     assert j.args["domain"] == "news.example.com" and j.args["selectors"] == "s1,s2" and not j.missing
     size = cli.route("how many people do we need to detect a 20% lift on a 10% baseline with a 25% holdout", {})
     assert (size.args["baseline"], size.args["mde_rel"], size.args["holdout"]) == (0.10, 0.20, 0.25)
-    assert cli.route("plan a 5-touch win-back for users inactive 14 days", {}).missing == ["--product (the product name customers know)"]
+    assert cli.route("plan a 5-touch win-back for users inactive 14 days", {}).missing == ["--product (the product name customers know; or set brand.name in lmm.yaml)"]
     assert cli.route("read the holdout results", {}).missing
     assert cli.route("tell me a joke", {}).kind == "help"
 

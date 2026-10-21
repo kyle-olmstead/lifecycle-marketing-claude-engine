@@ -54,11 +54,13 @@ def test_workspace_values_replace_assumptions_but_never_the_sentence(tmp_path):
 
 
 def test_a_gate_record_file_is_read_and_a_missing_one_is_unknown(tmp_path):
-    rec = {"status": "GREEN", "observed_at": "2026-10-20", "domain": "northfield.example", "source": "lcm deliverability check",
-           "reasons": []}
+    rec = {"verdict": "GREEN", "assessed_at": "2026-10-20T12:00:00Z", "auth_label": "LIVE PULL", "domain": "northfield.example",
+           "source": "lcm deliverability check northfield.example"}
     (tmp_path / "gate.json").write_text(json.dumps(rec))
     ws = _ws(tmp_path, sending_gate="gate.json")
-    assert workspace.brief_defaults(ws)["sending_gate"]["status"] == "GREEN"
+    assert workspace.brief_defaults(ws)["sending_gate"]["verdict"] == "GREEN"
+    b = parse_text("Build a 3-touch abandoned cart flow", defaults=workspace.brief_defaults(ws))
+    assert b.sending_gate.verdict == "GREEN" and "sending_gate" not in {a.field for a in b.assumptions}
     (tmp_path / "gate.json").unlink()
     assert workspace.brief_defaults(ws)["sending_gate"] == "UNKNOWN"
 
