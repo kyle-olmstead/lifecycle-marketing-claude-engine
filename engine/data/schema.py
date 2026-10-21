@@ -162,7 +162,8 @@ TABLES: Dict[str, Table] = {t.name: t for t in (
        ("in_holdout", "BOOLEAN", True, "holdout member"),
        ("status", "VARCHAR", True, "pending or pushed"),
        ("queued_at", "TIMESTAMP", True, "when queued"),
-       ("pushed_at", "TIMESTAMP", False, "when pushed")),
+       ("pushed_at", "TIMESTAMP", False, "when pushed"),
+       ("detail", "VARCHAR", False, "flow-specific payload as JSON (the product for replenishment)")),
 )}
 
 REQUIRED_TABLES = tuple(n for n, t in TABLES.items() if t.required)

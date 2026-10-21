@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kyle-olmstead/lifecycle-marketing-claude-engine/schemas/frequency_policy.schema.json",
+  "title": "One frequency, send-window and priority policy across every flow",
+  "description": "Caps cover named channels over a window; send windows are permitted times in the recipient's local time (never 'quiet hours'); flow_priority decides who wins a collision (engine/policy/contracts.FrequencyPolicy).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "caps"
+  ],
+  "properties": {
+    "caps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "channels",
+          "max",
+          "window"
+        ],
+        "properties": {
+          "channels": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "enum": [
+                "email",
+                "sms",
+                "push",
+                "in_app"
+              ]
+            }
+          },
+          "max": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "window": {
+            "type": "string",
+            "pattern": "^P(?!$)(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?)?$"
+          }
+        }
+      }
+    },
+    "send_windows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "channel",
+          "allowed_from",
+          "allowed_until"
+        ],
+        "properties": {
+          "channel": {
+            "enum": [
+              "email",
+              "sms",
+              "push",
+              "in_app"
+            ]
+          },
+          "allowed_from": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+          },
+          "allowed_until": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+          },
+          "basis": {
+            "const": "recipient_local"
+          },
+          "source": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "flow_priority": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "collision_rule": {
+      "enum": [
+        "higher_priority_preempts",
+        "queue_lower_priority",
+        "drop_lower_priority"
+      ]
+    }
+  }
+}

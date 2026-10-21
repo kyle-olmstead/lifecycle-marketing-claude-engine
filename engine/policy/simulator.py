@@ -38,6 +38,7 @@ import jsonschema  # noqa: E402
 FLOW_SCHEMA = json.loads((ROOT / "schemas" / "flow_spec.schema.json").read_text(encoding="utf-8"))
 PAYLOAD_SCHEMA_PATH = ROOT / "config" / "esp_payload_schemas.json"
 DURATION = re.compile(r"^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?$")
+DEFAULT_WINDOWS = {"email": [8.0, 21.0], "sms": [9.0, 20.0], "push": [9.0, 21.0]}
 
 
 def hours(iso: Optional[str]) -> float:
@@ -59,14 +60,29 @@ def _is_exit(target: str) -> bool:
 CAPPED = ("email", "sms", "push")  # in-app messages are capped per session, not per week
 
 
-def _cap(spec: Dict[str, Any], rules: Optional[Dict[str, Any]]) -> Tuple[Optional[int], Tuple[str, ...]]:
-    """(weekly cap, channels it covers). A cap written about email covers email only."""
-    text = spec.get("frequency", {}).get("cap", "").lower()
-    channels = ("email",) if "email" in text and "message" not in text else CAPPED
+def _caps(spec: Dict[str, Any], rules: Optional[Dict[str, Any]]) -> List[Tuple[int, float, Tuple[str, ...]]]:
+    """Every cap as (max, window hours, channels). Typed caps (the teammate's, or a hand-written spec's frequency.caps) win;
+    otherwise the cap text is parsed for days, weeks, fortnights and months (v2 read only 'per week', so 'at most 1 lifecycle
+    email per day' was not enforced at all)."""
+    from engine.policy.contracts import duration_hours, parse_cap_text
+    typed = (rules or {}).get("caps") or spec.get("frequency", {}).get("caps")
+    if typed:
+        return [(int(c["max"]), duration_hours(c["window"]), tuple(ch for ch in c["channels"] if ch in CAPPED)) for c in typed]
     if rules and rules.get("frequency_cap_per_week"):
-        return int(rules["frequency_cap_per_week"]), channels
-    m = re.search(r"(\d+)\s+(?:[\w-]+\s+){0,4}(?:per|a)\s+week", text)
-    return (int(m.group(1)) if m else None), channels
+        text = spec.get("frequency", {}).get("cap", "").lower()
+        channels = ("email",) if "email" in text and "message" not in text else CAPPED
+        return [(int(rules["frequency_cap_per_week"]), 168.0, channels)]
+    text = spec.get("frequency", {}).get("cap", "")
+    return [(c.max, c.hours, tuple(ch for ch in c.channels if ch in CAPPED)) for c in parse_cap_text(text)]
+
+
+def _cap(spec: Dict[str, Any], rules: Optional[Dict[str, Any]]) -> Tuple[Optional[int], Tuple[str, ...]]:
+    """Kept for callers of v2: the tightest 7-day cap, and the channels it covers."""
+    weekly = [c for c in _caps(spec, rules) if c[1] == 168.0]
+    if not weekly:
+        return None, CAPPED
+    best = min(weekly, key=lambda c: c[0])
+    return best[0], best[2]
 
 
 def _paths(steps: List[Dict[str, Any]], worst_case: bool) -> List[List[Tuple[float, str]]]:
@@ -85,7 +101,7 @@ def _paths(steps: List[Dict[str, Any]], worst_case: bool) -> List[List[Tuple[flo
         elif w.get("type") == "until_event" and not worst_case:
             t += hours(w.get("timeout"))
         elif w.get("type") == "until_time_local":
-            t += 0 if worst_case else 12
+            t += (hours(w["after"]) if w.get("after") else 0) + (0 if worst_case else 12)
         if s.get("channel") not in ("none", None) and "fallback" not in (s.get("condition") or ""):
             acc = acc + [(t, s["channel"])]
         br = s.get("branch")
@@ -113,7 +129,8 @@ def _paths(steps: List[Dict[str, Any]], worst_case: bool) -> List[List[Tuple[flo
 
 def structural(spec: Dict[str, Any], rules: Optional[Dict[str, Any]] = None) -> List[Dict[str, str]]:
     checks: List[Dict[str, str]] = []
-    errs = sorted(jsonschema.Draft202012Validator(FLOW_SCHEMA).iter_errors(spec), key=lambda e: list(e.path))
+    from engine.schemas import validator
+    errs = sorted(validator("flow_spec.schema.json").iter_errors(spec), key=lambda e: list(e.path))
     checks.append(_check("flow spec matches schemas/flow_spec.schema.json", not errs,
                          "valid" if not errs else "; ".join(f"{'/'.join(map(str, e.path)) or '(root)'}: {e.message}" for e in errs[:5])))
     if errs and not isinstance(spec.get("steps"), list):
@@ -175,24 +192,23 @@ def structural(spec: Dict[str, Any], rules: Optional[Dict[str, Any]] = None) -> 
             fallback = any(steps[j].get("channel") == "email" and steps[j].get("wait", {}).get("type") == "none" for j in range(i + 1, min(i + 2, len(steps))))
             checks.append(_check(f"{s['id']}: people without {s['channel']} consent are covered", fallback,
                                  "email fallback follows" if fallback else "no email fallback: people without consent skip this touch", warn=True))
-    cap, capped = _cap(spec, rules)
-
-    def densest(paths: List[List[Tuple[float, str]]]) -> int:
+    def densest(paths: List[List[Tuple[float, str]]], window: float, capped: Tuple[str, ...]) -> int:
         best = 0
         for p in paths:
             ts = [t for t, ch in p if ch in capped]
-            best = max([best] + [sum(1 for x in ts if a <= x < a + 168) for a in ts])
+            best = max([best] + [sum(1 for x in ts if a <= x < a + window) for a in ts])
         return best
 
     nominal = _paths(steps, worst_case=False)
-    if cap:
-        n = densest(nominal)
-        checks.append(_check("nominal schedule respects the weekly frequency cap", n <= cap,
-                             f"at most {n} {'/'.join(capped)} message(s) in any 7 days on any route, cap {cap}"))
-        w = densest(_paths(steps, worst_case=True))
-        if w > cap:
-            checks.append(_check("frequency cap if awaited events happen at once", False,
-                                 f"up to {w} in 7 days on the fastest route; the platform's frequency limit must be on to hold the cap", warn=True))
+    for mx, window, capped in _caps(spec, rules):
+        span = "7 days" if window == 168 else ("day" if window == 24 else f"{window / 24:g} days" if window % 24 == 0 else f"{window:g} hours")
+        n = densest(nominal, window, capped)
+        name = "nominal schedule respects the weekly frequency cap" if window == 168 else f"nominal schedule respects the cap per {span}"
+        checks.append(_check(name, n <= mx, f"at most {n} {'/'.join(capped)} message(s) in any {span} on any route, cap {mx}"))
+        w = densest(_paths(steps, worst_case=True), window, capped)
+        if w > mx:
+            checks.append(_check(f"frequency cap per {span} if awaited events happen at once", False,
+                                 f"up to {w} in {span} on the fastest route; the platform's frequency limit must be on to hold the cap", warn=True))
     longest = max(nominal, key=len, default=[])
     if longest:
         checks.append(_check("journey length", True, f"{len(longest)} touch(es) over {max(t for t, _ in longest) / 24:.0f} days on the longest route", warn=True))
@@ -232,6 +248,15 @@ def _next_local(t: float, hhmm: str, entry_hour: float) -> float:
     return t + delta
 
 
+def _into_window(t: float, window: List[float], entry_hour: float) -> float:
+    """Hold a send to its permitted window: a send outside it moves to the next opening (the ESP's quiet-hours setting)."""
+    start, end = window
+    clock = (entry_hour + t) % 24
+    if start <= clock < end:
+        return t
+    return t + ((start - clock) % 24)
+
+
 def walk(spec: Dict[str, Any], rules: Dict[str, Any], p: Dict[str, Any], entry_hour: float = 5.0) -> Dict[str, Any]:
     steps = spec["steps"]
     ids = {s["id"]: i for i, s in enumerate(steps)}
@@ -239,6 +264,7 @@ def walk(spec: Dict[str, Any], rules: Dict[str, Any], p: Dict[str, Any], entry_h
     goal = rules.get("goal_event")
     display = rules.get("in_app_display_days", 3) * 24
     email_filter = any("email" in f.get("condition", "").lower() for f in spec.get("ongoing_filters", []))
+    windows = rules.get("send_windows") or DEFAULT_WINDOWS
     log: List[Dict[str, Any]] = []
     t = 0.0
     i = 0
@@ -254,7 +280,7 @@ def walk(spec: Dict[str, Any], rules: Dict[str, Any], p: Dict[str, Any], entry_h
         if w["type"] == "fixed":
             t += hours(w["duration"])
         elif w["type"] == "until_time_local":
-            t = _next_local(t, w["local_time"], entry_hour)
+            t = _next_local(t + (hours(w["after"]) if w.get("after") else 0), w["local_time"], entry_hour)
         elif w["type"] == "until_event":
             hit = [e["at"] for e in p.get("events", []) if e["name"] == w["event"] and t < e["at"] <= t + hours(w["timeout"])]
             t = min(hit) if hit else t + hours(w["timeout"])
@@ -276,6 +302,8 @@ def walk(spec: Dict[str, Any], rules: Dict[str, Any], p: Dict[str, Any], entry_h
             i += 1
             continue
         ch = s.get("channel")
+        if s.get("respect_send_window") and ch in windows:
+            t = _into_window(t, windows[ch], entry_hour)
         if ch == "none":
             log.append({"step": s["id"], "at_h": round(t, 2), "action": "update"})
         elif ch == "email" and email_filter and "email" not in p.get("consents", []):
@@ -313,13 +341,13 @@ def personas(spec: Dict[str, Any], rules: Dict[str, Any]) -> Dict[str, Dict[str,
 def behavioral(spec: Dict[str, Any], rules: Dict[str, Any]) -> Tuple[List[Dict[str, str]], Dict[str, Any]]:
     checks: List[Dict[str, str]] = []
     journeys = {name: walk(spec, rules, p) for name, p in personas(spec, rules).items()}
-    cap = rules.get("frequency_cap_per_week")
     hour = rules.get("send_hour_local")
-    quiet = rules.get("quiet_hours_local") or [21, 8]
+    windows = rules.get("send_windows") or ({"email": [rules["quiet_hours_local"][1], rules["quiet_hours_local"][0]]}
+                                            if rules.get("quiet_hours_local") else DEFAULT_WINDOWS)
 
-    def in_quiet(h: float) -> bool:
-        start, end = quiet
-        return (start <= h or h < end) if start > end else (start <= h < end)
+    def outside(ch: str, h: float) -> bool:
+        w = windows.get(ch)
+        return bool(w) and not (w[0] <= h < w[1])
     ps = personas(spec, rules)
     h = journeys["holdout member"]
     checks.append(_check("holdout members receive nothing", not h["sends"] and "holdout" in h["outcome"],
@@ -342,20 +370,22 @@ def behavioral(spec: Dict[str, Any], rules: Dict[str, Any]) -> Tuple[List[Dict[s
     finished_first = r["outcome"] == "completed" and all(x["at_h"] <= goal_at for x in r["log"])
     checks.append(_check("nothing is sent after the core action", not after and (r["outcome"] == "converted" or finished_first),
                          f"outcome: {r['outcome']}; {len(after)} message(s) after converting"))
-    if cap:
+    for mx, window, capped in _caps(spec, rules):
         worst = 0
         for j in journeys.values():
-            ts = [x["at_h"] for x in j["sends"] if x["action"].startswith("sent")]
+            ts = [x["at_h"] for x in j["sends"] if x["action"].startswith("sent") and x["action"].split(" ")[-1] in capped]
             for a in ts:
-                worst = max(worst, sum(1 for b in ts if a <= b < a + 168))
-        checks.append(_check("frequency cap holds for every persona", worst <= cap, f"most in any 7 days: {worst}, cap {cap}"))
+                worst = max(worst, sum(1 for b in ts if a <= b < a + window))
+        span = "7 days" if window == 168 else ("day" if window == 24 else f"{window:g} hours")
+        name = "frequency cap holds for every persona" if window == 168 else f"cap per {span} holds for every persona"
+        checks.append(_check(name, worst <= mx, f"most in any {span}: {worst}, cap {mx}"))
     if hour is not None:
         off = [f"{n}: {x['step']}" for n, j in journeys.items() for x in j["sends"]
                if x["action"].startswith("sent") and round((5.0 + x["at_h"]) % 24, 2) != float(hour)]
         checks.append(_check(f"messages send at {hour:02d}:00 local", not off, "all on time" if not off else "; ".join(off[:5])))
-        loud = [f"{n}: {x['step']}" for n, j in journeys.items() for x in j["sends"] if x["action"].startswith("sent")
-                and in_quiet((5.0 + x["at_h"]) % 24)]
-        checks.append(_check("nothing sends in quiet hours", not loud, "none" if not loud else "; ".join(loud[:5])))
+    loud = [f"{n}: {x['step']} at {(5.0 + x['at_h']) % 24:.1f}h" for n, j in journeys.items() for x in j["sends"]
+            if x["action"].startswith("sent") and outside(x["action"].split(" ")[-1], (5.0 + x["at_h"]) % 24)]
+    checks.append(_check("every send is inside its channel's permitted window", not loud, "all inside" if not loud else "; ".join(loud[:5])))
     mx = rules.get("max_touches")
     if mx:
         over = [n for n, j in journeys.items() if len(j["sends"]) > mx]
@@ -394,7 +424,8 @@ def validate_request(req: Dict[str, Any]) -> Tuple[Optional[str], List[str]]:
         return None, [f"unrecognized endpoint {req.get('url')}"]
     schema = json.loads(PAYLOAD_SCHEMA_PATH.read_text(encoding="utf-8"))
     sub = {"$schema": schema["$schema"], "$defs": schema["$defs"], "$ref": f"#/$defs/{name}"}
-    validator = jsonschema.Draft202012Validator(sub, format_checker=jsonschema.FormatChecker())
+    from engine.schemas import FORMAT_CHECKER
+    validator = jsonschema.Draft202012Validator(sub, format_checker=FORMAT_CHECKER)
     return name, [f"{'/'.join(map(str, e.path)) or '(body)'}: {e.message}" for e in validator.iter_errors(req.get("body"))]
 
 

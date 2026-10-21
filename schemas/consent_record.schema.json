@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kyle-olmstead/lifecycle-marketing-claude-engine/schemas/consent_record.schema.json",
+  "title": "Consent record",
+  "description": "One consent change for one person and channel; the newest record wins, so a later opt-in lifts an earlier unsubscribe (engine/policy/contracts.ConsentRecord). The canonical table is consent_events.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "user_id",
+    "channel",
+    "status",
+    "source",
+    "occurred_at"
+  ],
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "channel": {
+      "enum": [
+        "email",
+        "sms",
+        "push"
+      ]
+    },
+    "status": {
+      "enum": [
+        "granted",
+        "revoked"
+      ]
+    },
+    "purpose": {
+      "enum": [
+        "marketing",
+        "transactional"
+      ]
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

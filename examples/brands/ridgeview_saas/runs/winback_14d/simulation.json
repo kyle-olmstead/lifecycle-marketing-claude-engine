@@ -1,18 +1,41 @@
 {
-  "version": 1,
+  "version": 2,
   "flow": "Win-back: Ridgeview, 14 days since the core action (created a report)",
+  "flow_type": "winback",
   "core_event": "feature_used",
   "goal_event": "feature_used",
   "holdout_pct": 15.0,
+  "caps": [
+    {
+      "channels": [
+        "email",
+        "sms",
+        "push"
+      ],
+      "max": 3,
+      "window": "P7D"
+    }
+  ],
   "frequency_cap_per_week": 3,
   "send_hour_local": 10,
-  "quiet_hours_local": [
-    21.0,
-    8.0
-  ],
+  "send_windows": {
+    "email": [
+      8.0,
+      21.0
+    ],
+    "sms": [
+      9.0,
+      20.0
+    ],
+    "push": [
+      9.0,
+      21.0
+    ]
+  },
+  "hour_level": false,
   "in_app_display_days": 3,
   "max_touches": 5,
-  "engaged_only": false,
+  "engaged_only": true,
   "steps": {
     "holdout_split": {
       "branch": {

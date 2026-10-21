@@ -9,13 +9,18 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from engine.flows.library import FLOWS
+from engine.policy.contracts import (Cap, FrequencyPolicy, OfferPolicy, ReEntry, SendingGateRecord, SendWindow, TriggerDefinition,
+                                     EventRef, AbsenceRule, hours_to_duration, parse_offer_text)
+
 Platform = Literal["klaviyo", "hubspot", "braze", "customerio", "sfmc"]
 Channel = Literal["email", "sms", "push", "in_app"]
-FlowType = Literal["winback", "activation"]
+FlowType = Literal["welcome", "activation", "winback", "cart_abandon", "browse_abandon", "post_purchase", "replenishment", "dunning",
+                   "trial_convert", "sunset"]
 Gate = Literal["GREEN", "AMBER", "RED", "UNKNOWN"]
 SqlDialect = Literal["postgres", "snowflake", "bigquery"]
 BusinessModel = Literal["saas", "subscription", "ecommerce", "marketplace", "services", "sales_led_b2b"]
@@ -112,6 +117,21 @@ def in_quiet_hours(hour: float, quiet: List[float]) -> bool:
     return (start <= hour or hour < end) if start > end else (start <= hour < end)
 
 
+def _hh(x: float) -> str:
+    return f"{int(x):02d}:{int(round((x - int(x)) * 60)):02d}"
+
+
+def sms_window_from_rules() -> SendWindow:
+    """The narrowest US texting window the sourced rules file tracks (9:00 to 20:00 recipient local, Connecticut), so the
+    default can never drift from config/compliance_rules.json. tests/drift checks every prompt against the same source."""
+    import json
+    from engine.paths import COMPLIANCE_RULES
+    rules = json.loads(COMPLIANCE_RULES.read_text(encoding="utf-8"))["rules"]
+    windows = [(r["allowed_hours"], r["id"]) for r in rules if r.get("check") == "sms_hours"]
+    (start, end), rid = max(windows, key=lambda w: (w[0][0], -w[0][1]))
+    return SendWindow(channel="sms", allowed_from=_hh(start), allowed_until=_hh(end), source=rid)
+
+
 class Assumption(BaseModel):
     """A brief field the marketer did not supply, the value used instead, and why."""
     model_config = ConfigDict(extra="forbid")
@@ -159,7 +179,11 @@ class EventMatch(BaseModel):
 
 
 class Brief(BaseModel):
-    """What a marketer fills in (templates/brief.yaml) or says in one sentence."""
+    """What a marketer fills in (templates/brief.yaml) or says in one sentence.
+
+    Policies are typed (engine/policy/contracts.py): the sending gate may be a record with evidence, the offer policy and the
+    frequency policy are parsed once into contracts code evaluates, and send times are permitted windows per channel. The
+    legacy inputs frequency_cap_per_week and quiet_hours are still read, converted, and recorded as assumptions."""
     model_config = ConfigDict(extra="forbid")
 
     product_name: str = Field(min_length=1)
@@ -170,31 +194,70 @@ class Brief(BaseModel):
 
     qualifying_event: EventMatch = Field(default_factory=lambda: EventMatch(event="activation_reached", label="reached activation"))
     core_conversion_event: EventMatch = Field(default_factory=lambda: EventMatch(event="feature_used", label="used the product"))
-    churn_threshold_days: int = Field(14, ge=3, le=365, description="days without the core event before someone enters (winback)")
+    churn_threshold_days: int = Field(14, ge=3, le=365, description="win-back: days without the core action before someone enters; "
+                                                                   "sunset: days without a click")
+    abandon_after_hours: Optional[float] = Field(None, gt=0, le=72, description="cart and browse: hours without the goal after the "
+                                                                                "trigger before someone enters")
+    replenish_after_days: Optional[int] = Field(None, ge=3, le=365, description="replenishment: days one unit lasts (measured from "
+                                                                                "repeat orders when blank)")
+    replenish_lead_days: int = Field(5, ge=0, le=30, description="replenishment: remind this many days before it runs out")
+    trial_days: Optional[int] = Field(None, ge=1, le=90, description="trial conversion: trial length in days (default 14)")
     touches: int = Field(5, ge=1, le=8)
     channels: List[Channel] = Field(default_factory=lambda: ["email"])
 
     holdout_pct: float = Field(15, ge=0, le=50)
     randomization_unit: Literal["user", "account"] = "user"
+    global_holdout_pct: float = Field(0, ge=0, le=20, description="program-wide holdout every flow excludes (engine/measurement)")
     monthly_entrants: Optional[int] = Field(None, ge=0)
     baseline_conversion_rate: Optional[float] = Field(None, gt=0, lt=1)
     min_detectable_lift: float = Field(0.20, gt=0, le=5, description="relative lift worth acting on, 0.20 = 20%")
     outcome_window_days: Optional[int] = Field(None, ge=1, le=365,
                                                description="default: the whole flow plus a week (win-back: at least 30 days or twice the threshold)")
 
-    sending_gate: Gate = "UNKNOWN"
+    sending_gate: Union[Gate, SendingGateRecord] = "UNKNOWN"
     warehouse_dialect: SqlDialect = "postgres"
     sender_name: Optional[str] = None
     brand_voice: Optional[str] = None
     postal_address: Optional[str] = None
     cta_url: Optional[str] = Field(None, description="where the main button goes: a deep link to the core action, on your own domain")
     recipient_countries: List[str] = Field(default_factory=list, description="ISO country codes of the audience, when there is no data to measure it")
-    offer_policy: str = "no discounts or offers"
-    frequency_cap_per_week: int = Field(3, ge=1, le=14)
+    offer_policy: Union[str, OfferPolicy] = "no discounts or offers"
+    frequency_cap_per_week: int = Field(3, ge=1, le=14, description="legacy shorthand for one weekly cap across email, SMS and push")
+    frequency: Optional[FrequencyPolicy] = Field(None, description="the typed policy; built from frequency_cap_per_week and the "
+                                                                   "compliance rules when not given")
     send_hour_local: int = Field(10, ge=6, le=20)
-    quiet_hours: str = "21:00 to 08:00 recipient local time"
+    quiet_hours: Optional[str] = Field(None, description="deprecated: read once as the permitted email window outside it")
     copy_variants: int = Field(2, ge=1, le=4)
+    trigger: Optional[TriggerDefinition] = Field(None, description="override the flow type's default trigger")
     assumptions: List[Assumption] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _flow_defaults(cls, data: Any) -> Any:
+        """Defaults that depend on the flow type: its trigger and goal events, touch count and holdout."""
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+        ft = data.get("flow_type") or "winback"
+        fd = FLOWS.get(ft)
+        if fd is None:
+            return data
+        bm = data.get("business_model") or ("ecommerce" if fd.models == ("ecommerce",) else "saas")
+        data.setdefault("business_model", bm)
+        fam = "ecommerce" if bm in ("ecommerce", "marketplace") else "saas"
+        if "qualifying_event" not in data:
+            data["qualifying_event"] = {"event": fd.trigger_for(bm), "label": fd.trigger_label.get(fam, fd.trigger_label.get("*"))}
+        if "core_conversion_event" not in data:
+            data["core_conversion_event"] = {"event": fd.goal_for(bm), "label": fd.goal_label.get(fam, fd.goal_label.get("*"))}
+        data.setdefault("touches", fd.default_touches)
+        data.setdefault("holdout_pct", fd.holdout_default)
+        if fd.abandon_after_hours is not None:
+            data.setdefault("abandon_after_hours", fd.abandon_after_hours)
+        if ft == "sunset":
+            data.setdefault("churn_threshold_days", 180)
+        if ft == "trial_convert":
+            data.setdefault("trial_days", 14)
+        return data
 
     @field_validator("channels")
     @classmethod
@@ -209,21 +272,98 @@ class Brief(BaseModel):
 
     @model_validator(mode="after")
     def _distinct_events(self) -> "Brief":
-        # a win-back may qualify and lapse on the same event (first order, then no repeat order); an activation flow cannot
+        # a win-back, replenishment or post-purchase flow may qualify and convert on the same event (first order, then another)
         same = (self.qualifying_event.event, self.qualifying_event.where) == (self.core_conversion_event.event, self.core_conversion_event.where)
-        if same and self.flow_type == "activation":
-            raise ValueError(f"an activation flow's qualifying event and core action are the same ({self.core_conversion_event.detail()}): "
+        if same and self.flow_type in ("activation", "welcome", "trial_convert", "cart_abandon", "browse_abandon", "dunning"):
+            raise ValueError(f"a {self.flow_type} flow's qualifying event and core action are the same ({self.core_conversion_event.detail()}): "
                              f"nobody could qualify without already having done the core action. Make them different events")
         return self
 
     @model_validator(mode="after")
-    def _quiet(self) -> "Brief":
-        quiet = parse_quiet_hours(self.quiet_hours)
-        if quiet is None:
-            raise ValueError(f"quiet_hours must read like '21:00 to 08:00' (got {self.quiet_hours!r})")
-        if in_quiet_hours(self.send_hour_local, quiet):
-            raise ValueError(f"send_hour_local {self.send_hour_local}:00 falls inside quiet hours ({self.quiet_hours}); pick an hour outside them")
+    def _touches(self) -> "Brief":
+        fd = FLOWS[self.flow_type]
+        if self.touches > fd.max_touches:
+            raise ValueError(f"a {fd.label.lower()} flow has at most {fd.max_touches} touches in the library (got {self.touches})")
         return self
+
+    @model_validator(mode="after")
+    def _policies(self) -> "Brief":
+        """Check the send hour against the permitted windows and read the offer policy once; record every judgment."""
+        notes: List[Assumption] = []
+        freq = self.freq
+        if self.frequency is None and self.quiet_hours:
+            w = freq.window("email")
+            notes.append(Assumption(field="quiet_hours", value=self.quiet_hours,
+                                    why=f"quiet_hours is deprecated: read as the permitted email window {w.allowed_from} to "
+                                        f"{w.allowed_until} recipient local"))
+        for ch in self.channels:
+            w = freq.window(ch)
+            if w and ch in ("email", "sms") and not FLOWS[self.flow_type].hour_level and not w.allows(self.send_hour_local):
+                raise ValueError(f"send_hour_local {self.send_hour_local}:00 is outside the permitted {w.describe()}; pick an hour inside it")
+        if isinstance(self.offer_policy, str):
+            _policy, why = parse_offer_text(self.offer_policy)
+            if why:
+                notes.append(Assumption(field="offer_policy", value=self.offer_policy, why="; ".join(why)))
+        if notes:
+            have = {a.field for a in self.assumptions}
+            self.assumptions = self.assumptions + [n for n in notes if n.field not in have]
+        return self
+
+    @property
+    def freq(self) -> FrequencyPolicy:
+        """The frequency policy as a contract: the brief's own, or one weekly cap across email, SMS and push from
+        frequency_cap_per_week, with the email window from quiet_hours (deprecated) or 08:00 to 21:00, the SMS window from the
+        sourced rules file, and push 09:00 to 21:00."""
+        if self.frequency is not None:
+            return self.frequency
+        email = SendWindow(channel="email", allowed_from="08:00", allowed_until="21:00", source="engine default")
+        if self.quiet_hours:
+            quiet = parse_quiet_hours(self.quiet_hours)
+            if quiet is None:
+                raise ValueError(f"quiet_hours must read like '21:00 to 08:00' (got {self.quiet_hours!r})")
+            start, end = quiet
+            if not end < start:
+                raise ValueError(f"quiet_hours {self.quiet_hours!r} must run overnight, from evening to morning")
+            email = SendWindow(channel="email", allowed_from=_hh(end), allowed_until=_hh(start), source="quiet_hours (deprecated input)")
+        push = SendWindow(channel="push", allowed_from="09:00", allowed_until="21:00", source="engine default")
+        return FrequencyPolicy(caps=[Cap(channels=["email", "sms", "push"], max=self.frequency_cap_per_week, window="P7D")],
+                               send_windows=[email, sms_window_from_rules(), push])
+
+    @property
+    def offer(self) -> OfferPolicy:
+        """The offer policy as a contract, whether it was written as text or typed."""
+        return self.offer_policy if isinstance(self.offer_policy, OfferPolicy) else parse_offer_text(self.offer_policy)[0]
+
+    @property
+    def offer_text(self) -> str:
+        return self.offer_policy if isinstance(self.offer_policy, str) else (self.offer_policy.text or self.offer_policy.describe())
+
+    @property
+    def gate_word(self) -> str:
+        return self.sending_gate.verdict if isinstance(self.sending_gate, SendingGateRecord) else str(self.sending_gate)
+
+    @property
+    def flow(self):
+        return FLOWS[self.flow_type]
+
+    @property
+    def trigger_def(self) -> TriggerDefinition:
+        """The typed trigger: the brief's own, or the flow type's default with this brief's events and waits."""
+        if self.trigger is not None:
+            return self.trigger
+        fd = self.flow
+        q, c = self.qualifying_event, self.core_conversion_event
+        ref = lambda m: EventRef(event=m.event, where=dict(m.where))  # noqa: E731
+        re_entry = ReEntry(mode=fd.re_entry[0], cooldown=fd.re_entry[1])
+        if fd.kind == "absence":
+            after = (self.replenish_after_days - self.replenish_lead_days if self.flow_type == "replenishment" and self.replenish_after_days
+                     else self.churn_threshold_days)
+            return TriggerDefinition(flow_id=self.slug, type="absence", re_entry=re_entry, dedupe_key=fd.dedupe_key, source="warehouse_job",
+                                     absence=AbsenceRule(anchor=ref(q), missing=ref(c), after=hours_to_duration(max(1, after) * 24)))
+        abandon = hours_to_duration(self.abandon_after_hours) if self.abandon_after_hours else None
+        return TriggerDefinition(flow_id=self.slug, type="event", event=ref(q), abandon_after=abandon, re_entry=re_entry,
+                                 exclude_if=[EventRef(event=e) for e in fd.exclude_events], dedupe_key=fd.dedupe_key,
+                                 source="esp_native")
 
     @property
     def template_dialect(self) -> str:
@@ -231,9 +371,14 @@ class Brief(BaseModel):
 
     @property
     def slug(self) -> str:
-        base = f"{self.flow_type}-{self.churn_threshold_days}d" if self.flow_type == "winback" else self.flow_type
+        if self.flow_type == "winback":
+            base = f"winback-{self.churn_threshold_days}d"
+        elif self.flow_type in ("cart_abandon", "browse_abandon") and self.abandon_after_hours:
+            base = f"{self.flow_type}-{self.abandon_after_hours:g}h"
+        else:
+            base = self.flow_type
         name = re.sub(r"[^a-z0-9]+", "_", self.product_name.lower()).strip("_")[:24] or "product"
-        return f"{name}_{base}".replace("-", "_")
+        return f"{name}_{base}".replace("-", "_").replace(".", "_")
 
     def assumed(self, field: str) -> bool:
         return any(a.field == field for a in self.assumptions)
@@ -278,6 +423,8 @@ class CohortDefinition(BaseModel):
     countries: Dict[str, float] = Field(default_factory=dict, description="share of qualified people by users.country, when measured")
     as_of: Optional[str] = None
     trigger_payload_example: Dict[str, Any] = Field(default_factory=dict)
+    trigger_source: Literal["esp_native", "warehouse_job", "stream"] = "warehouse_job"
+    audience_after_gate: Optional[Dict[str, Any]] = Field(None, description="would-be entrants the gate's entry filter keeps, when measured")
 
 
 class Touch(BaseModel):
@@ -286,6 +433,7 @@ class Touch(BaseModel):
     step_id: str
     index: int
     day: int
+    hours: Optional[float] = Field(None, description="hours from entry, for flows timed in hours (cart, browse)")
     channel: Channel
     role: str
     job: str
@@ -307,6 +455,7 @@ class PlannedTouch(BaseModel):
     model_config = ConfigDict(extra="forbid")
     index: int
     day: int
+    hours: Optional[float] = None
     role: str
     channel: Channel
     why: str
@@ -394,6 +543,9 @@ class ExperimentDesign(BaseModel):
     peeking_policy: str
     guardrail_metrics: List[str]
     variant_tests: List[str] = Field(default_factory=list)
+    hash_field: str = "user_id"
+    global_holdout_pct: float = 0
+    registry_entry: Optional[Dict[str, Any]] = None
 
 
 class Check(BaseModel):

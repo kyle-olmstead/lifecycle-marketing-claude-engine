@@ -175,7 +175,8 @@ def entry_sql(brief: Brief, dialect_name: str, as_of: Optional[str] = None, catc
     salt = brief.slug
     pct = brief.holdout_pct
     n = brief.churn_threshold_days
-    bucket = D.holdout_bucket("u.user_id", salt)
+    from engine.flows.sql import global_filter, unit_column
+    bucket = D.holdout_bucket(unit_column(brief), salt)   # the randomization unit: account_id when the brief randomizes by account
     header = (f"-- dialect: {dialect_name}\n"
               f"-- {brief.product_name}, {brief.flow_type} flow: who is due on the run date ({'the literal as-of date' if as_of else 'today'}).\n"
               f"-- Qualifying: {brief.qualifying_event.describe()} ({brief.qualifying_event.detail()}). "
@@ -193,7 +194,8 @@ def entry_sql(brief: Brief, dialect_name: str, as_of: Optional[str] = None, catc
                 f"-- is the ESP's own {brief.qualifying_event.event} event; this query audits and backfills it.\n"
                 f"WITH {_ctes(D, brief, a)}\n" + cols +
                 f"FROM anchored a\nJOIN users u ON u.user_id = a.user_id\n"
-                f"WHERE {D.to_date('a.qualified_at')} BETWEEN {D.add_days(a, -catch_up)} AND {a} AND a.last_core_at IS NULL\n" + tail)
+                f"WHERE {D.to_date('a.qualified_at')} BETWEEN {D.add_days(a, -catch_up)} AND {a} AND a.last_core_at IS NULL"
+                f"{global_filter(brief, D)}\n" + tail)
     return (header +
             f"-- Entry: {n} calendar days or more since the last core action (or since qualifying, if none since): the anchor date is\n"
             f"-- between {n} and {n + catch_up} days before the run date, and this lapse (user, anchor date) is not yet in {LEDGER}.\n"
@@ -203,7 +205,7 @@ def entry_sql(brief: Brief, dialect_name: str, as_of: Optional[str] = None, catc
             f"FROM anchored a\nJOIN users u ON u.user_id = a.user_id\n"
             f"LEFT JOIN {LEDGER} l ON l.flow = '{salt}' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date\n"
             f"WHERE a.anchor_date BETWEEN {D.add_days(a, -(n + catch_up))} AND {D.add_days(a, -n)}\n"
-            f"  AND l.user_id IS NULL\n" + tail)
+            f"  AND l.user_id IS NULL{global_filter(brief, D)}\n" + tail)
 
 
 def _now(dialect_name: str) -> str:
@@ -218,7 +220,8 @@ def ledger_ddl(dialect_name: str) -> str:
             f"-- and mark sets them to 'pushed'. A lapse is in here at most once, so nobody enters twice for one lapse. Create once.\n"
             f"CREATE TABLE IF NOT EXISTS {LEDGER} (\n  flow {text} NOT NULL,\n  user_id {text} NOT NULL,\n  anchor_date DATE NOT NULL,\n"
             f"  holdout_bucket {integer} NOT NULL,\n  in_holdout {boolean} NOT NULL,\n  status {text} NOT NULL,\n"
-            f"  queued_at TIMESTAMP NOT NULL,\n  pushed_at TIMESTAMP{key}\n)\n")
+            f"  queued_at TIMESTAMP NOT NULL,\n  pushed_at TIMESTAMP,\n  detail {text}{key}\n)\n"
+            f"-- Upgrading from v2: ALTER TABLE {LEDGER} ADD COLUMN detail {text};\n")
 
 
 def queue_sql(brief: Brief, dialect_name: str, as_of: Optional[str] = None) -> str:
@@ -590,6 +593,11 @@ def _dependencies(brief: Brief, con) -> List[DataDependency]:
         return DataDependency(name=name, kind="attribute", status=status, fill_rate=round(rate, 4), note=f"{note}; users.{column} filled {rate:.0%}")
 
     deps.append(attr("email", "email", "address for every email touch", True))
+    if brief.randomization_unit == "account":
+        dep = attr("account_id", "account_id", "the holdout hashes the account, so everyone in one account lands in the same arm", True)
+        if dep.fill_rate is not None and dep.fill_rate < 1:
+            dep = dep.model_copy(update={"note": dep.note + "; people without an account fall back to their own user id: fill account_id"})
+        deps.append(dep)
     deps.append(attr("email_consent", "email_consent_at", "email marketing consent", True))
     if "sms" in brief.channels:
         deps.append(attr("sms_consent", "sms_consent_at", "SMS consent with an auditable record (10DLC)", False))
@@ -617,17 +625,71 @@ def _dependencies(brief: Brief, con) -> List[DataDependency]:
     return deps
 
 
+NEW_QUALIFIER_FLOWS = ("activation", "welcome", "trial_convert")
+WAREHOUSE_FLOWS = ("winback", "replenishment", "sunset")
+
+
+def _replenish_days(brief: Brief, con) -> Tuple[int, Optional[Estimate]]:
+    """Days one unit lasts: the brief's, else the median gap between repeat purchases of the same product in the data, else 30."""
+    if brief.replenish_after_days:
+        return brief.replenish_after_days, Estimate(value=brief.replenish_after_days, label="SUPPLIED", basis="from the brief")
+    if con is not None:
+        row = con.execute("""
+            WITH p AS (SELECT o.user_id, li.product_id, CAST(o.order_at AS DATE) AS d FROM line_items li JOIN orders o ON o.order_id = li.order_id
+                       WHERE o.status = 'completed' GROUP BY 1, 2, 3),
+                 g AS (SELECT date_diff('day', d, LEAD(d) OVER (PARTITION BY user_id, product_id ORDER BY d)) AS gap FROM p)
+            SELECT median(gap), COUNT(gap) FROM g WHERE gap BETWEEN 3 AND 365""").fetchone()
+        if row and row[1] and row[1] >= 20:
+            days = int(round(row[0]))
+            return days, Estimate(value=days, label="ESTIMATE", basis=f"median gap between repeat purchases of the same product ({row[1]} repeats)")
+    return 30, Estimate(value=30, label="ASSUMED", basis="no replenish_after_days in the brief and too few repeat purchases to measure; 30 days assumed")
+
+
+def flow_sql(brief: Brief, name: str, as_of: Optional[str] = None, con=None) -> Tuple[str, str]:
+    """(entry, history) SQL for any flow type in one dialect."""
+    from engine.flows import sql as fsql
+    w = _window(brief)
+    ft = brief.flow_type
+    if ft in ("winback",) + NEW_QUALIFIER_FLOWS:
+        return entry_sql(brief, name, as_of), history_sql(brief, name, as_of)
+    if ft in ("cart_abandon", "browse_abandon"):
+        return fsql.abandon_entry_sql(brief, name, as_of), fsql.abandon_history_sql(brief, name, w, as_of)
+    if ft == "post_purchase":
+        return fsql.post_purchase_entry_sql(brief, name, as_of), fsql.post_purchase_history_sql(brief, name, w, as_of)
+    if ft == "replenishment":
+        days, _ = _replenish_days(brief, con)
+        return fsql.replenish_entry_sql(brief, name, days, as_of), fsql.replenish_history_sql(brief, name, days, w, as_of)
+    if ft == "dunning":
+        return fsql.dunning_entry_sql(brief, name, as_of), fsql.dunning_history_sql(brief, name, w, as_of)
+    if ft == "sunset":
+        return fsql.sunset_entry_sql(brief, name, as_of), fsql.sunset_history_sql(brief, name, w, as_of)
+    raise ValueError(f"no SQL for flow type {ft}")
+
+
+def flow_job_sql(brief: Brief, name: str, con=None) -> Dict[str, str]:
+    """The daily job (ledger, queue, pending, mark) for flows the warehouse triggers."""
+    from engine.flows import sql as fsql
+    if brief.flow_type == "winback":
+        return daily_job_sql(brief, name)
+    entry, _ = flow_sql(brief, name, None, con)
+    return {"ledger": ledger_ddl(name), "queue": fsql.queue_sql(brief, name, entry), "pending": fsql.pending_sql(brief, name),
+            "mark": mark_sql(brief, name)}
+
+
 def _estimates(brief: Brief, con, as_of: date, label: str) -> Tuple[Estimate, Estimate]:
     if con is None:
         return (Estimate(value=brief.monthly_entrants, label="SUPPLIED" if brief.monthly_entrants is not None else "UNKNOWN",
                          basis="from the brief" if brief.monthly_entrants is not None else "not supplied and no data to estimate from"),
                 Estimate(value=brief.baseline_conversion_rate, label="SUPPLIED" if brief.baseline_conversion_rate is not None else "UNKNOWN",
                          basis="from the brief" if brief.baseline_conversion_rate is not None else "not supplied and no data to estimate from"))
-    rows = _rows(con, history_sql(brief, "duckdb", as_of.isoformat()))
+    rows = _rows(con, flow_sql(brief, "duckdb", as_of.isoformat(), con)[1])
     this_month = as_of.replace(day=1)
     complete = [r for r in rows if r["month"] < this_month][-3:]
-    unit, did = (("threshold crossings", "came back") if brief.flow_type == "winback" else
-                 ("new qualifiers", f"went on to {brief.core_conversion_event.do}"))
+    unit, did = {"winback": ("threshold crossings", "came back"), "cart_abandon": ("abandoned checkouts", "ordered anyway"),
+                 "browse_abandon": ("abandoned product views", "ordered anyway"), "post_purchase": ("first orders", "ordered again"),
+                 "replenishment": ("purchase cycles coming due", "reordered"), "dunning": ("failed payments", "paid anyway"),
+                 "sunset": ("people crossing the no-click line", "clicked again")}.get(
+        brief.flow_type, ("new qualifiers", f"went on to {brief.core_conversion_event.do}"))
     entrants = Estimate(value=None, label="UNKNOWN", basis=f"no complete month of {unit} in the data")
     if complete:
         avg = sum(r["entrants"] for r in complete) / len(complete)
@@ -646,6 +708,102 @@ def _estimates(brief: Brief, con, as_of: date, label: str) -> Tuple[Estimate, Es
     return entrants, baseline
 
 
+TRIGGER_NAMES = {"winback": "core_action_lapsed_{n}d", "replenishment": "replenishment_due", "sunset": "engagement_lapsed_{n}d"}
+
+
+def _gate_audience(brief: Brief, con, as_of: date, entrants: Optional[int]) -> Optional[Dict[str, Any]]:
+    """With data and an AMBER gate: how many of today's would-be entrants the gate's entry filter keeps. v2 never asked, so a
+    welcome flow whose filter excluded every new signup still passed QA."""
+    from engine.policy import guardrails
+    pol = guardrails.gate_policy(brief.sending_gate, brief.flow_type)
+    if con is None or pol["effective_gate"] != "AMBER" or not pol["entry_filters"]:
+        return None
+    klass = brief.flow.gate_class
+    a = as_of.isoformat()
+    if klass == "lapsed":
+        rule = "clicked or replied in 90 days"
+        keep = (f"SELECT DISTINCT user_id FROM message_events WHERE event_name IN ('clicked', 'replied') "
+                f"AND CAST(event_at AS DATE) > DATE '{a}' - 90 AND CAST(event_at AS DATE) <= DATE '{a}'")
+    elif klass == "new_entrant":
+        rule = "signed up in 30 days, or clicked or replied in 90"
+        keep = (f"SELECT user_id FROM users WHERE CAST(created_at AS DATE) > DATE '{a}' - 30 UNION "
+                f"SELECT user_id FROM message_events WHERE event_name IN ('clicked', 'replied') AND CAST(event_at AS DATE) > DATE '{a}' - 90")
+    else:
+        return None
+    rows = _rows(con, flow_sql(brief, "duckdb", a, con)[0])
+    if not rows:
+        return {"rule": rule, "entrants": 0, "kept": 0, "share": None}
+    ids = {r["user_id"] for r in rows}
+    kept = {r[0] for r in con.execute(keep).fetchall()} & ids
+    return {"rule": rule, "entrants": len(ids), "kept": len(kept), "share": round(len(kept) / len(ids), 4)}
+
+
+def _flow_text(brief: Brief, trigger: str, days: Optional[int]) -> Tuple[str, List[str], str]:
+    """(plain English, entry rules, exit rule) for the plan."""
+    q, c, n = brief.qualifying_event, brief.core_conversion_event, brief.churn_threshold_days
+    ft = brief.flow_type
+    if ft == "winback":
+        return (f"People who {q.describe()} and then went {n} days without the core action ({c.describe()}). "
+                f"They enter on day {n}, once per lapse, and leave the moment they do the core action again.",
+                [f"{q.describe()} ({q.detail()}) at least once (evaluated at entry)",
+                 f"{n} or more calendar days since the core action ({c.detail()}), counted from their own last one, or from qualifying "
+                 f"if they never did it",
+                 f"queued on the first daily run after crossing (a missed run catches up for {CATCH_UP_DAYS} days) and pushed from "
+                 f"the ledger {LEDGER}, which holds each lapse once"],
+                f"leaves the moment they {c.do} again (checked before every step)")
+    if ft in ("cart_abandon", "browse_abandon"):
+        h = brief.abandon_after_hours
+        stops = ", ".join([c.event] + list(brief.flow.exclude_events))
+        return (f"People who {q.describe()} and did not {c.do} within {h:g} hour(s). They enter then, at most once every "
+                f"{brief.trigger_def.re_entry.cooldown}, and leave the moment they {c.do}.",
+                [f"{q.detail()} by an identified person (an email address on the profile)",
+                 f"no {stops} in the {h:g} hour(s) after it", f"re-entry: {brief.trigger_def.re_entry.describe()}"],
+                f"leaves the moment they {c.do}")
+    if ft == "post_purchase":
+        return ("People who placed their first order. They enter the day after it and leave the moment they order again.",
+                ["their first completed order (orders over all time = 1)", "the order is not refunded or canceled"],
+                f"leaves the moment they {c.do}")
+    if ft == "replenishment":
+        return (f"People whose last purchase of a consumable is about to run out: the product's supply ({days} days unless the "
+                f"catalog says otherwise) less {brief.replenish_lead_days} days. They leave the moment they reorder.",
+                [f"bought a product in scope ({', '.join(f'{k} = {v}' for k, v in q.where.items()) or 'every product with a supply interval'})",
+                 f"the supply less {brief.replenish_lead_days} lead days has passed, with no repeat purchase of that product",
+                 f"queued by the daily job, once per purchase cycle, through the ledger {LEDGER}"],
+                f"leaves the moment they {c.do}")
+    if ft == "dunning":
+        return (f"Customers whose payment failed. They enter at the failure and leave the moment they {c.do}.",
+                [f"{q.detail()} for a subscription that is still active or past due"], f"leaves the moment they {c.do}, or cancels")
+    if ft == "sunset":
+        return (f"People who received at least 5 marketing emails and clicked or replied to none in {n} days. They get one "
+                f"re-permission ask; without a click they are sunset-suppressed.",
+                [f"at least 5 email deliveries and no click or reply in {n} days", "not already sunset-suppressed",
+                 f"queued by the daily job, once per person, through the ledger {LEDGER}"],
+                "leaves the moment they click to stay subscribed")
+    return (f"People who {q.describe()} and have not yet done the goal ({c.describe()}). They leave the moment they do it.",
+            [f"{q.describe()} ({q.detail()}): the flow trigger", f"has not yet done {c.detail()}"], f"leaves the moment they {c.do}")
+
+
+def _pattern(brief: Brief, trigger: str, days: Optional[int]) -> str:
+    from engine.flows.library import ESP_NATIVE_EVENT
+    q, c = brief.qualifying_event, brief.core_conversion_event
+    ft = brief.flow_type
+    if ft == "winback":
+        return PLATFORM_PATTERNS[brief.platform].format(trigger=trigger, core=c.detail())
+    native = brief.flow.native.get(brief.platform)
+    if native:
+        return native.format(abandon=f"{brief.abandon_after_hours:g} hour(s)" if brief.abandon_after_hours else "",
+                             lead=(days or 30) - brief.replenish_lead_days)
+    if ft in NEW_QUALIFIER_FLOWS and brief.platform in ACTIVATION_PATTERNS:
+        filt = (" (trigger filter: " + ", ".join(f"{k} = {v}" for k, v in q.where.items()) + ")") if q.where else ""
+        return ACTIVATION_PATTERNS[brief.platform].format(trigger=trigger, filter=filt, core=c.detail())
+    if ft in WAREHOUSE_FLOWS:
+        return PLATFORM_PATTERNS[brief.platform].format(trigger=trigger, core=c.detail()).replace("lapses again", "comes due again")
+    filt = ""
+    if brief.flow.hour_level and brief.abandon_after_hours:
+        filt = f", then a {brief.abandon_after_hours:g}-hour delay"
+    return ESP_NATIVE_EVENT[brief.platform].format(trigger=trigger, filter=filt, goal=c.detail())
+
+
 def define(brief: Brief, data: Optional[str] = None, as_of: Optional[str] = None) -> CohortDefinition:
     from adapters.destinations import event_payloads
     con = connect(data)
@@ -654,16 +812,19 @@ def define(brief: Brief, data: Optional[str] = None, as_of: Optional[str] = None
     if con is not None and as_of_date is None:
         as_of_date, _latest = latest_complete_day(con)
     q, c, n = brief.qualifying_event, brief.core_conversion_event, brief.churn_threshold_days
-    trigger = f"core_action_lapsed_{n}d" if brief.flow_type == "winback" else q.event
-    sql = {d: entry_sql(brief, d) for d in ("postgres", "snowflake", "bigquery")}
-    sql["duckdb"] = entry_sql(brief, "duckdb", as_of_date.isoformat() if as_of_date else None)
-    hist = {d: history_sql(brief, d) for d in ("postgres", "snowflake", "bigquery")}
+    ft = brief.flow_type
+    days, days_est = _replenish_days(brief, con) if ft == "replenishment" else (None, None)
+    warehouse = ft in WAREHOUSE_FLOWS
+    trigger = TRIGGER_NAMES.get(ft, "{q}").format(n=n, q=q.event) if warehouse else q.event
+    sql, hist = {}, {}
+    for d in ("postgres", "snowflake", "bigquery"):
+        sql[d], hist[d] = flow_sql(brief, d, None, con)
+    sql["duckdb"] = flow_sql(brief, "duckdb", as_of_date.isoformat() if as_of_date else None, con)[0]
     checks = {f"entry {k}": v for k, v in check_sql(sql).items()}
     checks.update({f"history {k}": v for k, v in check_sql(hist).items()})
-    if brief.flow_type == "winback":
-        for step in ("ledger", "queue", "pending", "mark"):
-            checks.update({f"{step} {k}": v for k, v in check_sql({d: daily_job_sql(brief, d)[step]
-                                                                   for d in ("postgres", "snowflake", "bigquery")}).items()})
+    jobs = {d: flow_job_sql(brief, d, con) for d in ("postgres", "snowflake", "bigquery")} if warehouse else {}
+    for step in ("ledger", "queue", "pending", "mark") if warehouse else ():
+        checks.update({f"{step} {k}": v for k, v in check_sql({d: jobs[d][step] for d in jobs}).items()})
     entrants_today = None
     if con is not None:
         try:
@@ -676,52 +837,44 @@ def define(brief: Brief, data: Optional[str] = None, as_of: Optional[str] = None
     leak, countries = None, {}
     if con is not None:
         a = as_of_date.isoformat()
-        funnel = _rows(con, audit_sql(brief, "duckdb", a)["funnel"])
-        lk = largest_leak([{"step": str(r["step"]).split(" ", 1)[-1], "users": int(r["users"])} for r in funnel])
-        if lk and lk["drop"] > 0:
-            leak = f"{lk['to'].strip()} ({lk['drop']:.0%} of people who reach {lk['from'].strip()} stop before it)"
+        if ft in NEW_QUALIFIER_FLOWS:
+            funnel = _rows(con, audit_sql(brief, "duckdb", a)["funnel"])
+            lk = largest_leak([{"step": str(r["step"]).split(" ", 1)[-1], "users": int(r["users"])} for r in funnel])
+            if lk and lk["drop"] > 0:
+                leak = f"{lk['to'].strip()} ({lk['drop']:.0%} of people who reach {lk['from'].strip()} stop before it)"
         D = dialect("duckdb")
         rows = _rows(con, f"WITH {_ctes(D, brief, D.date_literal(a))}\n"
                           f"SELECT COALESCE(u.country, 'unknown') AS country, COUNT(*) AS n FROM qualified q JOIN users u ON u.user_id = q.user_id "
                           f"GROUP BY 1 ORDER BY 2 DESC")
         total = sum(int(r["n"]) for r in rows)
         countries = {str(r["country"]).upper(): round(int(r["n"]) / total, 4) for r in rows} if total else {}
-
-    if brief.flow_type == "winback":
-        plain = (f"People who {q.describe()} and then went {n} days without the core action ({c.describe()}). "
-                 f"They enter on day {n}, once per lapse, and leave the moment they do the core action again.")
-        entry = [f"{q.describe()} ({q.detail()}) at least once (evaluated at entry)",
-                 f"{n} or more calendar days since the core action ({c.detail()}), counted from their own last one, or from qualifying "
-                 f"if they never did it",
-                 f"queued on the first daily run after crossing (a missed run catches up for {CATCH_UP_DAYS} days) and pushed from "
-                 f"the ledger {LEDGER}, which holds each lapse once"]
-        exit_rule = f"leaves the moment they {c.do} again (checked before every step)"
-    else:
-        plain = f"People who {q.describe()} and have not yet done the core action ({c.describe()}). They leave the moment they do it."
-        entry = [f"{q.describe()} ({q.detail()}): the flow trigger", f"has not yet done {c.detail()}"]
-        exit_rule = f"leaves the moment they {c.do}"
-    exclusions = ["no consent for any channel in the flow", "on the platform's suppression list", "internal or test account"]
-    if brief.flow_type == "winback":
-        pattern = PLATFORM_PATTERNS[brief.platform].format(trigger=trigger, core=c.detail())
-    else:
-        filt = (" (trigger filter: " + ", ".join(f"{k} = {v}" for k, v in q.where.items()) + ")") if q.where else ""
-        pattern = ACTIVATION_PATTERNS[brief.platform].format(trigger=trigger, filter=filt, core=c.detail())
+    plain, entry, exit_rule = _flow_text(brief, trigger, days)
+    exclusions = (["no deliverable email address", "internal or test account"] if brief.flow.message_class == "transactional" else
+                  ["no consent for any channel in the flow", "on the platform's suppression list", "internal or test account"])
     example: Dict[str, Any] = {}
-    if brief.flow_type == "winback" and brief.platform != "sfmc":   # activation is triggered natively; nothing is pushed
+    if warehouse and brief.platform != "sfmc":   # flows the ESP triggers natively push nothing
         day = (as_of_date or date(2026, 10, 18))
-        anchor = (day - timedelta(days=n)).isoformat()
+        anchor = (day - timedelta(days=n if ft == "winback" else (days or 30) - brief.replenish_lead_days if ft == "replenishment" else n)).isoformat()
+        props: Dict[str, Any] = {"in_holdout": False, "holdout_bucket": 42, "flow": brief.slug, "anchor_date": anchor}
+        if ft == "winback":
+            props["days_inactive"] = n
+        if ft == "replenishment":
+            props["product_id"] = "p_example"
         example = event_payloads.build(brief.platform, {
-            "user_id": "u_0002", "email": "u_0002@example.test", "event": trigger,
-            "properties": {"days_inactive": n, "in_holdout": False, "holdout_bucket": 42, "flow": brief.slug, "anchor_date": anchor},
+            "user_id": "u_0002", "email": "u_0002@example.test", "event": trigger, "properties": props,
             "occurred_at": f"{day.isoformat()}T05:00:00Z", "event_id": f"{brief.slug}:u_0002:{anchor}"})
+    deps = _dependencies(brief, con)
+    if days_est is not None:
+        deps.append(DataDependency(name="replenish_after_days", kind="attribute", status="verified" if days_est.label != "ASSUMED" else "unknown",
+                                   note=f"supply interval {days} days ({days_est.label}: {days_est.basis}); products.replenish_after_days overrides per product"))
+    audience = _gate_audience(brief, con, as_of_date, entrants_today) if con is not None and as_of_date else None
     return CohortDefinition(
-        name=f"{PLATFORM_LABEL[brief.platform]} {brief.flow_type} cohort: {brief.product_name}",
+        name=f"{PLATFORM_LABEL[brief.platform]} {brief.flow.label.lower()} cohort: {brief.product_name}",
         plain_english=plain, trigger_event=trigger, entry_rules=entry, exclusions=exclusions, exit_rule=exit_rule,
-        platform_pattern=pattern, sql=sql, history_sql=hist, sql_checks=checks,
-        job_sql=({d: daily_job_sql(brief, d) for d in ("postgres", "snowflake", "bigquery")} if brief.flow_type == "winback" else {}),
-        data_dependencies=_dependencies(brief, con), monthly_entrants=monthly, baseline_conversion_rate=baseline,
+        platform_pattern=_pattern(brief, trigger, days), sql=sql, history_sql=hist, sql_checks=checks, job_sql=jobs,
+        data_dependencies=deps, monthly_entrants=monthly, baseline_conversion_rate=baseline,
         entrants_on_as_of=entrants_today, as_of=as_of_date.isoformat() if as_of_date else None, leak=leak, countries=countries,
-        trigger_payload_example=example)
+        trigger_payload_example=example, trigger_source="warehouse_job" if warehouse else "esp_native", audience_after_gate=audience)
 
 
 # ----------------------------------------------------------------------------------------------

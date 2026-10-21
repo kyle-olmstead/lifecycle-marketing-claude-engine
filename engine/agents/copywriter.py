@@ -241,10 +241,24 @@ def render_short(channel: str, f: Dict[str, Any], brief: Brief) -> Dict[str, Any
             | {"preview": {k: _preview(f[k], brief) for k in keys}})
 
 
-def check_variant(channel: str, f: Dict[str, Any], brief: Brief, step_id: str, vid: str) -> CopyVariant:
+def _offer_allowed(brief: Brief, role: Optional[str], index: Optional[int]) -> bool:
+    """Whether this touch may carry an offer: the policy must allow one, the role must be one that offers go in, and the
+    first touch stays offer-free when the policy says so."""
+    from engine.agents.campaign_architect import OFFER_ROLES
+    if role is None:
+        return True
+    if brief.offer.never_in_first_touch and index == 1:
+        return False
+    return role in OFFER_ROLES
+
+
+def check_variant(channel: str, f: Dict[str, Any], brief: Brief, step_id: str, vid: str, role: Optional[str] = None,
+                  index: Optional[int] = None) -> CopyVariant:
     errors: List[str] = []
     warnings: List[str] = []
     rendered: Dict[str, str] = {}
+    tokens = guardrails.PRODUCT_TOKENS if brief.flow.product_block else set()
+    offer_ok = _offer_allowed(brief, role, index)
     raw = json.dumps(f)
     if re.search(r"\{\{|\{%|%%|\$\{", raw):
         errors.append("the copy contains template syntax; write words only and use {first_name} or {product_name}")
@@ -254,7 +268,7 @@ def check_variant(channel: str, f: Dict[str, Any], brief: Brief, step_id: str, v
     if chr(0x2014) in raw:
         errors.append("contains an em dash (house style)")
     if channel == "email":
-        e, w = guardrails.check_email_fields(f, brief.offer_policy)
+        e, w = guardrails.check_email_fields(f, brief.offer, tokens, offer_ok)
         errors += e
         warnings += w
         if not errors:
@@ -278,7 +292,7 @@ def check_variant(channel: str, f: Dict[str, Any], brief: Brief, step_id: str, v
     elif channel == "sms":
         r = render_short("sms", f, brief)
         e, w, _report = guardrails.check_sms(r["preview"], brief.product_name, first_message=False)
-        e2, w2 = guardrails.check_text(f["text"], brief.offer_policy, "sms")
+        e2, w2 = guardrails.check_text(f["text"], brief.offer, "sms", tokens, offer_ok)
         errors += e + e2
         warnings += w + w2
         lint = template_lint.lint(r["text"], brief.template_dialect)
@@ -286,7 +300,7 @@ def check_variant(channel: str, f: Dict[str, Any], brief: Brief, step_id: str, v
         rendered = {f"{step_id}_{vid}.json": json.dumps(r, indent=2, ensure_ascii=False)}
     else:
         r = render_short(channel, f, brief)
-        e, w = guardrails.check_short(r["preview"], LIMITS[channel], brief.offer_policy, channel.replace("_", "-"))
+        e, w = guardrails.check_short(r["preview"], LIMITS[channel], brief.offer, channel.replace("_", "-"), tokens, offer_ok)
         errors += e
         warnings += w
         for k, v in r.items():
@@ -313,7 +327,9 @@ def copy_brief(t: Touch, brief: Brief, plan: FlowPlan) -> str:
         f"Framework: {t.framework}. The single goal: {t.goal}.",
         f"Before this: " + ("; ".join(f"day {x.day} {x.channel} ({x.role.replace('_', ' ')})" for x in prior) if prior else "nothing; this is the first message") + ".",
         f"Sender: {brief.sender_name or brief.product_name}. Voice: {brief.brand_voice or 'plain, specific, second person'}.",
-        f"Offer policy (binding): {brief.offer_policy}. Never invent a deadline, scarcity, a statistic, a customer or a feature.",
+        f"Offer policy (binding): {brief.offer.describe()}"
+        + ("" if _offer_allowed(brief, t.role, t.index) or not brief.offer.allows_offers else "; no offer in this touch") +
+        ". Never invent a deadline, scarcity, a statistic, a customer or a feature.",
         "Personalization: only {first_name} and {product_name} are available; write the template code nowhere, words only.",
     ]
     if t.channel == "email":
@@ -383,7 +399,8 @@ def write(brief: Brief, plan: FlowPlan, mode: str = "auto", drafts: Optional[Dic
         k = reuse_key(t) if (reuse and reuse_key) else None
         if k and k in reuse:
             old, _approval, rid = reuse[k]
-            variants = [check_variant(t.channel, {**v.fields, "framework": v.framework, "hypothesis": v.hypothesis}, brief, t.step_id, v.variant_id)
+            variants = [check_variant(t.channel, {**v.fields, "framework": v.framework, "hypothesis": v.hypothesis}, brief, t.step_id, v.variant_id,
+                                      t.role, t.index)
                         for v in old.variants]
             out.append(TouchCopy(step_id=t.step_id, channel=t.channel, mode=old.mode, copy_brief=cb, variants=variants,
                                  note=f"reused from run {rid} (same job, channel, audience and voice; re-rendered and re-linted for this plan)"))
@@ -405,12 +422,12 @@ def write(brief: Brief, plan: FlowPlan, mode: str = "auto", drafts: Optional[Dic
                 note = f"Claude API call failed ({type(e).__name__}: {str(e)[:120]}); offline starter drafts used instead"
         else:
             raw = offline_drafts(t, brief)
-        variants = [check_variant(t.channel, f, brief, t.step_id, chr(65 + i)) for i, f in enumerate(raw)]
+        variants = [check_variant(t.channel, f, brief, t.step_id, chr(65 + i), t.role, t.index) for i, f in enumerate(raw)]
         if mode == "claude" and note is None and any(not v.ok for v in variants):
             feedback = "\n".join(f"Variant {v.variant_id}: {e}" for v in variants for e in v.errors)
             try:
                 raw = _claude_write(client, model, t, brief, cb, brief.copy_variants, feedback)
-                variants = [check_variant(t.channel, f, brief, t.step_id, chr(65 + i)) for i, f in enumerate(raw)]
+                variants = [check_variant(t.channel, f, brief, t.step_id, chr(65 + i), t.role, t.index) for i, f in enumerate(raw)]
             except Exception as e:  # noqa: BLE001
                 note = f"repair round failed ({type(e).__name__})"
         passing = [v for v in variants if v.ok]

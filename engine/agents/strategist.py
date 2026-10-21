@@ -36,6 +36,32 @@ ROLE_WHY: Dict[str, str] = {
     "unblock": "aimed at the onboarding step where the most people stall",
     "show_outcome": "shows the finished result so the effort feels worth it",
     "last_nudge": "a low-pressure last reminder, then the flow stops",
+    "repermission_reminder": "one reminder of the ask, with the date mail stops, then the sunset",
+    "welcome_promise": "the first message is the most read one a brand ever sends: spend it on the promise and the first step",
+    "best_sellers": "a new subscriber does not know the range; the safe first pick removes the hardest decision",
+    "how_it_works": "uncertainty about delivery, fit and returns is the usual reason a first order waits",
+    "first_order_nudge": "a plain reminder converts the undecided; an offer only where the policy allows one",
+    "cart_reminder": "most recovered carts come from the first hour: show the cart, nothing else",
+    "cart_objection": "the second touch answers why they stopped (cost, timing, returns) instead of repeating the first",
+    "cart_last_call": "a final reminder while intent is still warm; the offer, if any, comes last so early buyers pay full price",
+    "browse_reminder": "the product they chose is the most relevant thing you can show them",
+    "browse_alternatives": "a viewer who did not add to cart is often still choosing; a comparison helps them decide",
+    "order_thanks": "the moment after a first order is when expectations are set and returns are prevented",
+    "how_to_use": "value delivered drives the second order more than any promotion",
+    "review_request": "asked after delivery, a review request turns satisfaction into proof for the next buyer",
+    "cross_sell": "the best second purchase complements the first",
+    "replenish_reminder": "timed to their own usage, a reminder is service, not marketing",
+    "replenish_nudge": "a second reminder catches people who meant to reorder and forgot",
+    "replenish_last": "the last reminder before they buy elsewhere",
+    "payment_failed": "most failed payments are expired cards, fixed in a minute when asked plainly and early",
+    "payment_retry": "a dated reminder before the next retry",
+    "payment_final": "the final notice carries the billing system's real date, so the urgency is true",
+    "access_paused": "a clear way back keeps a paused customer from becoming a churned one",
+    "trial_welcome": "the first session decides most trials; one step to the value",
+    "trial_value": "halfway through, progress plus the feature that justifies paying",
+    "trial_ending": "three days of notice, with the exact date, is honest and converts the decided",
+    "trial_last_day": "the last day is when undecided users decide",
+    "trial_ended": "after the trial, a plain way to pick a plan",
 }
 CHANNEL_WHY: Dict[str, str] = {
     "email": "email carries the long-form message, the unsubscribe and the fallback for every other channel",
@@ -71,20 +97,32 @@ def _usable_channels(brief: Brief, cohort: CohortDefinition, decisions: List[Dec
 def decide(brief: Brief, cohort: CohortDefinition) -> Strategy:
     decisions: List[Decision] = []
     channels = _usable_channels(brief, cohort, decisions)
+    from engine.flows import library
+    fd = brief.flow
     roles = arch.roles_for(brief)
-    days = arch.schedule_days(brief)
-    nominal = (arch.WINBACK_DAYS if brief.flow_type == "winback" else arch.ACTIVATION_DAYS)[: brief.touches]
-    if days != nominal:
-        decisions.append(Decision(stage="strategist", decision=f"touch days {days}",
-                                  why=f"spread from the default {nominal} so no seven days hold more than {brief.frequency_cap_per_week} messages"))
+    hours = arch.schedule_hours(brief)
+    nominal = library.schedule_hours(fd, brief.touches, brief.trial_days)
+    if fd.hour_level:
+        nominal = [h + (brief.abandon_after_hours or 0) for h in nominal]
+        decisions.append(Decision(stage="strategist", decision=f"touches at {', '.join(f'{h:g}h' for h in hours)} after {brief.qualifying_event.event}",
+                                  why="intent fades in hours, not days; each send is held to its channel's permitted window"))
+    if hours != nominal:
+        unit = (lambda h: f"{h:g}h") if fd.hour_level else (lambda h: f"day {int(h // 24)}")  # noqa: E731
+        decisions.append(Decision(stage="strategist", decision=f"touches at {', '.join(unit(h) for h in hours)}",
+                                  why=f"spread from {', '.join(unit(h) for h in nominal)} so no cap is broken ({brief.freq.describe()})"))
     picked = arch._channels_for(roles, brief.model_copy(update={"channels": channels}))
-    touches = [PlannedTouch(index=i, day=d, role=r, channel=c, why=f"{ROLE_WHY[r]}; {CHANNEL_WHY[c]}")
-               for i, (r, d, c) in enumerate(zip(roles, days, picked), 1)]
+    touches = [PlannedTouch(index=i, day=int(h // 24), hours=h if fd.hour_level else None, role=r, channel=c,
+                            why=f"{ROLE_WHY[r]}; {CHANNEL_WHY[c]}")
+               for i, (r, h, c) in enumerate(zip(roles, hours, picked), 1)]
     if brief.flow_type == "winback" and brief.touches >= 2:
         decisions.append(Decision(stage="strategist", decision="end with re-permission and a sunset",
                                   why="people who ignore a whole win-back flow are the ones who complain; asking and then stopping protects the sender"))
-    offer = ("no offer anywhere in the flow (offer policy)" if _no_offer(brief.offer_policy) else
-             f"offers only as the policy allows ({brief.offer_policy}); never in the first touch, and tested against a no-offer arm")
+    policy = brief.offer
+    offer_roles = [r for r in roles[1:] if r in arch.OFFER_ROLES] if policy.never_in_first_touch else [r for r in roles if r in arch.OFFER_ROLES]
+    offer = ("no offer anywhere in the flow (offer policy)" if not policy.allows_offers else
+             f"offers only as the policy allows ({policy.describe()}); only in {', '.join(r.replace('_', ' ') for r in offer_roles) or 'no touch'}"
+             + ("; never in the first touch" if policy.never_in_first_touch else "")
+             + (f"; excluded for {', '.join(x.replace('_', ' ') for x in policy.exclude_if)}" if policy.exclude_if else ""))
     decisions.append(Decision(stage="strategist", decision="offer stance", why=offer))
     leak: Optional[str] = cohort.leak if brief.flow_type == "activation" else None
     if leak and "unblock" in roles:
@@ -97,6 +135,3 @@ def decide(brief: Brief, cohort: CohortDefinition) -> Strategy:
                     leak_step=leak, decisions=decisions)
 
 
-def _no_offer(policy: str) -> bool:
-    from engine.policy.guardrails import _policy_allows_offers
-    return not _policy_allows_offers(policy)

@@ -9,11 +9,11 @@
     "userId": "u_0002",
     "event": "core_action_lapsed_14d",
     "properties": {
-      "days_inactive": 14,
       "in_holdout": false,
       "holdout_bucket": 42,
       "flow": "ridgeview_winback_14d",
-      "anchor_date": "2026-10-04"
+      "anchor_date": "2026-10-04",
+      "days_inactive": 14
     },
     "timestamp": "2026-10-18T05:00:00Z",
     "messageId": "ridgeview_winback_14d:u_0002:2026-10-04"

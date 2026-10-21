@@ -12,7 +12,8 @@ FLOW = json.loads((ROOT / "schemas/flow_spec.schema.json").read_text())
 
 
 def test_event_schema_accepts_valid_and_rejects_invalid_examples():
-    v = jsonschema.Draft202012Validator(EVENTS, format_checker=jsonschema.FormatChecker())
+    from engine.schemas import FORMAT_CHECKER
+    v = jsonschema.Draft202012Validator(EVENTS, format_checker=FORMAT_CHECKER)
     for e in json.loads((ROOT / "examples/events/valid_events.json").read_text()):
         assert not list(v.iter_errors(e)), e["event"]
     for case in json.loads((ROOT / "examples/events/invalid_events.json").read_text()):
@@ -35,7 +36,8 @@ def _flow_specs():
 def test_every_flow_spec_in_the_repo_validates():
     specs = _flow_specs()
     assert len(specs) >= 4
-    v = jsonschema.Draft202012Validator(FLOW)
+    from engine.schemas import validator
+    v = validator("flow_spec.schema.json")
     for s in specs:
         assert not list(v.iter_errors(s)), s["flow"]
 

@@ -23,7 +23,7 @@ def intake(run) -> Dict[str, Any]:
         a = Assumption(field="outcome_window_days", value=w,
                        why=f"not stated; set to {w} days so the whole flow (last touch on day {max(days)}) plus a week is inside it")
         brief = brief.model_copy(update={"outcome_window_days": w, "assumptions": brief.assumptions + [a]})
-    pol = guardrails.gate_policy(brief.sending_gate)
+    pol = guardrails.gate_policy(brief.sending_gate, brief.flow_type)
     run.decisions.append(Decision(stage="intake", decision=f"sending gate {pol['effective_gate']}", why=pol["note"]))
     return {"brief": brief, "gate_policy": pol}
 
@@ -133,8 +133,17 @@ def compliance(run) -> Dict[str, Any]:
 
 def qa_report(brief: Brief, pol: Dict[str, Any], cohort, flow, copy_plan, exp, data_given: bool) -> QAReport:
     checks: List[Check] = []
-    checks.append(Check(name="sending gate", status="fail" if not pol["sending_allowed"] else ("pass" if pol["gate"] == "GREEN" else "warn"),
+    checks.append(Check(name="sending gate", status="fail" if not pol["sending_allowed"] else ("pass" if pol["effective_gate"] == "GREEN" else "warn"),
                         detail=pol["note"]))
+    aud = getattr(cohort, "audience_after_gate", None)
+    if aud and aud.get("entrants"):
+        if aud["kept"] == 0:
+            checks.append(Check(name="audience after the gate", status="fail",
+                                detail=f"the gate's entry filter ({aud['rule']}) keeps none of today's {aud['entrants']} would-be entrants: "
+                                       f"the flow would enroll nobody. Lift the gate (lcm deliverability) or change who the flow is for"))
+        else:
+            checks.append(Check(name="audience after the gate", status="warn" if aud["share"] < 0.2 else "pass",
+                                detail=f"{aud['kept']} of today's {aud['entrants']} would-be entrants pass the gate's filter ({aud['rule']})"))
     core_names = {brief.qualifying_event.event, brief.core_conversion_event.event}
     for d in cohort.data_dependencies:
         base = d.name.split(" ")[0]

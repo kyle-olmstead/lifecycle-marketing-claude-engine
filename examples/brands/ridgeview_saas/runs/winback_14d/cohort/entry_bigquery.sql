@@ -4,7 +4,7 @@
 -- Entry: 14 calendar days or more since the last core action (or since qualifying, if none since): the anchor date is
 -- between 14 and 17 days before the run date, and this lapse (user, anchor date) is not yet in lcm_flow_entries.
 -- A missed run catches up for 3 days. The ESP applies consent and suppression; this query decides who crossed.
--- Holdout: holdout_bucket < 15 (salt 'ridgeview_winback_14d'); identical in every dialect and in agents/sql_dialects.holdout_bucket.
+-- Holdout: holdout_bucket < 15 (salt 'ridgeview_winback_14d'); identical in every dialect and in engine/sql/dialects.holdout_bucket.
 WITH qualified AS (
   SELECT s.user_id, MIN(s.event_at) AS qualified_at
   FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND JSON_VALUE(qe.properties, '$.step_index') = '3' AND qe.user_id IS NOT NULL) s

@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kyle-olmstead/lifecycle-marketing-claude-engine/schemas/sending_gate.schema.json",
+  "title": "Sending gate as evidence, not a word",
+  "description": "What the deliverability check concluded, when, and on what evidence. A GREEN verdict needs observed authentication (LIVE PULL) and no critical finding; a record older than 30 days reads AMBER (engine/policy/contracts.effective_gate).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "verdict",
+    "assessed_at",
+    "auth_label"
+  ],
+  "properties": {
+    "verdict": {
+      "enum": [
+        "GREEN",
+        "AMBER",
+        "RED"
+      ]
+    },
+    "assessed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "auth_label": {
+      "enum": [
+        "LIVE PULL",
+        "SUPPLIED",
+        "UNKNOWN"
+      ]
+    },
+    "domain": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string"
+    },
+    "signals": {
+      "type": "object",
+      "properties": {
+        "complaint_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "hard_bounce_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "unengaged_share": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "critical_findings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "verdict": {
+            "const": "GREEN"
+          }
+        },
+        "required": [
+          "verdict"
+        ]
+      },
+      "then": {
+        "properties": {
+          "auth_label": {
+            "const": "LIVE PULL"
+          },
+          "critical_findings": {
+            "maxItems": 0
+          }
+        }
+      }
+    }
+  ]
+}

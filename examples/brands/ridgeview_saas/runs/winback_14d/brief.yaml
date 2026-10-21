@@ -22,15 +22,17 @@ core_conversion_event:
     feature: reports
   label: created a report
 churn_threshold_days: 14
+replenish_lead_days: 5
 touches: 5
 channels:
 - email
 - in_app
 holdout_pct: 15.0
 randomization_unit: user
+global_holdout_pct: 0
 min_detectable_lift: 0.25
 outcome_window_days: 30
-sending_gate: GREEN
+sending_gate: AMBER
 warehouse_dialect: postgres
 sender_name: Dana Ortiz at Ridgeview
 brand_voice: plain, specific, second person, no exclamation marks; operations vocabulary
@@ -41,5 +43,4 @@ recipient_countries: []
 offer_policy: no discounts or offers
 frequency_cap_per_week: 3
 send_hour_local: 10
-quiet_hours: 21:00 to 08:00 recipient local time
 copy_variants: 2

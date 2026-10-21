@@ -106,7 +106,9 @@ def render_plan(p: ExecutionPlan) -> str:
                   f"the history query (`cohort/history_*.sql`) measured the volume and unaided rate above.", ""]
     L += ["## The flow", "", "```mermaid", f.mermaid, "```", "", "| Day | Step | Channel | Job | Only if |", "|---:|---|---|---|---|"]
     L += [f"| {t.day} | {t.step_id} | {t.channel.replace('_', '-')} | {t.job} | {t.condition or ''} |" for t in f.touches]
-    L += ["", f"Every step: {'; '.join(x['condition'] for x in spec['ongoing_filters'])}. Frequency: {spec['frequency']['cap']}; {spec['frequency']['quiet_hours']}.", ""]
+    windows = "; ".join(f"{w['channel']} {w['allowed_from']} to {w['allowed_until']}" for w in spec["frequency"].get("send_windows", []))
+    L += ["", f"Every step: {'; '.join(x['condition'] for x in spec['ongoing_filters'])}. Frequency: {spec['frequency']['cap']}. "
+              f"Permitted send windows, recipient local: {windows}.", ""]
     if p.strategy:
         L += ["| Touch | Why this job and channel |", "|---|---|"]
         L += [f"| {t.index}. day {t.day}, {t.role.replace('_', ' ')}, {t.channel.replace('_', '-')} | {t.why} |" for t in p.strategy.touches] + [""]

@@ -1,16 +1,17 @@
 # Win-back: Ridgeview, 14 days since the core action (created a report)
 
-**Status: READY WITH ASSUMPTIONS** | Customer.io | generated 2026-10-21T03:07:15+00:00 | run c730fc449f0d | LMM Engine 2.3.0
+**Status: READY WITH ASSUMPTIONS** | Customer.io | generated 2026-10-21T19:41:07+00:00 | run 4ad6068978f2 | LMM Engine 3.0.0
 
 ## In one paragraph
 
-People who completed onboarding and then went 14 days without the core action (created a report). They enter on day 14, once per lapse, and leave the moment they do the core action again. The flow sends up to 5 message(s) over 18 days (email, in-app), starts with a 15% holdout that receives nothing, and stops the moment they create a report again. About 28 people a month (DEMO DATA) would enter; 17.5% come back within 30 days on their own (DEMO DATA). Read: directional only. GREEN gate: normal sending within the frequency cap.
+People who completed onboarding and then went 14 days without the core action (created a report). They enter on day 14, once per lapse, and leave the moment they do the core action again. The flow sends up to 5 message(s) over 18 days (email, in-app), starts with a 15% holdout that receives nothing, and stops the moment they create a report again. About 28 people a month (DEMO DATA) would enter; 17.5% come back within 30 days on their own (DEMO DATA). Read: directional only. AMBER gate: engaged recipients only, no volume growth (AMBER gate as supplied).
 
 ## Confirm before you build
 
 - **monthly_entrants**: estimated from the data (DEMO DATA): 28 a month, mean threshold crossings over 3 complete month(s) to 2026-09
 - **baseline_conversion_rate**: estimated from the data (DEMO DATA): 17.5%, 22 of 126 matured threshold crossings came back within 30 days with no flow
 - **outcome_window_days**: not stated; set to 30 days so the whole flow (last touch on day 18) plus a week is inside it
+- **sending gate**: AMBER gate: engaged recipients only, no volume growth (AMBER gate as supplied)
 - **copy: t2_email**: 2 variant(s) pass lint and guardrails (offline); contains [bracketed] fill-ins: replace them with the real specifics before sending
 - **copy: t3_in_app**: 2 variant(s) pass lint and guardrails (offline); contains [bracketed] fill-ins: replace them with the real specifics before sending
 - **copy: t4_email**: 2 variant(s) pass lint and guardrails (offline); contains [bracketed] fill-ins: replace them with the real specifics before sending
@@ -28,7 +29,7 @@ People who completed onboarding and then went 14 days without the core action (c
 
 | Agent | Decision | Why |
 |---|---|---|
-| intake | sending gate GREEN | GREEN gate: normal sending within the frequency cap |
+| intake | sending gate AMBER | AMBER gate: engaged recipients only, no volume growth (AMBER gate as supplied) |
 | analyst | entry rule | People who completed onboarding and then went 14 days without the core action (created a report). They enter on day 14, once per lapse, and leave the moment they do the core action again. |
 | strategist | end with re-permission and a sunset | people who ignore a whole win-back flow are the ones who complain; asking and then stopping protects the sender |
 | strategist | offer stance | no offer anywhere in the flow (offer policy) |
@@ -64,7 +65,8 @@ The daily job (postgres), in `cohort/job/`: create the ledger once (`ledger_post
 
 ```mermaid
 flowchart TD
-  entry(["Enters: core_action_lapsed_14d"]) --> holdout_split{"in_holdout?"}
+  entry(["Enters: core_action_lapsed_14d"])
+  entry --> holdout_split{"in_holdout?"}
   holdout_split -- "yes (15%)" --> exit_holdout(["Exit: holdout, no messages"])
   holdout_split -- "no" --> t1_email["Day 0: email (value reminder)"]
   t1_email -- "next" --> t2_email["Day 3: email (friction removal)"]
@@ -81,10 +83,10 @@ flowchart TD
 | 0 | t1_email | email | Remind them of the one outcome Ridgeview gave them, tied to what they last did, with one link that lets them create a report again. No offer. |  |
 | 3 | t2_email | email | Name the most common reason people stop at this point and remove it: a template, a two-minute path, or a reply to a person. |  |
 | 7 | t3_in_app | in-app | One change in Ridgeview since they were last active that makes it easier to create a report. Show it; do not list features. |  |
-| 12 | t4_email | email | How a team like theirs uses Ridgeview to create a report each week: one specific, true example with a number. |  |
+| 12 | t4_email | email | How a customer like them uses Ridgeview to create a report: one specific, true example. |  |
 | 18 | t5_email | email | Ask plainly whether they still want these messages, with one button to stay. Say what happens if they do nothing. |  |
 
-Every step: has not done feature_used where feature = reports since entering; can receive email marketing (subscribed, not bounced, not sunset-suppressed). Frequency: at most 3 lifecycle messages a person a week across flows (the workspace message limit); send at 10:00 recipient local; nothing between 21:00 to 08:00 recipient local time.
+Every step: has not done feature_used where feature = reports since entering; can receive email marketing (subscribed, not bounced, not sunset-suppressed). Frequency: at most 3 email/sms/push message(s) per week across flows (the workspace message limit). Permitted send windows, recipient local: email 08:00 to 21:00.
 
 | Touch | Why this job and channel |
 |---|---|
@@ -96,19 +98,20 @@ Every step: has not done feature_used where feature = reports since entering; ca
 
 ## Build it in Customer.io
 
-1. Create the ledger once (cohort/job/ledger_postgres.sql). Then schedule the daily job after the warehouse load: run cohort/job/queue_postgres.sql; read the rows from cohort/job/pending_postgres.sql and send one core_action_lapsed_14d event per row with adapters/destinations/event_payloads.py (customerio), holdout members included; after each request succeeds, run cohort/job/mark_postgres.sql for every row it carried. Rows whose request failed stay pending and go out on the next run. Do not push from cohort/entry_postgres.sql: it does not write the ledger, so the same lapse would go out on several days.
+1. Create the ledger once (cohort/job/ledger_postgres.sql). Then schedule the daily job after the warehouse load: run cohort/job/queue_postgres.sql; read the rows from cohort/job/pending_postgres.sql and send one core_action_lapsed_14d event per row with adapters/destinations/event_payloads.py (customerio), or lcm send --approve, holdout members included; after each request succeeds, run cohort/job/mark_postgres.sql for every row it carried. Rows whose request failed stay pending and go out on the next run. Do not push from cohort/entry_postgres.sql: it does not write the ledger, so the same lapse would go out on several days.
 2. Create an event-triggered campaign and leave every message in Draft until it is approved. Trigger: core_action_lapsed_14d.
-3. Entry filters (checked once at entry): completed onboarding (onboarding_step_completed where step_index = 3) at least once.
+3. Entry filters (checked once at entry): completed onboarding (onboarding_step_completed where step_index = 3) at least once; clicked or replied to any email in the last 90 days (opens do not count: privacy proxies inflate them).
 4. Checked before every step (Exit condition (conversion goal, exit on conversion)): has not done feature_used where feature = reports since entering; can receive email marketing (subscribed, not bounced, not sunset-suppressed).
 5. First step, True/False branch: in_holdout is true goes to exit; everyone else continues. Nothing sends before this split.
-6. Time delay to day 0 at 10:00 recipient local, then email message t1_email: value reminder.
-7. Time delay to day 3 at 10:00 recipient local, then email message t2_email: friction removal.
-8. Time delay to day 7 at 10:00 recipient local, then in-app message t3_in_app: whats new.
-9. Time delay to day 12 at 10:00 recipient local, then email message t4_email: social proof.
-10. Time delay to day 18 at 10:00 recipient local, then email message t5_email: repermission.
-11. Time delay 14 days, then: if no click on the re-permission email, update the person: lcm_sunset = true. Make lcm_sunset a suppression in every marketing send.
-12. Frequency: at most 3 lifecycle messages a person a week across flows (the workspace message limit); send at 10:00 recipient local; nothing between 21:00 to 08:00 recipient local time.
-13. Before enabling: run engine/policy/simulator.py on flow_spec.json, send every message to a seed list, and get approval. Exit on feature_used where feature = reports must be live before the first send.
+6. Re-entry: allowed after the person leaves the flow.
+7. Time delay to day 0 at 10:00 recipient local, then email message t1_email: value reminder.
+8. Time delay to day 3 at 10:00 recipient local, then email message t2_email: friction removal.
+9. Time delay to day 7 at 10:00 recipient local, then in-app message t3_in_app: whats new.
+10. Time delay to day 12 at 10:00 recipient local, then email message t4_email: social proof.
+11. Time delay to day 18 at 10:00 recipient local, then email message t5_email: repermission.
+12. Time delay 14 days, then: if no click on the re-permission email, update the person: lcm_sunset = true. Make lcm_sunset a suppression in every marketing send.
+13. Frequency: at most 3 email/sms/push message(s) per week across flows (the workspace message limit). Permitted send windows, recipient local: email 08:00 to 21:00. Priority 9 of the program's flows (higher priority preempts).
+14. Before enabling: run lcm simulate on flow_spec.json (engine/policy/simulator.py), send every message to a seed list, and get approval. Exit on feature_used where feature = reports must be live before the first send.
 
 ## The copy
 
@@ -179,12 +182,12 @@ Files: `copy/t5_email_A.html`, `copy/t5_email_A.subject.txt`, `copy/t5_email_A.t
 
 ## Deliverability guardrails
 
-- Gate: GREEN gate: normal sending within the frequency cap. Audience: every entrant with consent for the channel.
+- Gate: AMBER gate: engaged recipients only, no volume growth (AMBER gate as supplied). Audience: engaged recipients only.
 - Suppressed: unsubscribed from marketing email, or hard bounced
 - Suppressed: marked any message as spam (complaint), ever
 - Suppressed: sunset-suppressed (lcm_sunset is true); only a fresh opt-in lifts it
 - Suppressed: internal, test and seed addresses
-- Suppressed: currently in a higher-priority flow (transactional, billing, post-purchase)
+- Suppressed: currently in a higher-priority flow (by the frequency policy's flow_priority: billing, cart, post-purchase first)
 - Suppressed: received a re-permission ask from any flow in the last 180 days
 - One re-permission ask per person per 180 days, across all flows.
 - No click on the re-permission ask within 14 days: set lcm_sunset = true and stop marketing mail. Keep the record; never delete it.
@@ -221,7 +224,8 @@ Files: `copy/t5_email_A.html`, `copy/t5_email_A.subject.txt`, `copy/t5_email_A.t
 
 | Check | Result | Detail |
 |---|---|---|
-| sending gate | PASS | GREEN gate: normal sending within the frequency cap |
+| sending gate | WARN | AMBER gate: engaged recipients only, no volume growth (AMBER gate as supplied) |
+| audience after the gate | PASS | 1 of today's 3 would-be entrants pass the gate's filter (clicked or replied in 90 days) |
 | data dependencies | PASS | every event and attribute the flow needs is present |
 | cohort SQL | PASS | every generated query parses in postgres, snowflake and bigquery; entry query ran on the data |
 | simulation: flow spec matches schemas/flow_spec.schema.json | PASS | valid |
@@ -238,7 +242,7 @@ Files: `copy/t5_email_A.html`, `copy/t5_email_A.subject.txt`, `copy/t5_email_A.t
 | simulation: nothing is sent after the core action | PASS | outcome: converted; 0 message(s) after converting |
 | simulation: frequency cap holds for every persona | PASS | most in any 7 days: 2, cap 3 |
 | simulation: messages send at 10:00 local | PASS | all on time |
-| simulation: nothing sends in quiet hours | PASS | none |
+| simulation: every send is inside its channel's permitted window | PASS | all inside |
 | simulation: no persona gets more than the touch count | PASS | max 5 |
 | simulation: sunset applies only to people who did not click | PASS | non-clicker sunset: True; clicker sunset: False |
 | simulation: no journey loops | PASS | none |

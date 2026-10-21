@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from engine.models import Brief
+
 from tests.conftest import ROOT
 from engine.agents import cohort_analyst, strategist
 from engine.policy import compliance
@@ -136,7 +138,7 @@ def test_strategist_spreads_touches_to_the_weekly_cap(brief, cohort):
     s = strategist.decide(brief.model_copy(update={"frequency_cap_per_week": 1}), cohort)
     days = [t.day for t in s.touches]
     assert all(b - a >= 7 for a, b in zip(days, days[1:]))
-    assert any(d.decision.startswith("touch days") for d in s.decisions)
+    assert any(d.decision.startswith("touches at") and "no cap is broken" in d.why for d in s.decisions)
 
 
 def test_activation_unblock_touch_aims_at_the_largest_leak():
@@ -165,11 +167,20 @@ def test_every_rule_has_a_check_and_a_source():
     assert len({r["id"] for r in rules}) == len(rules)
 
 
+@pytest.mark.parametrize("hour", [20, 8])
+def test_an_sms_send_hour_outside_the_strictest_state_window_cannot_be_planned(brief, hour):
+    # the window comes from config/compliance_rules.json (9:00 to 20:00, Connecticut): the brief itself refuses the hour
+    with pytest.raises(ValueError, match="outside the permitted"):
+        Brief.model_validate({**brief.model_dump(), "channels": ["email", "sms"], "send_hour_local": hour, "quiet_hours": "22:00-07:00"})
+
+
 @pytest.mark.parametrize("hour,status", [(21, "fail"), (8, "fail"), (10, "warn"), (13, "pass")])
 def test_sms_send_hour_is_held_to_the_strictest_state_window(brief, hour, status):
-    b = brief.model_copy(update={"channels": ["email", "sms"], "send_hour_local": hour, "quiet_hours": "22:00-07:00"})
-    plan = orchestrator.run(b, copy_mode="offline")
-    states = [f for f in plan.compliance.findings if f.rule == "state texting hours (strictest tracked)"]
+    # an independent second check: compliance reads the plan, even for a brief built without validation
+    b = brief.model_copy(update={"channels": ["email", "sms"], "send_hour_local": hour})
+    plan = orchestrator.run(b.model_copy(update={"send_hour_local": 13}), copy_mode="offline")
+    states = [f for f in compliance.review(b, plan.cohort, plan.flow, plan.copy_plan).findings
+              if f.rule == "state texting hours (strictest tracked)"]
     if not any(t.channel == "sms" for t in plan.flow.touches):
         pytest.skip("SMS not placed in this flow")
     assert states and states[0].status == status, states

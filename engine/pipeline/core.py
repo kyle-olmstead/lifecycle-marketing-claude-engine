@@ -126,7 +126,7 @@ def copy_key(touch: Any, brief: Brief, mode: str) -> str:
     events, threshold), and the brief fields copy is written from. The touch's position, links and the postal address are not
     part of it: reused words are re-rendered and re-linted for the new plan."""
     return _h(touch.role, touch.channel, touch.job, touch.goal, brief.flow_type, brief.qualifying_event.model_dump(),
-              brief.core_conversion_event.model_dump(), brief.churn_threshold_days, brief.product_name, brief.offer_policy,
+              brief.core_conversion_event.model_dump(), brief.churn_threshold_days, brief.product_name, brief.offer_text,
               brief.brand_voice, brief.sender_name, brief.copy_variants, brief.template_dialect, mode)
 
 

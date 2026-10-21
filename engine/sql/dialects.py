@@ -60,6 +60,35 @@ class Dialect:
             return f"DATEDIFF(day, {earlier}, {later})"
         return f"DATE_DIFF({later}, {earlier}, DAY)"
 
+    @property
+    def now(self) -> str:
+        return {"snowflake": "CURRENT_TIMESTAMP()", "bigquery": "CURRENT_TIMESTAMP()"}.get(self.name, "CURRENT_TIMESTAMP")
+
+    def ts_literal(self, iso: str) -> str:
+        return f"TIMESTAMP {_q(iso)}"
+
+    def add_hours(self, ts_expr: str, n: float) -> str:
+        """A timestamp plus n hours (n may be negative or fractional; fractions go to whole minutes)."""
+        minutes = int(round(n * 60))
+        if self.name in ("postgres", "duckdb"):
+            return f"({ts_expr} + INTERVAL '{minutes} minutes')"
+        if self.name == "snowflake":
+            return f"DATEADD(minute, {minutes}, {ts_expr})"
+        return f"TIMESTAMP_ADD({ts_expr}, INTERVAL {minutes} MINUTE)"
+
+    def hours_between(self, later: str, earlier: str) -> str:
+        """Hours from earlier to later, both timestamps, as a number."""
+        if self.name == "postgres":
+            return f"(EXTRACT(EPOCH FROM ({later} - {earlier})) / 3600.0)"
+        if self.name == "duckdb":
+            return f"(date_diff('minute', {earlier}, {later}) / 60.0)"
+        if self.name == "snowflake":
+            return f"(DATEDIFF(minute, {earlier}, {later}) / 60.0)"
+        return f"(TIMESTAMP_DIFF({later}, {earlier}, MINUTE) / 60.0)"
+
+    def to_ts(self, expr: str) -> str:
+        return f"CAST({expr} AS TIMESTAMP)"
+
     def json_text(self, column: str, key: str) -> str:
         if self.name == "postgres":
             return f"({column} ->> {_q(key)})"

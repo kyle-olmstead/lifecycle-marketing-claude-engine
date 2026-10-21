@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/kyle-olmstead/lifecycle-marketing-claude-engine/schemas/flow_spec.schema.json",
   "title": "LMM Engine flow specification",
-  "description": "Machine-readable form of the FLOW block from the workflow-engineer method. A flow is defined by its exit conditions and suppression logic at least as much as by its content, so those fields are required. Every filter states whether it is evaluated at entry only or at every step: the most common build error on every platform.",
+  "description": "Machine-readable form of the FLOW block from the workflow-engineer method. A flow is defined by its exit conditions and suppression logic at least as much as by its content, so those fields are required. Every filter states whether it is evaluated at entry only or at every step: the most common build error on every platform. Branch targets are step ids or 'exit (...)', so the graph can be checked; waits may be in hours.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -99,8 +99,52 @@
           "type": "string"
         },
         "re_entry": {
-          "type": "string",
-          "description": "allowed? after how long? Off by default in HubSpot; a runaway-send cause in Customer.io segment-triggered campaigns"
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "free text (hand-written specs); the teammate writes the object form"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "mode",
+                "description"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    "never",
+                    "after_exit",
+                    "cooldown"
+                  ]
+                },
+                "cooldown": {
+                  "type": "string",
+                  "pattern": "^P(?!$)(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?)?$"
+                },
+                "description": {
+                  "type": "string"
+                }
+              },
+              "if": {
+                "properties": {
+                  "mode": {
+                    "const": "cooldown"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "cooldown"
+                ]
+              }
+            }
+          ]
+        },
+        "typed": {
+          "$ref": "#/$defs/trigger",
+          "description": "the typed trigger; identical to schemas/trigger.schema.json (tests/contracts checks they agree)"
         }
       }
     },
@@ -205,19 +249,104 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "cap",
-        "quiet_hours"
+        "cap"
       ],
       "properties": {
         "cap": {
-          "type": "string"
+          "type": "string",
+          "description": "the policy in words"
+        },
+        "caps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "channels",
+              "max",
+              "window"
+            ],
+            "properties": {
+              "channels": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "enum": [
+                    "email",
+                    "sms",
+                    "push",
+                    "in_app"
+                  ]
+                }
+              },
+              "max": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "window": {
+                "type": "string",
+                "pattern": "^P(?!$)(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?)?$"
+              }
+            }
+          }
+        },
+        "send_windows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "channel",
+              "allowed_from",
+              "allowed_until"
+            ],
+            "properties": {
+              "channel": {
+                "enum": [
+                  "email",
+                  "sms",
+                  "push",
+                  "in_app"
+                ]
+              },
+              "allowed_from": {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              "allowed_until": {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              "basis": {
+                "const": "recipient_local"
+              },
+              "source": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "send_hour_local": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
         },
         "quiet_hours": {
-          "type": "string"
+          "type": "string",
+          "description": "deprecated (v2): use send_windows, the permitted windows"
         },
         "priority": {
           "type": "integer",
           "minimum": 1
+        },
+        "collision_rule": {
+          "enum": [
+            "higher_priority_preempts",
+            "queue_lower_priority",
+            "drop_lower_priority"
+          ]
         }
       }
     },
@@ -256,7 +385,7 @@
               },
               "duration": {
                 "type": "string",
-                "pattern": "^P(\\d+D)?(T(\\d+H)?(\\d+M)?)?$",
+                "pattern": "^P(?!$)(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?)?$",
                 "description": "ISO 8601 duration, e.g. P1D, PT4H"
               },
               "event": {
@@ -264,11 +393,16 @@
               },
               "timeout": {
                 "type": "string",
-                "pattern": "^P(\\d+D)?(T(\\d+H)?(\\d+M)?)?$"
+                "pattern": "^P(?!$)(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?)?$"
               },
               "local_time": {
                 "type": "string",
                 "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              "after": {
+                "type": "string",
+                "pattern": "^P(?!$)(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?)?$",
+                "description": "until_time_local: wait at least this long, then until the local time"
               }
             }
           },
@@ -313,12 +447,20 @@
                 "type": "string"
               },
               "yes": {
-                "type": "string"
+                "type": "string",
+                "pattern": "^([a-z0-9_]+|exit( \\(.+\\))?)$",
+                "description": "a step id, or 'exit' with an optional reason in parentheses"
               },
               "no": {
-                "type": "string"
+                "type": "string",
+                "pattern": "^([a-z0-9_]+|exit( \\(.+\\))?)$",
+                "description": "a step id, or 'exit' with an optional reason in parentheses"
               }
             }
+          },
+          "respect_send_window": {
+            "type": "boolean",
+            "description": "hold the send to the channel's permitted window (flows timed in hours)"
           }
         },
         "allOf": [
@@ -378,9 +520,18 @@
               ],
               "properties": {
                 "requires": {
-                  "contains": {
-                    "const": "email_consent"
-                  }
+                  "anyOf": [
+                    {
+                      "contains": {
+                        "const": "email_consent"
+                      }
+                    },
+                    {
+                      "contains": {
+                        "const": "transactional_basis"
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -524,6 +675,29 @@
           }
         }
       }
+    },
+    "flow_type": {
+      "enum": [
+        "welcome",
+        "activation",
+        "winback",
+        "cart_abandon",
+        "browse_abandon",
+        "post_purchase",
+        "replenishment",
+        "dunning",
+        "trial_convert",
+        "sunset",
+        "other"
+      ],
+      "description": "the flow library entry it was planned from (engine/flows/library.py); 'other' for hand-written specs"
+    },
+    "message_class": {
+      "enum": [
+        "marketing",
+        "transactional"
+      ],
+      "description": "transactional flows (billing notices) do not depend on marketing consent and carry no marketing content"
     }
   },
   "$defs": {
@@ -558,6 +732,225 @@
           "const": "every_step"
         }
       }
+    },
+    "event_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event"
+      ],
+      "properties": {
+        "event": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "where": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
+        }
+      }
+    },
+    "trigger": {
+      "title": "Flow trigger with hour-level waits and structured re-entry",
+      "description": "How a person enters a flow (engine/policy/contracts.TriggerDefinition). Durations are ISO 8601 in days, hours or minutes, so a 2-hour browse abandonment is abandon_after PT2H.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "flow_id",
+        "type",
+        "re_entry",
+        "dedupe_key"
+      ],
+      "properties": {
+        "flow_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]+$"
+        },
+        "type": {
+          "enum": [
+            "event",
+            "absence",
+            "state_change",
+            "schedule"
+          ]
+        },
+        "event": {
+          "$ref": "#/$defs/event_ref"
+        },
+        "absence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "anchor",
+            "missing",
+            "after"
+          ],
+          "properties": {
+            "anchor": {
+              "$ref": "#/$defs/event_ref"
+            },
+            "missing": {
+              "$ref": "#/$defs/event_ref"
+            },
+            "after": {
+              "type": "string",
+              "pattern": "^P(?!$)(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?)?$"
+            }
+          }
+        },
+        "state": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "object",
+            "field",
+            "to"
+          ],
+          "properties": {
+            "object": {
+              "type": "string"
+            },
+            "field": {
+              "type": "string"
+            },
+            "to": {
+              "type": "string"
+            },
+            "offset": {
+              "type": "string"
+            },
+            "relative_to": {
+              "type": "string"
+            }
+          }
+        },
+        "schedule": {
+          "type": "string"
+        },
+        "abandon_after": {
+          "type": "string",
+          "pattern": "^P(?!$)(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?)?$"
+        },
+        "exclude_if": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/event_ref"
+          }
+        },
+        "re_entry": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode"
+          ],
+          "properties": {
+            "mode": {
+              "enum": [
+                "never",
+                "after_exit",
+                "cooldown"
+              ]
+            },
+            "cooldown": {
+              "type": "string",
+              "pattern": "^P(?!$)(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?)?$"
+            }
+          },
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "cooldown"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "cooldown"
+            ]
+          }
+        },
+        "dedupe_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "enum": [
+            "esp_native",
+            "warehouse_job",
+            "stream"
+          ]
+        },
+        "holdout_experiment_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "event"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "event"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "absence"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "absence"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "state_change"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "state"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "schedule"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "schedule"
+            ]
+          }
+        }
+      ]
     }
   }
 }

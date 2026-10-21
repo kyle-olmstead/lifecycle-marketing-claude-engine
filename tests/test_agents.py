@@ -109,7 +109,7 @@ def test_base_form(label, expect):
 
 
 def test_send_hour_inside_quiet_hours_is_rejected():
-    with pytest.raises(ValueError, match="quiet hours"):
+    with pytest.raises(ValueError, match="outside the permitted"):
         Brief(product_name="A", send_hour_local=7, quiet_hours="22:00 to 08:00")
     assert Brief(product_name="A", send_hour_local=7, quiet_hours="22:00 to 06:00").send_hour_local == 7
     with pytest.raises(ValueError, match="quiet_hours must read"):
@@ -378,7 +378,11 @@ def test_zero_holdout_validates_and_is_directional(brief):
 # ----------------------------------------------------------------------------------------------
 
 def test_gate_policy():
-    assert guardrails.gate_policy("GREEN")["entry_filters"] == []
+    from datetime import datetime, timezone
+    record = {"verdict": "GREEN", "assessed_at": datetime.now(timezone.utc).isoformat(), "auth_label": "LIVE PULL", "domain": "example.com"}
+    assert guardrails.gate_policy(record)["entry_filters"] == []
+    # a bare GREEN is a claim with no evidence or date: it runs as AMBER
+    assert guardrails.gate_policy("GREEN")["effective_gate"] == "AMBER"
     assert guardrails.gate_policy("UNKNOWN")["effective_gate"] == "AMBER"
     assert guardrails.gate_policy("AMBER")["entry_filters"] == [guardrails.ENGAGED_RULE]
     assert guardrails.gate_policy("RED")["sending_allowed"] is False

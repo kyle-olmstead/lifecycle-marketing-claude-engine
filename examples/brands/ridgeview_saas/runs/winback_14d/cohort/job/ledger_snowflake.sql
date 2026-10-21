@@ -10,5 +10,7 @@ CREATE TABLE IF NOT EXISTS lcm_flow_entries (
   status VARCHAR NOT NULL,
   queued_at TIMESTAMP NOT NULL,
   pushed_at TIMESTAMP,
+  detail VARCHAR,
   PRIMARY KEY (flow, user_id, anchor_date)
 )
+-- Upgrading from v2: ALTER TABLE lcm_flow_entries ADD COLUMN detail VARCHAR;

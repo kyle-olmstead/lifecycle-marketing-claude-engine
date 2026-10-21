@@ -9,5 +9,7 @@ CREATE TABLE IF NOT EXISTS lcm_flow_entries (
   in_holdout BOOL NOT NULL,
   status STRING NOT NULL,
   queued_at TIMESTAMP NOT NULL,
-  pushed_at TIMESTAMP
+  pushed_at TIMESTAMP,
+  detail STRING
 )
+-- Upgrading from v2: ALTER TABLE lcm_flow_entries ADD COLUMN detail STRING;

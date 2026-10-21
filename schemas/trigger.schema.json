@@ -1,0 +1,223 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kyle-olmstead/lifecycle-marketing-claude-engine/schemas/trigger.schema.json",
+  "title": "Flow trigger with hour-level waits and structured re-entry",
+  "description": "How a person enters a flow (engine/policy/contracts.TriggerDefinition). Durations are ISO 8601 in days, hours or minutes, so a 2-hour browse abandonment is abandon_after PT2H.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "flow_id",
+    "type",
+    "re_entry",
+    "dedupe_key"
+  ],
+  "$defs": {
+    "event_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event"
+      ],
+      "properties": {
+        "event": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "where": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "properties": {
+    "flow_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "type": {
+      "enum": [
+        "event",
+        "absence",
+        "state_change",
+        "schedule"
+      ]
+    },
+    "event": {
+      "$ref": "#/$defs/event_ref"
+    },
+    "absence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "anchor",
+        "missing",
+        "after"
+      ],
+      "properties": {
+        "anchor": {
+          "$ref": "#/$defs/event_ref"
+        },
+        "missing": {
+          "$ref": "#/$defs/event_ref"
+        },
+        "after": {
+          "type": "string",
+          "pattern": "^P(?!$)(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?)?$"
+        }
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "object",
+        "field",
+        "to"
+      ],
+      "properties": {
+        "object": {
+          "type": "string"
+        },
+        "field": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "offset": {
+          "type": "string"
+        },
+        "relative_to": {
+          "type": "string"
+        }
+      }
+    },
+    "schedule": {
+      "type": "string"
+    },
+    "abandon_after": {
+      "type": "string",
+      "pattern": "^P(?!$)(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?)?$"
+    },
+    "exclude_if": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/event_ref"
+      }
+    },
+    "re_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "never",
+            "after_exit",
+            "cooldown"
+          ]
+        },
+        "cooldown": {
+          "type": "string",
+          "pattern": "^P(?!$)(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?)?$"
+        }
+      },
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "cooldown"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "cooldown"
+        ]
+      }
+    },
+    "dedupe_key": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "enum": [
+        "esp_native",
+        "warehouse_job",
+        "stream"
+      ]
+    },
+    "holdout_experiment_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "event"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "event"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "absence"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "absence"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "state_change"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "state"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "schedule"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "schedule"
+        ]
+      }
+    }
+  ]
+}

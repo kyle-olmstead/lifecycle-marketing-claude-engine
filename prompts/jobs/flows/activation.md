@@ -439,22 +439,35 @@ MEASUREMENT:
       "branch": {
         "condition": "connected_data_source done",
         "yes": "invite_teammate",
-        "no": "connect_assist"
+        "no": "in_session"
       }
     },
     {
-      "id": "connect_assist",
+      "id": "in_session",
       "wait": {
         "type": "none"
       },
-      "condition": "session_started in the last 30 minutes",
+      "channel": "none",
+      "message": "-",
+      "goal": "-",
+      "branch": {
+        "condition": "session_started in the last 30 minutes",
+        "yes": "connect_modal",
+        "no": "connect_reminder"
+      }
+    },
+    {
+      "id": "connect_modal",
+      "wait": {
+        "type": "none"
+      },
       "channel": "in_app",
       "message": "Modal: connect a source in two clicks",
       "goal": "connected_data_source",
       "branch": {
-        "condition": "user is in session",
-        "yes": "send modal",
-        "no": "connect_reminder"
+        "condition": "modal shown or dismissed",
+        "yes": "invite_teammate",
+        "no": "invite_teammate"
       }
     },
     {

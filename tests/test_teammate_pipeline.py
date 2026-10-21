@@ -10,6 +10,7 @@ from tests.conftest import ROOT
 from engine.agents import copywriter
 from engine.pipeline import orchestrator
 from engine.brief import load_brief, parse_text
+from engine.models import Brief
 from engine.models import EventMatch
 from engine.policy import simulator as campaign_simulator
 from engine.render import template_lint
@@ -24,7 +25,7 @@ def plan():
     return orchestrator.run(load_brief(EXAMPLE), str(ROOT / "examples/brands/ridgeview_saas/data"), copy_mode="offline")
 
 
-def _all_checks_pass_except_known(p, allowed=("copy:", "holdout read", "compliance")):
+def _all_checks_pass_except_known(p, allowed=("copy:", "holdout read", "compliance", "sending gate", "audience after the gate")):
     bad = [c for c in p.qa.checks if c.status == "fail" or (c.status == "warn" and not c.name.startswith(allowed))]
     assert not bad, [(c.name, c.detail) for c in bad]
 
@@ -168,10 +169,12 @@ def test_outcome_window_covers_the_whole_flow():
     assert any(a.field == "outcome_window_days" for a in p.brief.assumptions)
 
 
-def test_custom_quiet_hours_reach_the_simulator():
-    b = load_brief(EXAMPLE).model_copy(update={"send_hour_local": 7, "quiet_hours": "22:00 to 06:00"})
+def test_custom_send_windows_reach_the_simulator():
+    # the deprecated quiet_hours input is read once as the permitted email window outside it
+    b = Brief.model_validate({**load_brief(EXAMPLE).model_dump(), "send_hour_local": 7, "quiet_hours": "22:00 to 06:00"})
+    assert any(a.field == "quiet_hours" and "06:00 to 22:00" in a.why for a in b.assumptions)
     p = orchestrator.run(b, copy_mode="offline")
-    assert p.flow.simulation["quiet_hours_local"] == [22.0, 6.0] and p.qa.status != "BLOCKED"
+    assert p.flow.simulation["send_windows"]["email"] == [6.0, 22.0] and p.qa.status != "BLOCKED"
 
 
 def test_frequency_cap_spreads_touches():

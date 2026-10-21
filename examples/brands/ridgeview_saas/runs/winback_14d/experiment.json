@@ -77,5 +77,8 @@
   ],
   "variant_tests": [
     "Copy variants rotate evenly inside the treatment arm. Read them on clicks or the core action, never opens, and only directionally below about 1,000 sends per variant (size exactly with engine/measurement/stats.py size --baseline <click rate> --mde-rel 0.2)"
-  ]
+  ],
+  "hash_field": "user_id",
+  "global_holdout_pct": 0.0,
+  "registry_entry": null
 }

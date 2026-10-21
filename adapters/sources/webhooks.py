@@ -146,7 +146,8 @@ def _validate(event_name: str, row: Dict[str, Any], source: str) -> List[str]:
         doc["user_id"] = row["user_id"]
     if row.get("anonymous_id"):
         doc["anonymous_id"] = row["anonymous_id"]
-    v = jsonschema.Draft202012Validator(PLAN, format_checker=jsonschema.FormatChecker())
+    from engine.schemas import FORMAT_CHECKER
+    v = jsonschema.Draft202012Validator(PLAN, format_checker=FORMAT_CHECKER)
     return [f"{'/'.join(map(str, e.path)) or 'event'}: {e.message}" for e in v.iter_errors(doc)][:5]
 
 

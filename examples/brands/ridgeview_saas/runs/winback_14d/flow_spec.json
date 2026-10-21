@@ -1,21 +1,55 @@
 {
   "flow": "Win-back: Ridgeview, 14 days since the core action (created a report)",
+  "flow_type": "winback",
+  "message_class": "marketing",
   "platform": "customerio",
   "analytics": "warehouse (postgres) and Customer.io",
   "template_dialect": "customerio",
   "lifecycle_stage": "active to lapsed",
   "objective": "Build a 5-touch automated win-back flow for users who completed onboarding but haven't created a report in 14 days",
   "clv_lever": "lifespan",
-  "gate_required": "GREEN",
+  "gate_required": "AMBER",
   "trigger": {
     "type": "absence",
     "definition": "14 days without created a report (feature_used where feature = reports), measured from each person's own last feature_used; the daily entry job pushes core_action_lapsed_14d once per lapse",
     "source_object": "warehouse track_events (postgres) via the cohort entry query, pushed to Customer.io as the custom event core_action_lapsed_14d",
-    "re_entry": "allowed: after doing feature_used again a person can lapse again and re-enter; the entry query fires once per lapse"
+    "re_entry": {
+      "mode": "after_exit",
+      "description": "allowed after the person leaves the flow"
+    },
+    "typed": {
+      "flow_id": "ridgeview_winback_14d",
+      "type": "absence",
+      "absence": {
+        "anchor": {
+          "event": "onboarding_step_completed",
+          "where": {
+            "step_index": 3
+          }
+        },
+        "missing": {
+          "event": "feature_used",
+          "where": {
+            "feature": "reports"
+          }
+        },
+        "after": "P14D"
+      },
+      "exclude_if": [],
+      "re_entry": {
+        "mode": "after_exit"
+      },
+      "dedupe_key": "user_id + anchor_date (one entry per lapse)",
+      "source": "warehouse_job"
+    }
   },
   "entry_filters": [
     {
       "condition": "completed onboarding (onboarding_step_completed where step_index = 3) at least once",
+      "evaluated": "entry_only"
+    },
+    {
+      "condition": "clicked or replied to any email in the last 90 days (opens do not count: privacy proxies inflate them)",
       "evaluated": "entry_only"
     }
   ],
@@ -34,7 +68,7 @@
     "marked any message as spam (complaint), ever",
     "sunset-suppressed (lcm_sunset is true); only a fresh opt-in lifts it",
     "internal, test and seed addresses",
-    "currently in a higher-priority flow (transactional, billing, post-purchase)",
+    "currently in a higher-priority flow (by the frequency policy's flow_priority: billing, cart, post-purchase first)",
     "received a re-permission ask from any flow in the last 180 days"
   ],
   "holdout": {
@@ -46,9 +80,30 @@
     "read": "directional only"
   },
   "frequency": {
-    "cap": "at most 3 lifecycle messages a person a week across flows (the workspace message limit)",
-    "quiet_hours": "send at 10:00 recipient local; nothing between 21:00 to 08:00 recipient local time",
-    "priority": 3
+    "cap": "at most 3 email/sms/push message(s) per week across flows (the workspace message limit)",
+    "caps": [
+      {
+        "channels": [
+          "email",
+          "sms",
+          "push"
+        ],
+        "max": 3,
+        "window": "P7D"
+      }
+    ],
+    "send_windows": [
+      {
+        "channel": "email",
+        "allowed_from": "08:00",
+        "allowed_until": "21:00",
+        "basis": "recipient_local",
+        "source": "engine default"
+      }
+    ],
+    "send_hour_local": "10:00",
+    "priority": 9,
+    "collision_rule": "higher_priority_preempts"
   },
   "steps": [
     {
@@ -108,7 +163,7 @@
         "duration": "P5D"
       },
       "channel": "email",
-      "message": "social proof: How a team like theirs uses Ridgeview to create a report each week: one specific, true example with a number.",
+      "message": "social proof: How a customer like them uses Ridgeview to create a report: one specific, true example.",
       "goal": "feature_used",
       "requires": [
         "email_consent"

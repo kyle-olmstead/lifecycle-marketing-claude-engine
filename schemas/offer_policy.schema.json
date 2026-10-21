@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kyle-olmstead/lifecycle-marketing-claude-engine/schemas/offer_policy.schema.json",
+  "title": "Offer eligibility, replacing the free-text offer policy",
+  "description": "No offers listed means none may be offered. An offer without expires_after has no deadline, so urgency copy stays blocked (engine/policy/contracts.OfferPolicy).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "offers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "offer_id",
+          "kind"
+        ],
+        "properties": {
+          "offer_id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "percent_off",
+              "amount_off",
+              "free_shipping",
+              "gift",
+              "credit",
+              "trial_extension"
+            ]
+          },
+          "value": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "eligible": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stackable": {
+            "type": "boolean"
+          },
+          "expires_after": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^P(?!$)(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?)?$"
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "percent_off",
+                    "amount_off"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "value"
+              ],
+              "properties": {
+                "value": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "max_offers_per_person": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "count",
+        "window"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "window": {
+          "type": "string",
+          "pattern": "^P(?!$)(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?)?$"
+        }
+      }
+    },
+    "min_days_between_offers": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "never_in_first_touch": {
+      "type": "boolean"
+    },
+    "exclude_if": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "discount_share_over_50pct_last_3_orders",
+          "redeemed_offer_last_30d",
+          "segment_champions",
+          "segment_cannot_lose"
+        ]
+      }
+    },
+    "text": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}
