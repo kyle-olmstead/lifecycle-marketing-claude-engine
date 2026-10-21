@@ -1,0 +1,11 @@
+Record ID,First Name,Last Name,Email,Create Date,Last Modified Date,Lifecycle Stage,Country/Region,Marketing contact status,Unsubscribed from all email,Opted out of email: Newsletter,Opted out of email: Product Updates,User ID,Associated Company
+5100001,User,0001,u_0001@example.test,2025-12-20 14:00,2026-10-18 06:00,Lead,Germany,Marketing contact,false,false,false,u_0001,Workspace 0001
+5100002,User,0002,u_0002@example.test,2025-12-08 04:00,2026-10-18 06:00,Customer,United States,Marketing contact,false,false,false,u_0002,Workspace 0002
+5100003,User,0003,u_0003@example.test,2026-04-21 02:00,2026-10-18 06:00,Customer,United States,Marketing contact,false,false,false,u_0003,Workspace 0003
+5100004,User,0004,u_0004@example.test,2025-12-08 19:00,2026-07-10 08:00,Customer,Germany,Marketing contact,false,true,false,u_0004,Workspace 0004
+5100005,User,0005,u_0005@example.test,2026-01-12 12:00,2026-10-18 06:00,Customer,United States,Marketing contact,false,false,false,u_0005,Workspace 0005
+5100006,User,0006,u_0006@example.test,2026-03-08 20:00,2026-06-01 10:30,Lead,United States,Marketing contact,true,false,false,u_0006,Workspace 0006
+5100007,User,0007,u_0007@example.test,2026-01-01 20:00,2026-10-18 06:00,Customer,Canada,Marketing contact,false,false,false,u_0007,Workspace 0007
+5100008,User,0008,u_0008@example.test,2026-03-08 11:00,2026-10-18 06:00,Lead,United States,Marketing contact,false,false,false,u_0008,Workspace 0008
+5100009,User,0009,u_0009@example.test,2026-08-27 05:00,2026-10-18 06:00,Customer,Canada,Non-marketing contact,false,false,false,u_0009,Workspace 0009
+5100010,User,0010,u_0010@example.test,2026-10-09 04:00,2026-10-18 06:00,Opportunity,United States,Marketing contact,false,false,false,u_0010,Workspace 0010
