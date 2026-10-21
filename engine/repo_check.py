@@ -32,7 +32,7 @@ from engine.render import template_lint  # noqa: E402
 
 EM_DASH = chr(0x2014)  # written as a code point so this file passes its own check
 SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", "node_modules", ".venv", "out"}
-TEXT_SUFFIXES = {".md", ".sql", ".json", ".xml", ".html", ".py", ".yml", ".yaml", ".txt", ".toml", ".cfg", ".csv"}
+TEXT_SUFFIXES = {".md", ".sql", ".json", ".xml", ".html", ".py", ".yml", ".yaml", ".txt", ".toml", ".cfg", ".csv", ".mjml"}
 FENCE = re.compile(r"^```([^\n`]*)\n(.*?)^```\s*$", re.S | re.M)
 TEMPLATE_FENCES = {("liquid", "braze"): "braze", ("liquid", "customerio"): "customerio", ("liquid", "customerio_legacy"): "customerio_legacy",
                    ("liquid", ""): "liquid", ("django", "klaviyo"): "klaviyo", ("hubl", ""): "hubl", ("jinja", "hubl"): "hubl",

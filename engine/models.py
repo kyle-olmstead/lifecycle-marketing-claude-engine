@@ -208,6 +208,9 @@ class Brief(BaseModel):
     holdout_pct: float = Field(15, ge=0, le=50)
     randomization_unit: Literal["user", "account"] = "user"
     global_holdout_pct: float = Field(0, ge=0, le=20, description="program-wide holdout every flow excludes (engine/measurement)")
+    stopping_rule: Literal["fixed_horizon", "group_sequential", "always_valid"] = Field(
+        "fixed_horizon", description="one planned read; or planned interim looks with alpha spending; or a read valid at any time")
+    looks: int = Field(5, ge=2, le=10, description="group_sequential: planned looks, equally spaced in information")
     monthly_entrants: Optional[int] = Field(None, ge=0)
     baseline_conversion_rate: Optional[float] = Field(None, gt=0, lt=1)
     min_detectable_lift: float = Field(0.20, gt=0, le=5, description="relative lift worth acting on, 0.20 = 20%")
@@ -219,6 +222,8 @@ class Brief(BaseModel):
     sender_name: Optional[str] = None
     brand_voice: Optional[str] = None
     postal_address: Optional[str] = None
+    brand_kit: Optional[str] = Field(None, description="path to brand.yaml (logo, colors, footer, voice); default: the workspace's kit "
+                                                       "when it is this brand's, else a neutral kit")
     cta_url: Optional[str] = Field(None, description="where the main button goes: a deep link to the core action, on your own domain")
     recipient_countries: List[str] = Field(default_factory=list, description="ISO country codes of the audience, when there is no data to measure it")
     offer_policy: Union[str, OfferPolicy] = "no discounts or offers"
@@ -425,6 +430,7 @@ class CohortDefinition(BaseModel):
     trigger_payload_example: Dict[str, Any] = Field(default_factory=dict)
     trigger_source: Literal["esp_native", "warehouse_job", "stream"] = "warehouse_job"
     audience_after_gate: Optional[Dict[str, Any]] = Field(None, description="would-be entrants the gate's entry filter keeps, when measured")
+    cluster: Optional[Dict[str, Any]] = Field(None, description="account-level randomization: ICC, account sizes and design effect, when measured")
 
 
 class Touch(BaseModel):

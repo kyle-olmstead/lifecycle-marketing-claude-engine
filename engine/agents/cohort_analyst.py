@@ -868,13 +868,24 @@ def define(brief: Brief, data: Optional[str] = None, as_of: Optional[str] = None
         deps.append(DataDependency(name="replenish_after_days", kind="attribute", status="verified" if days_est.label != "ASSUMED" else "unknown",
                                    note=f"supply interval {days} days ({days_est.label}: {days_est.basis}); products.replenish_after_days overrides per product"))
     audience = _gate_audience(brief, con, as_of_date, entrants_today) if con is not None and as_of_date else None
+    cluster = None
+    if con is not None and brief.randomization_unit == "account":
+        from engine.measurement import cluster as cl
+        try:
+            est = cl.icc_from_duckdb(con, cl.event_outcome_sql(c.event), "account_id")
+            cluster = {k: est.get(k) for k in ("icc", "icc_for_design", "icc_ci", "mean_size", "cv", "design_effect", "clusters",
+                                               "unassigned_users", "note") if k in est}
+            cluster["label"] = label if label != "LIVE PULL" else "ESTIMATE"
+        except Exception as e:  # noqa: BLE001
+            cluster = {"note": f"could not estimate the ICC: {str(e).splitlines()[0]}"}
     return CohortDefinition(
         name=f"{PLATFORM_LABEL[brief.platform]} {brief.flow.label.lower()} cohort: {brief.product_name}",
         plain_english=plain, trigger_event=trigger, entry_rules=entry, exclusions=exclusions, exit_rule=exit_rule,
         platform_pattern=_pattern(brief, trigger, days), sql=sql, history_sql=hist, sql_checks=checks, job_sql=jobs,
         data_dependencies=deps, monthly_entrants=monthly, baseline_conversion_rate=baseline,
         entrants_on_as_of=entrants_today, as_of=as_of_date.isoformat() if as_of_date else None, leak=leak, countries=countries,
-        trigger_payload_example=example, trigger_source="warehouse_job" if warehouse else "esp_native", audience_after_gate=audience)
+        trigger_payload_example=example, trigger_source="warehouse_job" if warehouse else "esp_native", audience_after_gate=audience,
+        cluster=cluster)
 
 
 # ----------------------------------------------------------------------------------------------

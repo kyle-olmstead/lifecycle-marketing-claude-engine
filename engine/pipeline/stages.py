@@ -23,6 +23,13 @@ def intake(run) -> Dict[str, Any]:
         a = Assumption(field="outcome_window_days", value=w,
                        why=f"not stated; set to {w} days so the whole flow (last touch on day {max(days)}) plus a week is inside it")
         brief = brief.model_copy(update={"outcome_window_days": w, "assumptions": brief.assumptions + [a]})
+    if not brief.postal_address:
+        from engine.agents.copywriter import brand_for
+        kit_address = getattr(getattr(brand_for(brief), "footer", None), "postal_address", None)
+        if kit_address:
+            brief = brief.model_copy(update={"postal_address": kit_address,
+                                             "assumptions": [a for a in brief.assumptions if a.field != "postal_address"]})
+            run.decisions.append(Decision(stage="intake", decision="postal address from the brand kit", why=kit_address))
     pol = guardrails.gate_policy(brief.sending_gate, brief.flow_type)
     run.decisions.append(Decision(stage="intake", decision=f"sending gate {pol['effective_gate']}", why=pol["note"]))
     return {"brief": brief, "gate_policy": pol}

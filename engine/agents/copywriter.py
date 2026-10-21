@@ -244,11 +244,38 @@ def _offer_allowed(brief: Brief, role: Optional[str], index: Optional[int]) -> b
     return role in OFFER_ROLES
 
 
+_BRANDS: Dict[str, Any] = {}
+
+
+def brand_for(brief: Brief):
+    """The brand kit for this brief: brief.brand_kit when set; else the workspace's kit when it belongs to this brand (or the
+    workspace is the user's own, not the bundled demo); else the neutral default, so one brand's colors never reach another."""
+    from engine import workspace
+    from engine.render.brand import DEFAULT_BRAND, brand_path, load_brand
+    if brief.brand_kit:
+        path = brief.brand_kit
+    else:
+        ws = workspace.find()
+        found = brand_path(ws)
+        path = str(found) if found else None
+        if path and ws.demo:
+            kit = _BRANDS.get(path) or load_brand(path)
+            _BRANDS[path] = kit
+            if not (kit.brand_name or "").lower().startswith(brief.product_name.lower()[:6]):
+                return DEFAULT_BRAND
+    if not path:
+        return DEFAULT_BRAND
+    if path not in _BRANDS:
+        _BRANDS[path] = load_brand(path)
+    return _BRANDS[path]
+
+
 def check_variant(channel: str, f: Dict[str, Any], brief: Brief, step_id: str, vid: str, role: Optional[str] = None,
-                  index: Optional[int] = None) -> CopyVariant:
+                  index: Optional[int] = None, brand: Any = None) -> CopyVariant:
     errors: List[str] = []
     warnings: List[str] = []
     rendered: Dict[str, str] = {}
+    brand = brand if brand is not None else brand_for(brief)
     tokens = guardrails.PRODUCT_TOKENS if brief.flow.product_block else set()
     offer_ok = _offer_allowed(brief, role, index)
     raw = json.dumps(f)
@@ -264,7 +291,7 @@ def check_variant(channel: str, f: Dict[str, Any], brief: Brief, step_id: str, v
         errors += e
         warnings += w
         if not errors:
-            body, text = render_email(f, brief, step_id)
+            mjml_src, body, text = render_email_mjml(f, brief, step_id, brand=brand)
             lint = template_lint.lint(body, brief.template_dialect, email=True)
             errors += [f"template: {x}" for x in lint["errors"]]
             warnings += [f"template: {x}" for x in lint["warnings"] if "postal address" not in x or "POSTAL ADDRESS REQUIRED" not in body]
@@ -280,7 +307,10 @@ def check_variant(channel: str, f: Dict[str, Any], brief: Brief, step_id: str, v
             subj = subject_lines(f, brief)
             lint_s = template_lint.lint(subj, brief.template_dialect)
             errors += [f"subject: {x}" for x in lint_s["errors"]]
-            rendered = {f"{step_id}_{vid}.html": body, f"{step_id}_{vid}.txt": text, f"{step_id}_{vid}.subject.txt": subj}
+            rendered = {f"{step_id}_{vid}.html": body, f"{step_id}_{vid}.txt": text, f"{step_id}_{vid}.subject.txt": subj,
+                        f"{step_id}_{vid}.mjml": mjml_src}
+            voice = brand.check_voice([str(x) for x in f.values() if isinstance(x, str)] + list(f.get("paragraphs") or []))
+            warnings += voice
     elif channel == "sms":
         r = render_short("sms", f, brief)
         e, w, _report = guardrails.check_sms(r["preview"], brief.product_name, first_message=False)
@@ -318,7 +348,7 @@ def copy_brief(t: Touch, brief: Brief, plan: FlowPlan) -> str:
         f"This message's job ({t.role.replace('_', ' ')}): {t.job}",
         f"Framework: {t.framework}. The single goal: {t.goal}.",
         f"Before this: " + ("; ".join(f"day {x.day} {x.channel} ({x.role.replace('_', ' ')})" for x in prior) if prior else "nothing; this is the first message") + ".",
-        f"Sender: {brief.sender_name or brief.product_name}. Voice: {brief.brand_voice or 'plain, specific, second person'}.",
+        f"Sender: {brief.sender_name or brief.product_name}. Voice: {brief.brand_voice or brand_for(brief).voice_brief() or 'plain, specific, second person'}.",
         f"Offer policy (binding): {brief.offer.describe()}"
         + ("" if _offer_allowed(brief, t.role, t.index) or not brief.offer.allows_offers else "; no offer in this touch") +
         ". Never invent a deadline, scarcity, a statistic, a customer or a feature.",

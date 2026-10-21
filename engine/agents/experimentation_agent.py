@@ -35,10 +35,26 @@ def design(brief: Brief, cohort: CohortDefinition) -> ExperimentDesign:
     from engine.agents.campaign_architect import outcome_window
     w = outcome_window(brief)
     core = brief.core_conversion_event
-    assignment_sql = {d: f"{dialect(d).holdout_bucket('user_id', salt)} < {pct:g}" for d in ("postgres", "snowflake", "bigquery")}
+    hash_field = "account_id" if brief.randomization_unit == "account" else "user_id"
+    hash_expr = "COALESCE(account_id, user_id)" if hash_field == "account_id" else "user_id"
+    assignment_sql = {d: f"{dialect(d).holdout_bucket(hash_expr, salt)} < {pct:g}" for d in ("postgres", "snowflake", "bigquery")}
+    cl = cohort.cluster or {}
+    deff, m_bar = 1.0, None
+    deff_note = ""
+    if hash_field == "account_id":
+        if cl.get("design_effect"):
+            deff, m_bar = float(cl["design_effect"]), cl.get("mean_size")
+            deff_note = (f"; design effect {deff:.2f} from the data (ICC {cl.get('icc_for_design', cl.get('icc')):.3f} across "
+                         f"{cl.get('clusters')} accounts, {cl.get('label', 'ESTIMATE')})")
+        else:
+            from engine.measurement.cluster import design_effect as _deff
+            m_bar = 3.0
+            deff = _deff(0.05, mean_cluster_size=m_bar)
+            deff_note = (f"; design effect {deff:.2f} ASSUMED (ICC 0.05, 3 people per account) because the data could not measure it: "
+                         f"run with --data to measure it")
     where = ("computed in the daily queue query and pushed on the trigger event as in_holdout" if brief.flow_type == "winback" else
              f"added as in_holdout to the live {brief.qualifying_event.event} event by the system that sends it")
-    rule = (f"persistent, by {brief.randomization_unit}: bucket = first 7 hex digits of md5(user_id || ':{salt}') mod 100; "
+    rule = (f"persistent, by {brief.randomization_unit}: bucket = first 7 hex digits of md5({hash_field} || ':{salt}') mod 100; "
             f"bucket < {pct:g} is the holdout, {where}; holdout members enter, then exit at holdout_split, so both arms are the "
             f"same population")
     primary = (f"{core.describe()} ({core.detail()}) within {w} days of entry, treatment vs holdout, both arms counted from their entry date")
@@ -49,7 +65,8 @@ def design(brief: Brief, cohort: CohortDefinition) -> ExperimentDesign:
     grid: List[Dict[str, Any]] = []
 
     if pct == 0:
-        read, sizing, read_after = "directional only", "no holdout by request: the flow can only be compared with a pre/post baseline", \
+        why = brief.flow.holdout_reason_if_none or "no holdout by request: the flow can only be compared with a pre/post baseline"
+        read, sizing, read_after = "directional only", why, \
             "a pre/post comparison after one full outcome window; directional only, no lift percentage"
     elif entries and base and base * (1 + brief.min_detectable_lift) >= 1:
         read = "not readable"
@@ -59,7 +76,7 @@ def design(brief: Brief, cohort: CohortDefinition) -> ExperimentDesign:
         read_after = "never as defined: the baseline leaves no room for the lift"
     elif entries and base:
         feas = stats.feasibility(entries, share, base, mde_rel=brief.min_detectable_lift, outcome_window_days=w,
-                                 design_effect=1.0)
+                                 design_effect=deff, mean_cluster_size=m_bar)
         read = feas["expected_read"]
         months = feas["months_to_read"]
         lift_abs = base * brief.min_detectable_lift
@@ -104,17 +121,52 @@ def design(brief: Brief, cohort: CohortDefinition) -> ExperimentDesign:
         guardrails.append("SMS opt-out rate per send, against your SMS program's median")
     variants = [f"Copy variants rotate evenly inside the treatment arm. Read them on clicks or the core action, never opens, and only "
                 f"directionally below about 1,000 sends per variant (size exactly with engine/measurement/stats.py size --baseline <click rate> --mde-rel 0.2)"]
-    return ExperimentDesign(
+    if deff_note and feas:
+        sizing += deff_note
+    stopping = {"design": "fixed_horizon", "looks": 1, "information_fractions": [1.0], "alpha": 0.05}
+    peeking = "One planned read on the date above. Earlier looks check sample ratio and guardrails only; no early stop for a good-looking lift."
+    decision = (f"Keep the flow when the 95% interval for (treatment minus holdout) rate of {core.detail()} lies above zero and the guardrails "
+                f"hold. If it spans zero at the planned read, report it as inconclusive: keep the holdout running or change the flow. "
+                f"Report attributed, incremental and the gap together (lcm readout).")
+    if pct > 0 and brief.stopping_rule == "group_sequential":
+        from engine.measurement import sequential
+        k = brief.looks
+        fractions = [round((i + 1) / k, 4) for i in range(k)]
+        stopping = {"design": "group_sequential", "looks": k, "information_fractions": fractions, "alpha": 0.05, "spending": "obf"}
+        shown = ", ".join(f"{b:.2f}" for b in sequential.boundaries(fractions, alpha=0.05, spending="obf")["boundaries"])
+        peeking = (f"{k} planned looks at equal information, Lan-DeMets O'Brien-Fleming alpha spending (two-sided 0.05). Stop early only when "
+                   f"|z| crosses that look's boundary ({shown}); otherwise continue to the final read. Record every look (lcm experiments record-look).")
+        decision = (f"At each planned look compute z for (treatment minus holdout) and compare it with the boundary; stop for efficacy when it "
+                    f"crosses and the guardrails hold. At the final look the boundary is the last value. Report attributed, incremental and the gap.")
+        if feas and feas.get("required_holdout_n"):
+            factor = sequential.inflation_factor(fractions, alpha=0.05, power=0.80, spending="obf")["inflation_factor"]
+            sizing += (f"; group-sequential with {k} looks needs up to {factor:.3f} times that sample "
+                       f"({int(feas['required_holdout_n'] * factor):,} holdout entrants at most), in exchange for stopping early on a clear result")
+    elif pct > 0 and brief.stopping_rule == "always_valid":
+        stopping = {"design": "always_valid", "looks": 1, "information_fractions": [1.0], "alpha": 0.05}
+        peeking = ("Always-valid inference (mixture SPRT): the p-value and confidence sequence may be read at any time without inflating error. "
+                   "Stop when the always-valid p falls below 0.05 and the guardrails hold (lcm sequential msprt).")
+        decision = ("Keep the flow once the always-valid confidence sequence for (treatment minus holdout) lies above zero. It reads later than a "
+                    "fixed-horizon test of the same size; that is the price of looking any time.")
+    design = ExperimentDesign(
         holdout_pct=pct, unit=brief.randomization_unit, salt=salt, assignment_sql=assignment_sql, assignment_rule=rule,
         primary_metric=primary, outcome_window_days=w, read=read, sizing=sizing, read_after=read_after,
-        feasibility=feas, mde_by_horizon=mde_rows, sensitivity=grid,
-        decision_rule=(f"Keep the flow when the 95% interval for (treatment minus holdout) rate of {core.detail()} lies above zero and the guardrails "
-                       f"hold. If it spans zero at the planned read, report it as inconclusive: keep the holdout running or change the flow. "
-                       f"Report attributed, incremental and the gap together (engine/measurement/stats.py incrementality)."),
-        srm_rule=(f"At every look, test the split against {100 - pct:g}/{pct:g} (engine/measurement/stats.py readout --expected-holdout {share:g}). "
-                  f"A chi-square p below 0.001 means assignment or logging is broken; read nothing until it is fixed."),
-        peeking_policy="One planned read on the date above. Earlier looks check sample ratio and guardrails only; no early stop for a good-looking lift.",
-        guardrail_metrics=guardrails, variant_tests=variants)
+        feasibility=feas, mde_by_horizon=mde_rows, sensitivity=grid, decision_rule=decision,
+        srm_rule=(f"At every look, test the split against {100 - pct:g}/{pct:g} (lcm readout --expected-holdout {share:g})"
+                  + (", counting accounts, not people" if hash_field == "account_id" else "") +
+                  ". A chi-square p below 0.001 means assignment or logging is broken; read nothing until it is fixed."),
+        peeking_policy=peeking, guardrail_metrics=guardrails, variant_tests=variants, hash_field=hash_field,
+        global_holdout_pct=brief.global_holdout_pct)
+    if pct > 0:
+        from engine.measurement import registry
+        try:
+            design.registry_entry = registry.entry_from_design(
+                design.model_dump(), brief.slug, metric_event=core.event, stopping_rule=stopping, hash_field=hash_field,
+                icc=(cl.get("icc_for_design") or cl.get("icc")) if hash_field == "account_id" else None,
+                mean_cluster_size=m_bar if hash_field == "account_id" else None)
+        except Exception as e:  # noqa: BLE001  (a registry problem must not lose the plan; it is reported instead)
+            design.registry_entry = {"error": str(e)[:300]}
+    return design
 
 
 def attach(flow_spec: Dict[str, Any], d: ExperimentDesign) -> Dict[str, Any]:

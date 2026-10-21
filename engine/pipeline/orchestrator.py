@@ -181,6 +181,8 @@ def write_outputs(p: ExecutionPlan, out_root: Path) -> Path:
     (out / "flow_spec.json").write_text(json.dumps(p.flow.flow_spec, indent=2), encoding="utf-8")
     (out / "simulation.json").write_text(json.dumps(p.flow.simulation, indent=2), encoding="utf-8")
     (out / "experiment.json").write_text(p.experiment.model_dump_json(indent=2), encoding="utf-8")
+    if p.experiment.registry_entry and "error" not in p.experiment.registry_entry:
+        (out / "experiment_registry_entry.json").write_text(json.dumps(p.experiment.registry_entry, indent=2), encoding="utf-8")
     (out / "brief.yaml").write_text(to_yaml(p.brief), encoding="utf-8")
     for d, sql in p.cohort.sql.items():
         (out / "cohort" / f"entry_{d}.sql").write_text(sql, encoding="utf-8")
