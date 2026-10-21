@@ -1,0 +1,238 @@
+{
+  "data": [
+    {
+      "type": "metric",
+      "id": "NFm01",
+      "attributes": {
+        "name": "Placed Order",
+        "created": "2025-11-03T17:20:00+00:00",
+        "updated": "2025-11-03T17:20:00+00:00",
+        "integration": {
+          "object": "integration",
+          "id": "int_shopify",
+          "name": "Shopify",
+          "category": "eCommerce"
+        }
+      },
+      "links": {
+        "self": "https://a.klaviyo.com/api/metrics/NFm01/"
+      }
+    },
+    {
+      "type": "metric",
+      "id": "NFm02",
+      "attributes": {
+        "name": "Checkout Started",
+        "created": "2025-11-03T17:20:00+00:00",
+        "updated": "2025-11-03T17:20:00+00:00",
+        "integration": {
+          "object": "integration",
+          "id": "int_shopify",
+          "name": "Shopify",
+          "category": "eCommerce"
+        }
+      },
+      "links": {
+        "self": "https://a.klaviyo.com/api/metrics/NFm02/"
+      }
+    },
+    {
+      "type": "metric",
+      "id": "NFm03",
+      "attributes": {
+        "name": "Fulfilled Order",
+        "created": "2025-11-03T17:20:00+00:00",
+        "updated": "2025-11-03T17:20:00+00:00",
+        "integration": {
+          "object": "integration",
+          "id": "int_shopify",
+          "name": "Shopify",
+          "category": "eCommerce"
+        }
+      },
+      "links": {
+        "self": "https://a.klaviyo.com/api/metrics/NFm03/"
+      }
+    },
+    {
+      "type": "metric",
+      "id": "NFm04",
+      "attributes": {
+        "name": "Viewed Product",
+        "created": "2025-11-03T17:20:00+00:00",
+        "updated": "2025-11-03T17:20:00+00:00",
+        "integration": {
+          "object": "integration",
+          "id": "int_klaviyo",
+          "name": "Klaviyo",
+          "category": "Internal"
+        }
+      },
+      "links": {
+        "self": "https://a.klaviyo.com/api/metrics/NFm04/"
+      }
+    },
+    {
+      "type": "metric",
+      "id": "NFm05",
+      "attributes": {
+        "name": "Added to Cart",
+        "created": "2025-11-03T17:20:00+00:00",
+        "updated": "2025-11-03T17:20:00+00:00",
+        "integration": {
+          "object": "integration",
+          "id": "int_klaviyo",
+          "name": "Klaviyo",
+          "category": "Internal"
+        }
+      },
+      "links": {
+        "self": "https://a.klaviyo.com/api/metrics/NFm05/"
+      }
+    },
+    {
+      "type": "metric",
+      "id": "NFm06",
+      "attributes": {
+        "name": "Active on Site",
+        "created": "2025-11-03T17:20:00+00:00",
+        "updated": "2025-11-03T17:20:00+00:00",
+        "integration": {
+          "object": "integration",
+          "id": "int_klaviyo",
+          "name": "Klaviyo",
+          "category": "Internal"
+        }
+      },
+      "links": {
+        "self": "https://a.klaviyo.com/api/metrics/NFm06/"
+      }
+    },
+    {
+      "type": "metric",
+      "id": "NFm07",
+      "attributes": {
+        "name": "Received Email",
+        "created": "2025-11-03T17:20:00+00:00",
+        "updated": "2025-11-03T17:20:00+00:00",
+        "integration": {
+          "object": "integration",
+          "id": "int_klaviyo",
+          "name": "Klaviyo",
+          "category": "Internal"
+        }
+      },
+      "links": {
+        "self": "https://a.klaviyo.com/api/metrics/NFm07/"
+      }
+    },
+    {
+      "type": "metric",
+      "id": "NFm08",
+      "attributes": {
+        "name": "Opened Email",
+        "created": "2025-11-03T17:20:00+00:00",
+        "updated": "2025-11-03T17:20:00+00:00",
+        "integration": {
+          "object": "integration",
+          "id": "int_klaviyo",
+          "name": "Klaviyo",
+          "category": "Internal"
+        }
+      },
+      "links": {
+        "self": "https://a.klaviyo.com/api/metrics/NFm08/"
+      }
+    },
+    {
+      "type": "metric",
+      "id": "NFm09",
+      "attributes": {
+        "name": "Clicked Email",
+        "created": "2025-11-03T17:20:00+00:00",
+        "updated": "2025-11-03T17:20:00+00:00",
+        "integration": {
+          "object": "integration",
+          "id": "int_klaviyo",
+          "name": "Klaviyo",
+          "category": "Internal"
+        }
+      },
+      "links": {
+        "self": "https://a.klaviyo.com/api/metrics/NFm09/"
+      }
+    },
+    {
+      "type": "metric",
+      "id": "NFm10",
+      "attributes": {
+        "name": "Bounced Email",
+        "created": "2025-11-03T17:20:00+00:00",
+        "updated": "2025-11-03T17:20:00+00:00",
+        "integration": {
+          "object": "integration",
+          "id": "int_klaviyo",
+          "name": "Klaviyo",
+          "category": "Internal"
+        }
+      },
+      "links": {
+        "self": "https://a.klaviyo.com/api/metrics/NFm10/"
+      }
+    },
+    {
+      "type": "metric",
+      "id": "NFm11",
+      "attributes": {
+        "name": "Marked Email as Spam",
+        "created": "2025-11-03T17:20:00+00:00",
+        "updated": "2025-11-03T17:20:00+00:00",
+        "integration": {
+          "object": "integration",
+          "id": "int_klaviyo",
+          "name": "Klaviyo",
+          "category": "Internal"
+        }
+      },
+      "links": {
+        "self": "https://a.klaviyo.com/api/metrics/NFm11/"
+      }
+    },
+    {
+      "type": "metric",
+      "id": "NFm12",
+      "attributes": {
+        "name": "Unsubscribed",
+        "created": "2025-11-03T17:20:00+00:00",
+        "updated": "2025-11-03T17:20:00+00:00",
+        "integration": {
+          "object": "integration",
+          "id": "int_klaviyo",
+          "name": "Klaviyo",
+          "category": "Internal"
+        }
+      },
+      "links": {
+        "self": "https://a.klaviyo.com/api/metrics/NFm12/"
+      }
+    },
+    {
+      "type": "metric",
+      "id": "NFm13",
+      "attributes": {
+        "name": "Subscribed to List",
+        "created": "2025-11-03T17:20:00+00:00",
+        "updated": "2025-11-03T17:20:00+00:00",
+        "integration": {
+          "object": "integration",
+          "id": "int_klaviyo",
+          "name": "Klaviyo",
+          "category": "Internal"
+        }
+      },
+      "links": {
+        "self": "https://a.klaviyo.com/api/metrics/NFm13/"
+      }
+    }
+  ]
+}
