@@ -1,5 +1,15 @@
 # Architectural audit, v2.1 to v2.2
 
+> **In plain English.** Version 2.2 was a review of the whole engine followed by a rebuild of the
+> weak spots. Four things changed for the people using it. A campaign plan now saves its progress
+> step by step, so a failure or a change no longer means starting over, and approved copy stays
+> approved. Every plan is checked against the email and texting laws of the countries your customers
+> live in, with the source for each rule. The engine now checks your sending domain live and removes
+> people who have stopped engaging from marketing email, the two biggest levers on reaching the inbox.
+> And one plain-English command runs everything, with a daily check that logs to Google Sheets and
+> opens a ticket for each problem. Along the way, 37 defects were found and fixed (17 in the older
+> tools, 20 caught by an independent review of the new code), each with a test so it cannot return.
+
 October 2026. The brief asked for an audit of the whole repository against three bars: a
 fault-tolerant multi-agent loop with real state, data and deliverability handling that cannot be
 fooled by malformed input, and an interface a lifecycle manager can drive without code. This file

@@ -1,5 +1,8 @@
 # Active briefs
 
+> **In plain English.** Put a copy of each live campaign's brief here, and the engine checks that
+> campaign's audience every morning.
+
 Put the brief of every flow that is live, or about to be, in this folder (one `.yaml` file per flow,
 in the shape of `briefs/brief_template.yaml`). Two things read it:
 

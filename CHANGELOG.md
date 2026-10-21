@@ -2,7 +2,11 @@
 
 ## 2.2.0 (2026-10)
 
-**An engine that runs itself.** The audit behind this release, finding by finding: `docs/AUDIT.md`.
+**An engine that runs itself.** In plain English: plans now survive failures and edits, every plan is
+checked against the email and texting laws where your customers live, the engine checks your sending
+domain live and stops mailing people who never engage, one plain-English command (`lcm`) runs
+everything, and a daily 05:00 UTC check logs to Google Sheets and opens a ticket per problem. The
+audit behind this release, finding by finding: `docs/AUDIT.md`.
 
 - `lcm`: one command for the whole engine, in plain English or a YAML job file
   (`pip install -e . --no-deps` installs it). Rules pick the job; anything missing is asked for.

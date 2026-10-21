@@ -1,7 +1,7 @@
 {
   "name": "lifecycle-engine",
   "version": "2.2.0",
-  "description": "A lifecycle marketing operating layer for Claude: deliverability diagnosis and sending gates, behavioral activation and win-back flows, copy in the right template dialect for Braze, Customer.io, Klaviyo, HubSpot and Salesforce Marketing Cloud, warehouse SQL for RFM, LTV and retention in Snowflake, BigQuery and PostgreSQL, and experiment sizing and holdout readouts that separate attributed from incremental revenue. It includes a teammate that turns a plain-English campaign brief into a build-ready plan, and, new in 2.2, a resumable Analyst, Strategist, Copywriter, QA and Compliance pipeline, one plain-English command (lcm) for the whole engine, live SPF, DKIM, DMARC and MTA-STS checks, engagement-tier suppression of unengaged cohorts, and a daily 05:00 UTC health job logged to Google Sheets.",
+  "description": "An AI teammate for lifecycle marketing. Describe a campaign in one sentence and get everything needed to launch it: who gets it, every message written in your email platform's own template language (Klaviyo, HubSpot, Braze, Customer.io, Salesforce Marketing Cloud), the timing, a review against email and texting law where your customers live, and a holdout that shows what the campaign truly added versus what the platform credits. It checks that your email reaches the inbox (SPF, DKIM, DMARC, sending gate), stops mailing people who never engage, writes warehouse SQL for Snowflake, BigQuery and PostgreSQL, and runs a daily health check logged to Google Sheets. It never sends a message or changes your systems without your approval.",
   "author": {
     "name": "Kyle Olmstead",
     "url": "https://github.com/kyle-olmstead"

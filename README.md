@@ -1,137 +1,115 @@
-# LMM Engine (lifecycle-marketing-claude-engine) v2.2
+# LMM Engine
 
-**An operating layer for enterprise lifecycle marketing on Claude.** Claude works as two senior
-people at once: a principal lifecycle growth strategist and a senior CRM systems and data engineer.
-Small deterministic tools do the parts that must never be guessed: DNS and header analysis, SMS
-segment math, experiment statistics, template and SQL syntax.
+**An AI teammate for lifecycle marketing: it plans, writes, checks and measures the emails and texts your company sends to customers, inside the tools you already use.**
 
 **If you read nothing else:**
-- It writes flows, copy, SQL and deliverability fixes for HubSpot, Klaviyo, Braze, Customer.io and
-  Salesforce Marketing Cloud, in each platform's real template language (only two of them use
-  Liquid), with a fallback on every personalization token.
-- It checks the sending gate before it designs anything that sends, verifies data before it writes
-  a segment, and sizes the holdout before a flow ships. It reports what a flow actually drove
-  (incremental), not only what the platform credits it with (attributed).
-- **New in 2.1, the teammate:** describe a campaign in one sentence ("a 5-touch win-back for users
-  who completed onboarding but haven't created a report in 14 days") and get a build-ready plan: the
-  cohort SQL, a multi-channel flow that has been simulated, linted copy, and a holdout with its read
-  date. Every assumption it made is listed for you to confirm. [Quickstart](docs/quickstart_for_marketers.md).
-- **New in 2.2:** one command for everything, in plain English (`lcm "check deliverability for
-  example.com"`); an agent pipeline (Analyst, Strategist, Architect, Copywriter, Experiment, QA,
-  Compliance) that saves its state after every stage, so a failed run resumes and a change re-runs only what it affects;
-  a Compliance agent that checks CAN-SPAM, TCPA and state texting laws, CASL, PECR, ePrivacy, Germany
-  and Australia against your audience's countries; live SPF, DKIM, DMARC and MTA-STS checks; and
-  engagement tiers that take people who never click out of marketing sends. A daily job at 05:00 UTC
-  runs it all and logs it to Google Sheets. What changed and why: [`docs/AUDIT.md`](docs/AUDIT.md).
-- Every SQL, template and JSON example in this repository is checked in CI against the rules the
-  engine imposes on Claude. Free and open source (Apache 2.0).
-
-| If you are | Start with | Time |
-|---|---|---|
-| a lifecycle or CRM manager | [Install](#4-install), then say *"set up the lifecycle engine"*, then *"check our deliverability"* | 15 minutes |
-| a marketer with a campaign to plan | [Quickstart for marketers](docs/quickstart_for_marketers.md), then `lcm "<your brief>"` | 10 minutes |
-| a marketing leader | [What it does](#1-what-it-does-in-plain-english) and [What is verified](#8-what-is-verified-and-what-is-not) | 5 minutes |
-| a data or marketing engineer | [Repository architecture](#5-repository-architecture), then `docs/ARCHITECTURE.md`, `docs/architectural_overview.md` and `tools/` | as long as you like |
+- Describe a campaign in one sentence, the way you would to a colleague. It comes back with everything needed to launch it: who gets it, every message written in your email platform's own code, the timing, a legal and inbox check, and an honest plan for proving whether it worked.
+- Every morning it checks that your emails can still reach the inbox and that your customer lists are healthy, and it raises a flag the day something breaks, not the month after.
+- It never sends a message or changes your systems without a person approving it. It is free, open source, and a marketer can install it in about fifteen minutes. A sample company is included so you can watch it work before connecting anything.
 
 ---
 
-## 1. What it does, in plain English
+## Start here
 
-1. **Decides whether you can send.** It reads your email headers and DNS records, works out whether
-   your mail is authenticated and aligned, checks Gmail, Yahoo and Microsoft bulk-sender rules, and
-   issues a GREEN, AMBER or RED sending gate. Then it writes the exact DNS records and the warming
-   plan the gate allows.
-2. **Designs flows that know when to stop.** Onboarding, activation and win-back flows with entry
-   and exit rules, suppression, channel choice by consent and context, send timing, and a holdout
-   sized so the result can actually be read.
-3. **Writes copy in the right code.** The same email in Braze Liquid, Customer.io Liquid, Klaviyo's
-   template language, HubSpot HubL and Salesforce AMPscript, linted for broken tags and missing
-   fallbacks. SMS counted in segments on the longest possible rendering.
-4. **Writes warehouse SQL that runs.** RFM scoring and segments, cohort LTV curves and retention, in
-   Snowflake, BigQuery or PostgreSQL, with export payloads for Klaviyo and HubSpot.
-5. **Tells you what worked.** Test sizing before launch, and readouts that report attributed revenue,
-   incremental revenue and the gap between them, with honest labels when a sample is too small.
-6. **Plans a whole campaign from one brief.** A pipeline of agents: the Analyst (who enters, on which
-   events, with the SQL and the data checked), the Strategist (which job each touch does, on which
-   channel and day, and why, written down), the Architect (the multi-channel logic tree with waits,
-   consent, exits and a sunset), the Copywriter (variants per message, rendered in your platform's
-   template language and linted), the Experimentation agent (a persistent holdout, 15% by default,
-   sized with its read date), QA (the flow simulated with synthetic customers) and Compliance (the
-   laws that apply to where your audience lives). Every stage is saved, so a run that fails part way
-   resumes there, and `revise` changes one thing without rewriting copy that did not change.
-7. **Checks itself every morning.** At 05:00 UTC a daily job audits the cohort of every live flow,
-   rebuilds the engagement tiers, pulls each sending domain's DNS, logs all of it to Google Sheets,
-   and opens one GitHub issue per problem.
-
-**What it will never do:** recommend more volume on a damaged sender, warm a domain with people who
-never engage, write fake urgency or invented personalization, report attributed revenue as if it were
-incremental, or change a connected system without your approval.
-
-## 2. Why it is built this way
-
-Most lifecycle tooling fails in the same five places. The engine is designed around each:
-
-| Failure | What the engine does |
-|---|---|
-| Copy written in "Liquid" for a platform that does not use Liquid | names the dialect on every block and lints it with a real parser (`tools/template_lint.py`) |
-| Volume pushed onto a sender whose reputation is already slipping | issues the gate first and refuses growth on AMBER or RED (`tools/deliverability.py`, `tools/warmup.py`) |
-| Segments built on fields that are 11% filled, or on deals in a services business | verifies fill rates and resolves the transaction object before writing a filter |
-| Flows that cannot prove they worked | sizes a persistent holdout at spec time (`tools/stats.py feasible`) |
-| Win-back credited with revenue that was coming back anyway | reports attributed, incremental and the gap, with the read labeled (`tools/stats.py incrementality`) |
-
-The method comes from a working lifecycle and deliverability practice: verification before
-assertion, evidence labels on every number (LIVE PULL, SUPPLIED, ESTIMATE, UNKNOWN), exit and
-suppression before content, and low-volume honesty.
-
-## 3. A taste
-
-```text
-$ lcm "build the engagement tiers and the sunset list" --data tests/fixtures --platform klaviyo
-## Engagement tiers as of 2026-10-07
-...
-Mailable: 305. Unengaged share: 62.3% (RED on the sending gate). Sunset cohort: 190 people get
-lcm_sunset = true and leave marketing sends until they click again.
+```
+                          What are you here to do?
+                                    │
+       ┌───────────────┬────────────┼─────────────┬───────────────┐
+       ▼               ▼            ▼             ▼               ▼
+  Understand       Plan a         Check that    Run it for     Change how
+  what it is       campaign       our email     the whole      it works
+  and why          or flow        reaches the   company        (rules, SQL,
+                                  inbox         every day      prompts)
+       │               │            │             │               │
+    5 min           10 min       15 min       1–2 days        as needed
+       │               │            │         (needs an eng)      │
+       ▼               ▼            ▼             ▼               ▼
+  Read §1–4       §5 Install   §5, then say   §11 The daily  §12 Under the
+                  then type    "check our     check          hood
+                  the brief    deliverability"
 ```
 
-```text
-$ python3 tools/deliverability.py analyze examples/deliverability/incident.json --markdown
-## Sending gate: RED
+| If you are… | Start with | What you'll have | Time |
+|---|---|---|---|
+| **A CEO or exec** deciding if this is worth the team's time | §1–4 (§4 is the business case), then ask your marketing lead to run it on one campaign | A clear picture of what it does, what it won't do, and what it needs from you | 5 min |
+| **A lifecycle or CRM marketer** | §5 Install → say *"set up the lifecycle engine"* → describe a campaign | A build-ready plan with the copy written and checked | 15 min |
+| **A head of marketing** rolling it out | The same, then §8 (the routine) and the [quickstart](docs/quickstart_for_marketers.md) | Every campaign planned, checked and measured the same way | 1 hour |
+| **Marketing ops or data** | §11 The daily check | A 05:00 UTC health check on every flow, logged to Google Sheets | 1–2 days |
+| **An engineer** | §12 → [`docs/architectural_overview.md`](docs/architectural_overview.md) and [`docs/AUDIT.md`](docs/AUDIT.md) | The full design, every rule, every test | As long as you like |
 
-**Permitted:** Stop bulk sending. Remediation and re-permission only.
-...
-**Start triage with:** identity. Basis: the cause class with the most critical findings (identity 1, reputation 1). Ties go to identity, then reputation, consent, content and infrastructure. A triage starting point, not a diagnosis.
-...
-- **CRITICAL** [identity] Signing domain(s): esp-mail.example.net. From domain: example.com. A signature from the ESP's
-  shared domain passes DKIM but does not align, so it cannot carry DMARC and does not survive forwarding. ...
+A few words used throughout: **lifecycle marketing** is the email, text and in-app messages a company sends automatically based on what each customer does (the welcome series after signup, the nudge when someone stalls, the win-back when they go quiet). A **flow** is one of those automated sequences. **Deliverability** is whether your email reaches the inbox rather than spam. A **holdout** is a small group that deliberately gets nothing, so you can see what the messages actually changed. Full list in §13.
+
+---
+
+## 1. The problem it solves
+
+Lifecycle email and text is one of the cheapest growth channels a company has, and one of the easiest to get quietly wrong. The mistakes are rarely visible from the dashboard:
+
+- **Mail stops reaching the inbox.** Gmail and Yahoo (since 2024) and Microsoft (since 2025) junk or reject mail from large senders that fail their authentication and complaint rules. Nothing alerts you; results just slide, and every other campaign suffers with them.
+- **Customers get messages they shouldn't.** A text at 7 a.m., a promotional email with no postal address, a list padded with people who stopped reading a year ago. Each is a legal exposure or a complaint waiting to happen.
+- **Results get overstated.** Email platforms credit a campaign with every purchase that followed it, including the ones that would have happened anyway. Teams keep flows that do nothing and cut ones that work.
+- **Every campaign takes several specialists.** Someone to define the audience in the data, someone to build the flow, someone to write copy in the platform's template code, someone to size the test. Weeks pass between idea and launch.
+
+This engine does that work, checks it, and keeps checking every morning.
+
+---
+
+## 2. What it does, in plain English
+
+1. **Plans a whole campaign from one sentence.** "A 5-touch win-back for users who completed onboarding but haven't created a report in 14 days" becomes: exactly who enters and when they leave, the messages and their timing across email, text, push and in-app, the reasoning behind each choice, and step-by-step build instructions in your platform's own terms. Anything it had to assume is listed for you to confirm.
+2. **Writes the messages in the right code.** Copy rendered for Klaviyo, HubSpot, Braze, Customer.io or Salesforce Marketing Cloud, each in that platform's template language, with a fallback for every personalized field, and checked by a real parser so nothing breaks on send.
+3. **Checks the law before anyone presses send.** A compliance review of every plan against the rules where your customers live: US email and texting law (including the stricter state texting laws), Canada, the UK, the EU, Germany and Australia, plus the mailbox providers' own rules. Every rule cites its source. A missing legal requirement blocks the plan.
+4. **Keeps your email in the inbox.** It looks up your domain's authentication records live, reads real email headers, and issues a GREEN, AMBER or RED sending gate with the exact fixes. It finds the people who have stopped engaging and takes them out of marketing sends (reversibly), because they are what pulls a sender into spam.
+5. **Tells you what actually worked.** Every flow ships with a holdout group sized so the result can be read, and a date when it can. Results report three numbers side by side: what the platform credited, what the flow truly added, and the gap.
+6. **Watches every day.** At 05:00 UTC it audits each live flow's audience for anything unusual, rebuilds the engagement picture, checks each sending domain, logs it all to a Google Sheet, and opens a ticket for each problem it finds.
+
+**What it will never do:** send a message · change a platform or a list without your approval · state a number it can't trace to your data · call a result proven when the sample is too small · give legal sign-off (it flags questions for your counsel).
+
+---
+
+## 3. How it works (one picture)
+
+```
+  YOUR TOOLS                       THE ENGINE                                          YOU
+  ──────────                       ──────────                                          ───
+  Email platform     ┐
+  (Klaviyo, HubSpot, │      1. Finds the audience in your data, checks the data
+   Braze, Customer.io│      2. Decides the shape of the campaign, and says why
+   SFMC)             │      3. Builds the flow and simulates it with test customers
+  Data warehouse     ├──►   4. Writes every message in your platform's code     ──►   approve · edit · reject
+  Event stream       │      5. Sizes the holdout and sets the read date                     │
+  (Segment, GA4)     │      6. Checks the law and the inbox rules                           ▼
+  Your domain's DNS  ┘                                                         7. Only then: you build it,
+                                                                                  or it hands you the files
+                            Every morning: audience health · engagement · inbox checks ──► Google Sheet + tickets
 ```
 
-```text
-$ python3 tools/stats.py incrementality examples/stats/winback_readout.json --markdown
-  Conversion:     5.05% vs 4.02%; difference +1.03 pts, 95% CI -0.02 to +1.95 pts; not distinguishable from zero at 95%
-  Attributed:     $41,900   (Klaviyo flow attribution, 5-day click window)
-  Incremental:    $15,880   (point estimate: revenue per entrant, treatment minus holdout, times treatment entrants; ...)
-  Gap:            $26,020
-```
+Each step saves its work. If a step fails (a data export is missing, an API times out) the plan picks up where it stopped. Change one thing ("make it 4 touches") and only what that change affects is redone; approved copy stays approved.
 
-```text
-$ python3 -m agents.orchestrator plan --brief briefs/examples/winback_14d.yaml --data tests/fixtures
-READY WITH ASSUMPTIONS: Win-back: Ridgeview, 14 days since the core action (created a report)
-  WARN  copy: t2_email: 2 variant(s) pass lint and guardrails (offline); contains [bracketed] fill-ins: ...
-  WARN  holdout read: directional only: not inside 12 months at this volume (it would take about 187 months): ...
-plan: out/ridgeview_winback_14d/plan.md
-```
+---
 
-The full output for that brief is in [`examples/teammate/ridgeview_winback_14d/`](examples/teammate/ridgeview_winback_14d/plan.md).
-The fixture company is small, and the plan says plainly that its holdout cannot read inside a year.
+## 4. What it's worth
 
-## 4. Install
+The engine is free. Its value sits in four places, and three of them are about avoiding costs that are easy to underestimate:
 
-You need a paid Claude plan. It works best in **Claude Code** or the **Claude desktop app with a
-working folder**, where it can save files and run its tools. In a plain web chat it still works; it
-labels anything it could not run as unchecked.
+| What it protects | What getting it wrong costs | What the engine does |
+|---|---|---|
+| **The inbox** | Gmail requires bulk senders to keep spam complaints under 0.3% and, since November 2025, rejects mail that breaks its rules; Yahoo and Microsoft enforce similar rules. When it happens, every email program the company runs is affected at once. | Checks authentication live, issues the sending gate before anything sends, and removes the unengaged people who drive complaints |
+| **Legal exposure** | CAN-SPAM penalties reach $53,088 per email. Under the TCPA a marketing text sent without the right consent carries $500 to $1,500 in statutory damages per message, which is why texting class actions are common. | Blocks a plan that breaks a tracked rule, holds texts to the strictest state calling window it tracks, and lists every consent question for counsel |
+| **Budget decisions** | Platforms credit flows with sales that would have happened anyway, so money and attention go to the wrong programs | Measures every flow against a holdout and reports credited versus true lift (example below) |
+| **Team time** | A single flow often needs a strategist, a data analyst, a builder and a copywriter, and can take days to weeks to specify | Produces the full specification, checked, in minutes; the team reviews and builds |
 
-**In the Claude app:** open **Customize → Plugins → Add marketplace**, enter
-`kyle-olmstead/lifecycle-marketing-claude-engine`, then add the **lifecycle-engine** plugin.
+**What the measurement difference looks like.** In the repository's worked readout (a fictional company), the email platform credited a win-back flow with **$41,900**. Compared against its holdout, the flow actually added about **$15,880**. The other **$26,020, 62% of the credit,** would have come in anyway, and the engine says plainly that even the $15,880 is not yet statistically certain. A team reading only the platform's number would scale the flow; a team reading this one would keep testing it.
+
+These are illustrations, not customer results: the engine has not yet run in a production deployment, and it does not yet ship a time-savings model. The penalty figures come from the regulators' own pages, linked in [`config/compliance_rules.json`](config/compliance_rules.json).
+
+---
+
+## 5. Install (15 minutes)
+
+You need a paid Claude plan. It works best in **Claude Code** or the **Claude desktop app with a working folder**, where it can save files and run its checks. In a plain web chat it still works, and it labels anything it could not check.
+
+**In the Claude app:** open **Customize → Plugins → Add marketplace**, enter `kyle-olmstead/lifecycle-marketing-claude-engine`, then add the **lifecycle-engine** plugin. (The repository is called *lifecycle-marketing-claude-engine*; the plugin inside it is called *lifecycle-engine*. Same thing.)
 
 **In Claude Code:**
 
@@ -140,223 +118,188 @@ labels anything it could not run as unchecked.
 /plugin install lifecycle-engine@lifecycle-engine
 ```
 
-Then say **"set up the lifecycle engine."** Setup inventories your connected platforms, records each
-one's template and SQL dialect, and writes the context file every other skill reads.
+Then, in any conversation: **"set up the lifecycle engine."** Setup looks at which platforms you have connected, records each one's template language and SQL dialect, and writes the context file everything else reads. Then describe a campaign.
 
-**Without the plugin:** paste `core/system_prompt.md`, then your filled `core/context_loader.xml`,
-then the module prompt for the job, into any Claude conversation.
-
-**Run it locally** (Python 3.12 or later):
+**From a terminal** (Python 3.12 or later), the same engine is one command, `lcm`, that takes plain English:
 
 ```text
-pip install -r requirements.txt && pip install -e . --no-deps      # the second command puts lcm on your PATH
-pytest -q && python3 tools/repo_check.py
-```
-
-**Use it in plain English** (same install):
-
-```text
-lcm "plan a 5-touch win-back for users who completed onboarding but haven't created a report in 14 days" --product Acme
-lcm briefs/active/winback.yaml --data exports/            # a brief, or a YAML job file (kind: audit | engagement | ...)
+pip install -r requirements.txt && pip install -e . --no-deps
+lcm briefs/examples/winback_14d.yaml --data tests/fixtures          # the sample company, start to finish
+lcm "plan a 5-touch win-back for users inactive 14 days" --product Acme
 lcm "check deliverability for example.com"
-lcm "build the engagement tiers and the sunset list" --data exports/ --platform braze
-lcm "compare our monthly newsletter with the win-back trigger" --brief briefs/active/winback.yaml --data exports/
-lcm "how many people do we need to detect a 20% lift on a 10% baseline with a 15% holdout"
-lcm --dry-run "<anything>"                                 # which job it would run, and what it still needs
+lcm --dry-run "<anything>"                                          # what it would do, and what it still needs
 ```
 
-Every job is also a module you can call directly (`python3 -m agents.orchestrator plan ...`,
-`python3 -m agents.orchestrator revise --run out/<flow> --set touches=4`, `python3 scripts/daily.py`).
+---
 
-With the plugin, just describe the campaign; the `lifecycle-teammate` skill runs these for you.
-For Claude Desktop without the plugin, add the local MCP server in `config/mcp_server_config.json`.
+## 6. What it needs from you
 
-## 5. Repository architecture
+Three things decide the quality of everything it produces. An hour here is worth more than any setting:
+
+| Make sure you have… | Because | Where |
+|---|---|---|
+| **The one action that means a customer is getting value** (for example, "created a report") as an event in your data | Every flow is built around it: who enters, when they leave, how success is measured. The engine asks for it and never guesses it | Your product analytics or event stream |
+| **Consent recorded per person and channel**, and each person's country | Who may be emailed or texted, and which laws apply, come from these fields | Your email platform or CRM |
+| **Your sending domain and postal address** | The inbox checks need the domain; US law needs the address in every marketing email | Your brief, or setup |
+
+**What it works with.** The engine reads platforms that have a Claude connector in your workspace, and works from exports or pasted evidence for the rest. Checked against Claude's connector directory in October 2026:
+
+| Role | Connector available today | No connector found (export or paste instead) |
+|---|---|---|
+| Email and messaging platform | HubSpot, Klaviyo, Braze, Customer.io (also Mailchimp, Brevo, Kit, OneSignal) | Salesforce Marketing Cloud |
+| Data warehouse and CDP | BigQuery, Snowflake, Neon (PostgreSQL), Clay | Segment, RudderStack (the engine includes a receiver for their events) |
+| Analytics | Mixpanel, Amplitude | Google Analytics 4 (use its BigQuery export) |
+
+Details, and the path for every tool without a connector: [`CONNECTORS.md`](CONNECTORS.md).
+
+---
+
+## 7. What to say to it
+
+| Say… | What happens |
+|---|---|
+| "set up the lifecycle engine" | Finds your connected tools and configures itself |
+| "plan a 5-touch win-back for users who haven't created a report in 14 days" | The full plan: audience, flow, copy, holdout, compliance review, build steps |
+| "make it 4 touches" / "add SMS" / "go with variant B for the first email" | Changes only what that affects; keeps approved copy |
+| "check our deliverability" / "check deliverability for example.com" | Live lookup of your domain's records, the sending gate, the exact DNS fixes |
+| "who should we stop emailing?" | Engagement tiers and a reversible sunset list, ready to sync to your platform |
+| "is our monthly newsletter worth keeping?" | Compares who a calendar send reaches against the behavioral trigger, on your data |
+| "audit the cohort for our win-back flow" | Today's health of that flow's audience, with anything unusual explained |
+| "did the win-back flow actually work?" | Credited versus true lift, with the read labeled honestly |
+| "how many people do we need to test this?" | Test and holdout sizing, and how long the test must run |
+| "write the welcome email for Klaviyo" | Copy in Klaviyo's template language, checked |
+
+Every one ends the same way: it shows what it found and what it would build. Nothing is sent or changed until you say yes, and even then the engine hands you files and instructions; it has no way to send a message.
+
+---
+
+## 8. The routine (this is the part that makes it work)
+
+| When | Who | What | Time |
+|---|---|---|---|
+| **Every morning** | Automatic | The 05:00 UTC check: every live flow's audience, engagement, every sending domain. Results in a Google Sheet; a ticket for each problem | 2 min to read |
+| **Before any new flow** | Lifecycle marketer | Plan it from a sentence, answer the "confirm before you build" list, approve the copy | 30 min |
+| **Before a big send or a new domain** | Marketer or ops | "check our deliverability"; fix anything RED first | 15 min |
+| **Weekly** | Marketing lead | Clear the open tickets; review the sunset list before it syncs | 15 min |
+| **When a holdout reaches its read date** | Marketing lead | "did the flow actually work?" Keep, change or stop it on the true lift, not the credited one | 15 min |
+
+A team that only reads the morning check still catches the expensive problems early. A team that skips the holdout reads ends up funding flows on the platform's word.
+
+---
+
+## 9. A worked example
+
+*The company below is made up. The reasoning is exactly what the engine does.* Full output: [`examples/teammate/ridgeview_winback_14d/plan.md`](examples/teammate/ridgeview_winback_14d/plan.md).
+
+Ridgeview, a reporting tool, wants to win back users who finished onboarding but stopped creating reports. The marketer types one sentence. The engine:
+
+- defines the audience precisely (14 days without a report, entering once per lapse, leaving the moment they create one) and writes the SQL for three warehouses;
+- plans five messages over 18 days, email and in-app, ending with an honest "do you still want these?" email, because people who ignore a whole win-back flow are the ones who mark it as spam;
+- writes two versions of every message in Customer.io's template code, each with a testable hypothesis, and flags the three where a real product detail must replace a placeholder;
+- reviews the plan against the laws of the six regions in Ridgeview's customer list and lists the consent questions to confirm;
+- and tells the truth about measurement: about 28 people a month qualify, so a holdout would need roughly 187 months to prove a lift. It keeps the holdout anyway and labels every result "directional" instead of promising a date it cannot keep.
+
+The morning check on the same data finds that 62% of the people Ridgeview can still email have received at least five emails in six months and clicked none. It marks the sending gate RED for that list and raises it as a problem to fix before scaling any campaign: sunset those people (reversibly), then grow.
+
+---
+
+## 10. Trust and control
+
+- **You approve everything.** The engine writes plans, copy and request files. It has no way to send an email or a text, and it changes no platform without your explicit approval of the specific change.
+- **Every number has a label.** LIVE PULL (looked up, dated), SUPPLIED (you provided it), ESTIMATE, DEMO DATA or UNKNOWN. Missing data becomes a flag and lower confidence, never a guess.
+- **Measurement stays honest.** A result the sample cannot support is labeled "directional" or "not readable", never presented as proof.
+- **Compliance is a checklist with sources, not legal advice.** It blocks what clearly breaks a tracked rule and turns everything else into a question for your counsel.
+- **Where your data goes.** The engine reads through connectors you already authorized in Claude, or files you give it. Working files stay in your own folder. Nothing is sent to the author of this repository.
+
+---
+
+## 11. For bigger teams: the daily check
+
+The same engine runs as a scheduled job (GitHub Actions, 05:00 UTC every day) against your warehouse or exported files: every flow listed in `briefs/active/`, the engagement tiers, every sending domain. It writes six tabs to a Google Sheet (campaign plans, cohort health, benchmarks, anomalies, engagement, deliverability), opens one GitHub issue per problem, and comments on it while it stays open. With nothing configured it runs on the sample data, so you can see the output first. Setup needs an engineer for about a day: [`docs/quickstart_for_marketers.md`](docs/quickstart_for_marketers.md), section 7, and the top of [`.github/workflows/daily_cohort_audit.yml`](.github/workflows/daily_cohort_audit.yml).
+
+---
+
+## 12. Under the hood (for the technical reader)
 
 ```text
 lifecycle-marketing-claude-engine/
-├── .github/
-│   ├── ISSUE_TEMPLATE/
-│   │   ├── flow_bug.md                      checklist for a flow that misfired
-│   │   └── deliverability_incident.md       the evidence a deliverability report needs
-│   └── workflows/ci.yml                     tests, repository check, worked examples       [added]
-├── docs/
-│   ├── ARCHITECTURE.md                      layers, module dependencies, what is verified
-│   ├── LIQUID_CHEATSHEET.md                 every dialect: Customer.io, Braze, Klaviyo, HubL, AMPscript
-│   ├── SQL_SCHEMA_CONVENTIONS.md            canonical tables, naming, dialect differences
-│   └── OPERATIONAL_GUIDE.md                 context loading, optimization loops, integrations
-├── core/
-│   ├── system_prompt.md                     dual persona, principles, syntax rules, diagnostics, router
-│   └── context_loader.xml                   one file per brand: stack, data, consent, gate, voice
-├── modules/
-│   ├── 01_deliverability_and_infrastructure/
-│   │   ├── prompts/
-│   │   │   ├── header_analyzer.md           Workflow B: diagnosis, remediation, warming
-│   │   │   └── warmup_schedule_generator.md
-│   │   └── checklists/
-│   │       └── dmarc_alignment_audit.md     RFC 9989-era rollout from p=none to p=reject
-│   ├── 02_behavioral_triggers_and_flows/
-│   │   ├── prompts/
-│   │   │   ├── activation_flow_architect.md Workflow A: onboarding and activation
-│   │   │   └── winback_branching_logic.md
-│   │   └── schemas/
-│   │       └── custom_event_definitions.json  the tracking plan as JSON Schema 2020-12
-│   ├── 03_copywriting_and_multichannel/
-│   │   ├── prompts/
-│   │   │   ├── dynamic_liquid_email_writer.md one email in five dialects
-│   │   │   └── sms_push_modal_orchestrator.md
-│   │   └── templates/
-│   │       └── modular_email_components.html  table layout, VML button, dark mode
-│   ├── 04_data_schemas_and_sql/
-│   │   ├── prompts/
-│   │   │   ├── rfm_segmentation_builder.md  Workflow C: RFM in Snowflake, BigQuery, PostgreSQL
-│   │   │   └── ltv_cohort_query_generator.md
-│   │   └── queries/
-│   │       └── rolling_d30_retention.sql
-│   └── 05_experimentation_and_analytics/
-│       ├── prompts/
-│       │   ├── ab_power_calculator.md
-│       │   └── holdout_incrementality_analyzer.md
-│       └── frameworks/
-│           └── test_hypothesis_matrix.md
-├── .claude-plugin/                          plugin and marketplace manifests                [added]
-├── skills/                                  seven plugin skills that route to the modules   [added]
-├── tools/                                   deterministic tools (below)                     [added]
-├── agents/                                  the teammate                                    [2.1]
-│   ├── cli.py                               lcm: plain English or YAML to the right job     [2.2]
-│   ├── orchestrator.py                      CLI: plan, brief, resume, revise, approve, status
-│   ├── pipeline.py, stages.py               the stateful, resumable stage loop              [2.2]
-│   ├── cohort_analyst.py                    entry cohort, SQL in four dialects, health audit, blast vs trigger
-│   ├── strategist.py                        touch jobs, channels, days and offer, with reasons [2.2]
-│   ├── campaign_architect.py                compiles the strategy into a flow spec
-│   ├── copywriter.py                        variants, rendered per dialect and linted
-│   ├── experimentation_agent.py             persistent holdout, sizing, read date
-│   ├── compliance.py                        rules engine over config/compliance_rules.json  [2.2]
-│   ├── engagement.py                        engagement tiers and the sunset cohort          [2.2]
-│   └── models.py, brief.py, guardrails.py, sql_dialects.py
-├── briefs/
-│   ├── brief_template.yaml                  the campaign brief a marketer fills in          [2.1]
-│   └── active/                              briefs of live flows: the daily job audits each [2.2]
-├── config/
-│   ├── mcp_server_config.json               local and remote MCP servers for live data      [2.1]
-│   ├── esp_payload_schemas.json             event and attribute request bodies per ESP      [2.1]
-│   └── compliance_rules.json                22 rules, each with its source and check date   [2.2]
-├── scripts/
-│   ├── daily.py                             the 05:00 UTC job: audits, tiers, DNS, Sheets   [2.2]
-│   ├── campaign_simulator.py                dry-run: structure, synthetic journeys, payloads [2.1]
-│   ├── webhook_parser.py                    Segment and GA4 ingest; opt-in real-time forwarding
-│   ├── sheets_sync.py                       six tabs, upserted by key                       [2.1]
-│   └── mcp_server.py                        the teammate as MCP tools                       [2.1]
-├── .github/workflows/daily_cohort_audit.yml 05:00 UTC: scripts/daily.py, one issue per finding
-├── schemas/                                 flow spec and the tool input contracts (JSON Schema)
-├── examples/                                fictional worked-example inputs                 [added]
-├── tests/                                   pytest suite and DuckDB fixtures                [added]
-├── CONNECTORS.md                            which tools have a Claude connector today       [added]
-├── requirements.txt                         pinned Python dependencies for the tools        [added]
-├── pyproject.toml                           packaging; installs the lcm command             [2.2]
-├── .gitignore                                                                               [added]
-├── README.md                                this file
-└── LICENSE                                  Apache 2.0
+├── agents/          the teammate: a resumable pipeline (Analyst, Strategist, Architect, Copywriter,
+│                    Experiment, QA, Compliance), engagement tiers, and lcm, the plain-English front door
+├── tools/           deterministic checks: deliverability and live DNS, warm-up, statistics, template
+│                    and SQL linting, SMS segments, ESP request bodies, typed input contracts
+├── scripts/         the daily job, Google Sheets sync, Segment and GA4 event receiver, flow simulator, MCP server
+├── modules/         the method as prompts: deliverability, flows, copy, SQL, experimentation
+├── skills/          seven Claude plugin skills that route requests to the above
+├── config/          compliance rules (each with its source), ESP request schemas, MCP servers
+├── schemas/         machine-readable contracts: flow spec and every tool input
+├── briefs/          the campaign brief template, an example, and active/ for live flows
+├── examples/        a complete worked example and sample inputs (fictional companies)
+├── docs/            architecture, the v2.2 audit, SQL conventions, template cheat sheet, operations guide
+└── tests/           303 checks CI runs on every change, including a real PostgreSQL 16
 ```
 
-Every path in the specification's tree is present with the same name; entries marked *added* go
-beyond it, to make the engine installable as a Claude plugin and testable in CI.
-
-**Tools**
-
-| Tool | Computes |
+| Tool | What it computes |
 |---|---|
-| `tools/deliverability.py` | SPF (lookup counts through includes, loops), DKIM key size, DMARC (RFC 7489 and RFC 9989 tags, subdomain policy), MTA-STS, TLS-RPT, BIMI eligibility, Authentication-Results alignment, RFC 8058 one-click unsubscribe, bulk-sender checks, the sending gate, copy-paste DNS fixes |
-| `tools/dns_collect.py` | the live DNS pull in front of it: TXT, DMARC, MX, MTA-STS and its policy file, TLS-RPT, BIMI, every SPF include, DKIM selectors (2.2) |
-| `tools/contracts.py` | Pydantic contracts for every tool input, and the JSON Schemas generated from them (2.2) |
-| `tools/warmup.py` | a warming ladder that refuses on RED, holds on AMBER, never uses the unengaged tier, and caps at engaged capacity |
-| `tools/stats.py` | sample size for any allocation, MDE, holdout feasibility, Newcombe intervals, sample ratio checks, attributed versus incremental readouts |
-| `tools/template_lint.py` | syntax and fallback rules for Braze, Customer.io (latest and legacy), Klaviyo, HubL and AMPscript; email checks (unsubscribe, address, alt text, size, dark mode, text-to-image ratio) |
-| `tools/sql_check.py` | parse in a named dialect; run PostgreSQL on the fixtures |
-| `tools/sms.py` | GSM-7 versus UCS-2 encoding and segment counts, with the characters that forced the switch |
-| `tools/payloads.py` | Klaviyo bulk-import and HubSpot batch-upsert bodies, and person-attribute updates for all four ESPs, within vendor limits |
-| `tools/event_payloads.py` | trigger-event requests for Klaviyo, HubSpot, Braze and Customer.io, within vendor limits (2.1) |
-| `tools/repo_check.py` | runs every check above on every example in the repository |
+| `tools/deliverability.py` | SPF (lookup counts, loops), DKIM key size, DMARC (including subdomain policy), MTA-STS, TLS-RPT, BIMI, header alignment, one-click unsubscribe, bulk-sender rules, the sending gate, copy-paste DNS fixes |
+| `tools/dns_collect.py` | the live DNS lookup in front of it, with DKIM selectors from each sender's documentation |
+| `tools/warmup.py` | a warming ladder that refuses on RED, holds on AMBER, and never warms with unengaged people |
+| `tools/stats.py` | sample size, minimum detectable effect, holdout feasibility, confidence intervals, sample ratio checks, credited versus true lift |
+| `tools/template_lint.py` | syntax and fallback rules for Braze, Customer.io, Klaviyo, HubL and AMPscript; email checks including text-to-image ratio |
+| `tools/sql_check.py`, `tools/sms.py`, `tools/payloads.py`, `tools/event_payloads.py`, `tools/contracts.py` | SQL parsing per dialect; SMS encoding and segments; ESP request bodies within each vendor's limits; Pydantic input contracts |
 
-## 6. The modules
-
-### 01 Deliverability and infrastructure
-
-| | |
-|---|---|
-| **Core capability scope** | The sending gate (GREEN, AMBER, RED) from authentication, reputation, consent and placement signals; root-cause diagnosis in one of four classes (identity, reputation, consent, content and infrastructure); SPF, DKIM, DMARC, MTA-STS, TLS-RPT and BIMI analysis; Gmail, Yahoo and Microsoft bulk-sender compliance; DMARC rollout; warming ladders |
-| **Key inputs and context artifacts** | raw headers from affected messages; `dig` output with the date run; Postmaster spam rate and compliance status; bounce classes; complaint and hard-bounce rates; engagement tiers; daily volume by provider; the full sending inventory; recipient geography |
-| **Primary output artifacts** | gate verdict with the signals that set it; alignment report; bulk-sender matrix; remediation protocol with owners, copy-paste DNS records (host, type, TTL, value) and verification lookups; warming schedule; verification plan |
-
-### 02 Behavioral triggers and flows
-
-| | |
-|---|---|
-| **Core capability scope** | Onboarding and activation flows built around the largest measured leak; win-back, reactivation and sunset flows triggered on absence from each customer's own cycle; channel orchestration by consent and context; collision prevention; holdout design |
-| **Key inputs and context artifacts** | target persona; aha definition; the tracking plan (`custom_event_definitions.json`) with fill rates; platform stack; signup or lapse volume; baseline rates; channel consent; the gate verdict |
-| **Primary output artifacts** | leak map; data feasibility with BLOCKED steps named; the FLOW block; flow JSON valid against `schemas/flow_spec.schema.json`; event payload schemas; branching rules in builder terms and template dialect; send cadence; copy; measurement plan |
-
-### 03 Copywriting and multichannel
-
-| | |
-|---|---|
-| **Core capability scope** | Direct-response lifecycle copy for a specific position in a specific flow; the same message in five template dialects; SMS, push and in-app copy within each channel's real limits; modular, dark-mode-safe HTML |
-| **Key inputs and context artifacts** | flow position, segment, trigger and the single conversion goal; voice module (binding); sender identity; platform and dialect; verified fields with fill rates; consent per channel; quiet hours |
-| **Primary output artifacts** | message header block; subject and preview variants each with a falsifiable hypothesis; body in the platform dialect with fallbacks; plain-text part; SMS encoding report; lint results |
-
-### 04 Data schemas and SQL
-
-| | |
-|---|---|
-| **Core capability scope** | RFM scoring (NTILE for recency and monetary, banded frequency, LAG and LEAD for purchase cycles) and eleven mutually exclusive segments; cohort LTV with right-censoring; windowed D7 to D90 retention with maturity rules; CDP and ESP export payloads |
-| **Key inputs and context artifacts** | SQL dialect flag (Snowflake, BigQuery, PostgreSQL); schemas for `users`, `orders`, `track_events`; the resolved transaction object; as-of date and windows; destination (Klaviyo, HubSpot); consent rule |
-| **Primary output artifacts** | preconditions report; the query in the named dialect; segment dictionary mapped to the flow each segment serves; validation queries; export plan and request bodies |
-
-### 05 Experimentation and analytics
-
-| | |
-|---|---|
-| **Core capability scope** | Test and holdout sizing for any allocation; feasibility of a holdout at a flow's entry volume; readouts with intervals and sample ratio checks; attributed versus incremental reporting; test backlog prioritization under a change budget |
-| **Key inputs and context artifacts** | primary metric (never opens); baseline from your own history; the minimum effect worth acting on; eligible volume; arm sizes, conversions and revenue; attribution model and window; inter-purchase interval |
-| **Primary output artifacts** | sample size and duration; decision rule and peeking policy; the three-number readout with its read label; caveats; a prioritized hypothesis matrix |
-
-## 7. What it works with
-
-The engine reads platforms that have a Claude connector in your workspace, and works from pasted
-evidence for the rest. Checked against Claude's connector directory on 2026-10-19:
-
-| Category | Connector available today | No connector found (paste or export instead) |
-|---|---|---|
-| Messaging and ESP | HubSpot, Klaviyo, Braze, Customer.io (also Mailchimp, Brevo, Kit, OneSignal) | Salesforce Marketing Cloud |
-| Data and CDP | BigQuery, Snowflake, Neon (PostgreSQL), Clay | Segment, RudderStack |
-| Analytics | Mixpanel, Amplitude | Google Analytics 4, Looker Studio |
-
-Details, and the paths for tools without a connector: [`CONNECTORS.md`](CONNECTORS.md).
-
-## 8. What is verified, and what is not
+**What is verified, and what is not**
 
 | Verified in CI | Not verified |
 |---|---|
-| every SQL example parses in its dialect (sqlglot); PostgreSQL examples run on DuckDB fixtures; the Snowflake and BigQuery RFM and LTV queries reproduce the PostgreSQL output's key columns when transpiled to DuckDB: segment and R, F, M scores for every customer (RFM), observed customers and cumulative LTV for every cohort and period (LTV) | execution on a live Snowflake, BigQuery or PostgreSQL account |
-| every Liquid, Klaviyo and HubL example parses (python-liquid, Django, Jinja2); AMPscript examples pass structural checks | rendering inside each ESP |
-| sample sizes match the standard two-proportion formula; Newcombe intervals and chi-square tails match reference values checked against statsmodels and scipy when written | the suite pins those values; it does not import either library |
-| every flow spec validates against the flow schema; every example event validates (and every invalid one is rejected) against the tracking plan | your platform's own validation |
-| the teammate's entry query selects the same people as an independent Python computation on 40 dates; its Snowflake and BigQuery versions return the same rows when transpiled to DuckDB; its PostgreSQL version runs on a real PostgreSQL 16 in CI | a live Snowflake or BigQuery run |
-| every generated flow passes the simulator: holdout gets nothing, no send without consent, nothing after the core action, frequency cap, send hour, quiet hours; the simulator catches each of those defects when they are injected | your platform's own flow engine |
-| every rendered template lints in its dialect for all five platforms; trigger payloads validate against schemas written from vendor documentation (2026-10-20) | a live send or API call |
-| the Claude copy path (structured output, repair round, fallback) against a stub client | a live Claude API call in CI |
-| a run that fails at any stage resumes from that stage, without reusing its own stale output; a revision reuses copy only for touches whose job, channel, audience and voice are unchanged; an approval is kept only while its words are | a long-running production deployment |
-| the compliance rules each name a check that exists and a source; the SMS send hour is held to the strictest state window the rules track | legal advice: it is a rules engine, it tracks some states and not all, and laws change |
-| the DNS collector against a fake resolver (SPF includes, DKIM, MTA-STS policy, a domain that does not resolve); the daily job end to end in demo mode and in BigQuery mode (its SQL transpiled to DuckDB) | live DNS and a live BigQuery run in CI |
+| every SQL example parses in its dialect; PostgreSQL examples run on fixtures and on a real PostgreSQL 16; Snowflake and BigQuery versions reproduce the PostgreSQL results | execution on a live Snowflake or BigQuery account |
+| every template parses in its dialect; every rendered email passes the email checks | rendering inside each email platform |
+| statistics match the standard formulas and reference values | |
+| every generated flow passes the simulator: the holdout gets nothing, no send without consent, nothing after the goal, frequency cap, quiet hours; injected defects are caught | your platform's own flow engine |
+| a run that fails at any stage resumes there; a revision keeps only copy whose job, audience and voice are unchanged, and an approval only while its words are | a long-running production deployment |
+| every compliance rule names a check and a source; the SMS send hour is held to the strictest state window the rules track | legal advice: it tracks some states and not all, and laws change |
+| the DNS collector and the daily job, end to end, against a fake resolver and a transpiled warehouse | live DNS and a live BigQuery run in CI |
+| request bodies validate against schemas written from vendor documentation (October 2026) | a live API call to each vendor |
 | the repository contains no em dashes (house style) | taste |
 
-Platform endpoints, limits and rules were read from vendor documentation in October 2026. They
-change; check before a production run. Examples use fictional companies (Ridgeview, Northfield) on names RFC 2606 reserves for
-documentation and testing: `example.com`, `example.net` and `example.org`, the `.example` top-level
-domain (`ridgeview.example`, `northfield.example`), and `.test` for fixture addresses. None of them
-belong to a real sender.
+Every technical document opens with a plain-English summary. The method behind the engine, and every change in 2.2 with the reason for it, are in [`docs/AUDIT.md`](docs/AUDIT.md) and [`CHANGELOG.md`](CHANGELOG.md).
 
-## 9. License
+---
 
-Apache 2.0. Improvements to the module prompts and new platform dialects are the most valuable pull
-requests.
+## 13. Words used here
+
+| Term | Meaning |
+|---|---|
+| **Lifecycle marketing** | Messages sent automatically based on what each customer does, rather than on a calendar |
+| **Flow** | One automated sequence of messages, such as a welcome series or a win-back |
+| **Win-back** | A flow for customers who have gone quiet, to bring them back |
+| **Activation** | Getting a new customer to the first moment the product proves its value |
+| **Deliverability** | Whether email reaches the inbox, rather than spam or nowhere |
+| **Sending gate** | The engine's GREEN, AMBER or RED verdict on whether it is safe to send more |
+| **SPF, DKIM, DMARC** | The three DNS records that prove your email really comes from you; mailbox providers require all three |
+| **Unengaged / sunset** | People who have received many emails and clicked none in six months; sunsetting them stops marketing email until they engage again |
+| **Holdout** | A randomly chosen group that gets no messages, so the difference shows what the flow truly caused |
+| **Attributed vs incremental** | What the platform credits a flow with, versus what the flow actually added |
+| **ESP** | Email service provider: Klaviyo, HubSpot, Braze, Customer.io, Salesforce Marketing Cloud |
+| **CAN-SPAM, TCPA, CASL, PECR** | The US email law, the US texting and calling law, Canada's anti-spam law, and the UK's electronic marketing rules |
+
+---
+
+## FAQ
+
+**Does it need an API key?** No. In Claude it uses the connectors already in your account. The terminal version can call the Claude API for copy if you give it a key; without one it writes starter drafts for you to finish.
+
+**Does it work with our email platform?** Klaviyo, HubSpot, Braze, Customer.io and Salesforce Marketing Cloud are built in, each in its own template language. Others work from exports, through the same rules.
+
+**Will it ever email or text our customers?** No. There is no send path. It writes plans, copy and request files for a person to use.
+
+**Is the compliance check legal advice?** No. It is a checklist of specific rules, each with its source, that blocks clear violations and turns everything else into questions for your counsel.
+
+**Our list is small. Is it still useful?** Yes, and it will tell you so honestly: small lists can't prove a lift quickly, and the engine says how long it would take instead of inventing a result.
+
+**What does it cost?** The software is free (Apache 2.0). You need a paid Claude plan.
+
+---
+
+## License
+
+Apache 2.0: use it, change it, ship it. Examples use fictional companies on domains reserved for documentation (`example.com`, `.example`, `.test`). Improvements to the rules, prompts and platform dialects are the most valuable pull requests.

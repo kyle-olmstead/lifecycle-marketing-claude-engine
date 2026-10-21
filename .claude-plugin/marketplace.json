@@ -11,7 +11,7 @@
   "plugins": [
     {
       "name": "lifecycle-engine",
-      "description": "Lifecycle marketing for Claude: sending gate and inbox recovery, activation and win-back flows, multi-dialect copy, RFM and LTV SQL, honest experiment readouts, and a teammate that turns one campaign brief into a checked, build-ready plan.",
+      "description": "An AI teammate for lifecycle marketing: plans, writes, checks and measures the emails and texts you send customers. One sentence in, a launch-ready campaign out, checked for the inbox and the law, with honest measurement. Never sends anything without your approval.",
       "source": {
         "source": "github",
         "repo": "kyle-olmstead/lifecycle-marketing-claude-engine"
