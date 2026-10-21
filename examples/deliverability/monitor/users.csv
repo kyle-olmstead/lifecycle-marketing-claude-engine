@@ -1,0 +1,4 @@
+user_id,email,created_at,email_consent_at
+w_go00001,w_go00001@example.test,2026-09-01 00:00:00,2026-09-01 00:00:00
+w_go00002,w_go00002@example.test,2026-09-01 00:00:00,2026-09-01 00:00:00
+w_go00003,w_go00003@example.test,2026-09-01 00:00:00,2026-09-01 00:00:00

@@ -291,3 +291,35 @@ def test_customerio_batches_stay_under_the_documented_limit():
             for i in range(20000)]
     reqs, _ = attribute_sync("customerio", rows)
     assert len(reqs) > 1 and all(_bytes(r["body"]) <= 450_000 for r in reqs)
+
+
+# ----------------------------------------------------------------------------------------------
+# the daily deliverability monitor step (engine/deliverability/monitor.py)
+# ----------------------------------------------------------------------------------------------
+
+MONITOR_DATA = ROOT / "examples" / "deliverability" / "monitor"
+
+
+def test_daily_runs_the_deliverability_monitor_when_bounces_carry_detail(tmp_path):
+    st = daily.run("url", data=str(MONITOR_DATA), briefs_dir=tmp_path / "none", out=tmp_path / "out", sheet=False,
+                   mx=str(MONITOR_DATA / "mx.json"))
+    mon = st["deliverability_monitor"]
+    assert mon["status"] == "ok" and mon["verdict"] == "DROP BACK" and mon["gate"] == "AMBER" and mon["as_of"] == "2026-10-06"
+    assert mon["providers"]["microsoft"] == "DROP BACK" and mon["providers"]["google_workspace"] == "CONTINUE"
+    assert not [e for e in st["errors"] if "monitor" in e]
+    assert (tmp_path / "out" / "deliverability_monitor" / "monitor.json").exists()
+    issues = json.loads((tmp_path / "out" / "issues.json").read_text())
+    assert any(i["title"] == "Deliverability monitor: DROP BACK on 2026-10-06" and i["label"] == "deliverability" for i in issues)
+    status = json.loads((tmp_path / "out" / "status.json").read_text())
+    assert status["deliverability_monitor"]["verdict"] == "DROP BACK"
+    assert "## Deliverability monitor, 2026-10-06: DROP BACK" in (tmp_path / "out" / "summary.md").read_text()
+
+
+def test_daily_skips_the_monitor_without_bounce_detail_and_never_fails_the_run_on_it(tmp_path):
+    st = daily.run("demo", briefs_dir=tmp_path / "none", out=tmp_path / "demo", sheet=False)
+    assert st["deliverability_monitor"]["status"] == "skipped" and not st["errors"]
+    st = daily.run("url", data=str(MONITOR_DATA), briefs_dir=tmp_path / "none", out=tmp_path / "bad", sheet=False,
+                   warmup=str(tmp_path / "missing_plan.json"))
+    assert st["deliverability_monitor"]["status"] == "error" and any(e.startswith("deliverability monitor:") for e in st["errors"])
+    assert st["engagement"]["status"] in ("ok", "skipped") and st["priorities"] is not None
+    assert "## Deliverability monitor: failed" in (tmp_path / "bad" / "summary.md").read_text()

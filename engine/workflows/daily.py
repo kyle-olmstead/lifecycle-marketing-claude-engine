@@ -15,6 +15,10 @@ What it does, in order. Each step is independent: one that fails is recorded and
      gate's input. Skipped, not failed, when the data has no message_events table.
   2b. Tracking health (engine/agents/tracking.py): is every event in the tracking plan still arriving, is the feed stale, and
      has the exact trigger or core action of any live flow stopped? File data only (demo or url mode).
+  2c. The deliverability monitor (engine/deliverability/monitor.py): bounces classed hard, soft, block, auth or rate, deferrals,
+     complaints and unsubscribes by day and mailbox provider, with a CONTINUE, HOLD, DROP BACK or STOP verdict against the
+     warm-up's abort criteria (--warmup plan.json to compare with a ladder; --mx for business domains). Runs only when
+     message_events carries bounce or deferral detail (smtp_status or diagnostic); skipped, not failed, otherwise. File data only.
   3. For each domain in --domains (or LCM_DOMAINS), a live DNS pull (engine/deliverability/dns_collect.py) and the
      deliverability analysis, with today's unengaged share as a signal.
   4. Today's priorities (engine/agents/priorities.py): the builds most worth doing next, ranked from the data, with fixes that
@@ -25,9 +29,10 @@ Data modes: demo (examples/brands/ridgeview_saas/data), url (a folder or https p
 bigquery (the audit and tier SQL run in your warehouse through the bq command line; only aggregates
 come back). Nothing is sent to an ESP from here.
 
-Output in --out (default out/daily): one folder per flow, engagement/, deliverability/, summary.md,
-status.json (what ran, what failed) and issues.json (the GitHub issues the workflow should open or
-update: one per flow with an anomaly, per RED domain, and for a RED unengaged share).
+Output in --out (default out/daily): one folder per flow, engagement/, deliverability/, deliverability_monitor/,
+summary.md, status.json (what ran, what failed) and issues.json (the GitHub issues the workflow should open or
+update: one per flow with an anomaly, per RED domain, for a RED unengaged share, and for a monitor verdict of
+DROP BACK or STOP).
 """
 from __future__ import annotations
 
@@ -151,13 +156,27 @@ def deliverability_step(domain: str, signals: Dict[str, Any], out: Path, collect
     return {"analysis": r, "as_of": doc.get("observed_at")}
 
 
+def deliverability_monitor_step(data: Optional[str], out: Path, warmup: Optional[str] = None, mx: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """The deliverability monitor's report, or None when message_events carries no bounce or deferral detail (a skip, not a failure)."""
+    from engine.deliverability import monitor, providers
+    if not data or not monitor.has_bounce_detail(data):
+        return None
+    plan = json.loads(Path(warmup).read_text(encoding="utf-8")) if warmup else None
+    r = monitor.monitor(data, plan, mx=providers.load_mx_map(mx) if mx else None)
+    folder = out / "deliverability_monitor"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "monitor.json").write_text(json.dumps(r, indent=2, default=str), encoding="utf-8")
+    (folder / "monitor.md").write_text(monitor.render_markdown(r), encoding="utf-8")
+    return r
+
+
 # ----------------------------------------------------------------------------------------------
 # the run
 # ----------------------------------------------------------------------------------------------
 
 def run(mode: str = "demo", data: Optional[str] = None, briefs_dir: Optional[Path] = None, domains: Optional[List[str]] = None,
         out: Path = Path("out/daily"), bq: Optional[BqRunner] = None, sheet: bool = True, dry_run: bool = False,
-        collect: Optional[Callable[..., Dict[str, Any]]] = None) -> Dict[str, Any]:
+        collect: Optional[Callable[..., Dict[str, Any]]] = None, warmup: Optional[str] = None, mx: Optional[str] = None) -> Dict[str, Any]:
     from engine.agents import cohort_analyst, engagement
     from adapters.destinations import sheets as sheets_sync
     from engine.deliverability import analyze as deliverability
@@ -172,7 +191,8 @@ def run(mode: str = "demo", data: Optional[str] = None, briefs_dir: Optional[Pat
     out.mkdir(parents=True, exist_ok=True)
     logged_at = _now()
     status: Dict[str, Any] = {"generated_at": logged_at, "mode": mode, "notes": [], "flows": [], "engagement": None,
-                              "deliverability": [], "tracking": None, "priorities": None, "errors": [], "sheets": None}
+                              "deliverability": [], "tracking": None, "deliverability_monitor": None, "priorities": None, "errors": [],
+                              "sheets": None}
     eng_summary: Optional[Dict[str, Any]] = None
     analyses: Dict[str, Dict[str, Any]] = {}
     md: List[str] = [f"# Daily lifecycle health, {logged_at[:10]}", "", f"Data: {mode}" + (f" ({cohort_analyst.data_label(data)})" if data else ""), ""]
@@ -246,6 +266,30 @@ def run(mode: str = "demo", data: Optional[str] = None, briefs_dir: Optional[Pat
             status["tracking"] = {"status": "error", "error": _error(e)}
             status["errors"].append(f"tracking: {_error(e)}")
 
+    if mode == "bigquery":
+        status["deliverability_monitor"] = {"status": "skipped", "reason": "the deliverability monitor reads file data; run it with --data on an export"}
+    else:
+        try:
+            from engine.deliverability import monitor as deliverability_monitor
+            mon = deliverability_monitor_step(data, out, warmup, mx)
+            if mon is None:
+                status["deliverability_monitor"] = {"status": "skipped",
+                                                    "reason": "message_events carries no bounce or deferral detail (smtp_status or diagnostic)"}
+                md += ["## Deliverability monitor", "", "Skipped: no bounce or deferral in message_events has an smtp_status or diagnostic, so bounces "
+                       "cannot be classed (docs/DELIVERABILITY_OPERATIONS.md).", ""]
+            else:
+                t = mon["today"]
+                status["deliverability_monitor"] = {"status": "ok", "as_of": t["day"], "verdict": t["verdict"], "gate": t["gate"],
+                                                    "providers": t["providers"], "reasons": t["reasons"][:5]}
+                md += [deliverability_monitor.render_markdown(mon), ""]
+                if t["verdict"] in ("DROP BACK", "STOP"):
+                    issues.append({"title": f"Deliverability monitor: {t['verdict']} on {t['day']}", "label": "deliverability",
+                                   "body_path": str(out / "deliverability_monitor" / "monitor.md")})
+        except Exception as e:  # noqa: BLE001 - the monitor's data problems must not stop the rest of the run
+            status["deliverability_monitor"] = {"status": "error", "error": _error(e)}
+            status["errors"].append(f"deliverability monitor: {_error(e)}")
+            md += ["## Deliverability monitor: failed", "", f"`{_error(e)}`", ""]
+
     for domain in [d.strip().lower() for d in (domains or []) if d.strip()]:
         try:
             res = deliverability_step(domain, {k: v for k, v in signals.items() if v is not None}, out, collect)
@@ -308,12 +352,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--no-sheet", action="store_true", help="skip the Sheets step entirely")
     ap.add_argument("--dry-run", action="store_true", help="write the Sheets rows as CSV instead of to the sheet")
     ap.add_argument("--strict", action="store_true", help="exit 1 when any step failed (the workflow checks status.json instead)")
+    ap.add_argument("--warmup", default=env("LCM_WARMUP_PLAN"), help="a warm-up plan JSON (engine/deliverability/warmup.py) for the deliverability monitor")
+    ap.add_argument("--mx", default=env("LCM_MX_MAP"), help='JSON {"domain": ["mx host"]} so the monitor can map business domains to providers')
     a = ap.parse_args(argv)
     mode = a.mode or ("bigquery" if a.bq_project else "url" if a.data else "demo")
     bq = bq_runner(a.bq_project, a.bq_dataset) if mode == "bigquery" and a.bq_project and a.bq_dataset else None
     try:
         status = run(mode, a.data, Path(a.briefs) if a.briefs else None, a.domains.split(",") if a.domains else [], Path(a.out), bq,
-                     sheet=not a.no_sheet, dry_run=a.dry_run)
+                     sheet=not a.no_sheet, dry_run=a.dry_run, warmup=a.warmup, mx=a.mx)
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
@@ -321,7 +367,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         traceback.print_exc()
         return 2
     print((Path(a.out) / "summary.md").read_text(encoding="utf-8"))
-    print(json.dumps({k: status[k] for k in ("mode", "flows", "engagement", "tracking", "deliverability", "priorities", "errors", "issues")}, indent=2, default=str))
+    print(json.dumps({k: status[k] for k in ("mode", "flows", "engagement", "tracking", "deliverability_monitor", "deliverability", "priorities",
+                                             "errors", "issues")}, indent=2, default=str))
     return 1 if (a.strict and status["errors"]) else 0
 
 

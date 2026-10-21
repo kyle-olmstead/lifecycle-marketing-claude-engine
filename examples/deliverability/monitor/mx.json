@@ -1,0 +1,6 @@
+{
+  "_about": "MX hosts for the scenario's business domains, so engine/deliverability/monitor.py can tell which provider filters them (--mx). Reserved .example domains; the MX host patterns are the documented ones in engine/deliverability/providers.py.",
+  "acme-corp.example": ["smtp.google.com"],
+  "globex.example": ["globex-example.mail.protection.outlook.com"],
+  "initech.example": ["mx1-us1.ppe-hosted.com", "mx2-us1.ppe-hosted.com"]
+}

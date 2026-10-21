@@ -1,0 +1,37 @@
+From: Abuse Desk <abuse@isp.example.net>
+To: fbl@example.com
+Subject: Abuse report
+Date: Tue, 06 Oct 2026 11:20:00 +0000
+Message-ID: <example-isp-0001@isp.example.net>
+MIME-Version: 1.0
+Content-Type: multipart/report; report-type=feedback-report; boundary="isp_boundary_0001"
+X-Example-Note: Synthetic RFC 5965 report from a mailbox provider that keeps the recipient address (Original-Rcpt-To) but whose original message carries no user-id header. It resolves only by joining the address to users.email.
+
+--isp_boundary_0001
+Content-Type: text/plain; charset="US-ASCII"
+
+A subscriber reported this message as spam.
+
+--isp_boundary_0001
+Content-Type: message/feedback-report
+
+Feedback-Type: abuse
+User-Agent: ExampleISP-FBL/1.0
+Version: 1
+Original-Mail-From: <bounce@em.example.com>
+Original-Rcpt-To: <u_0042@example.test>
+Arrival-Date: Tue, 06 Oct 2026 10:02:13 +0000
+Reporting-MTA: dns; mx.isp.example.net
+Source-IP: 192.0.2.10
+
+--isp_boundary_0001
+Content-Type: text/rfc822-headers
+
+Return-Path: <bounce@em.example.com>
+From: Example News <news@example.com>
+To: <u_0042@example.test>
+Subject: Your October update
+Date: Tue, 06 Oct 2026 10:01:59 +0000
+Message-ID: <m_20261006.u_0042@em.example.com>
+
+--isp_boundary_0001--
