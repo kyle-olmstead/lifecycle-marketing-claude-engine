@@ -169,8 +169,8 @@ Details, and the path for every tool without a connector: [`CONNECTORS.md`](CONN
 |---|---|
 | "set up the lifecycle engine" | Finds your connected tools and configures itself |
 | **"what are my top 3 priority builds today and why?"** | Anything to fix first, then the three builds most worth doing next, from your data: the evidence, an estimated monthly revenue range with its assumptions, confidence, effort, and the next step |
-| "what broke overnight?" | The morning check: priorities, anything unusual in a flow's audience, the list, every sending domain |
-| "are our events firing correctly?" | Every tracked event against its usual week, missing properties, and the flows at risk |
+| "what broke overnight?" | The morning check: priorities, anything unusual in a flow's audience, tracking, the list, every sending domain |
+| "are our events firing correctly?" | Every tracked event against its usual week, a stalled feed, missing properties, and each live flow whose trigger stopped |
 | "when do customers stop using the product, by plan?" | The weekly retention curve, where it drops and where it levels off, per segment |
 | "plan a 5-touch win-back for users who haven't created a report in 14 days" | The full plan: audience, flow, copy, holdout, compliance review, build steps |
 | "make it 4 touches" / "add SMS" / "go with variant B for the first email" | Changes only what that affects; keeps approved copy |
