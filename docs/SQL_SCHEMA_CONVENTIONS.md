@@ -13,7 +13,7 @@ The engine reasons about customer data in four layers: **identity** (who), **sta
 | `track_events` | behavior | one row per event | `event_id`, `user_id`, `anonymous_id`, `event_name`, `event_at`, `properties` |
 | `message_events` | behavior (messaging) | one row per message event from the ESP | `event_id`, `user_id`, `channel`, `event_name`, `event_at`, `message_id`, `campaign`, `machine_open` |
 
-`message_events` is optional: only the engagement tiers (`agents/engagement.py`) read it, and the
+`message_events` is optional: only the engagement tiers (`engine/agents/engagement.py`) read it, and the
 daily job skips that step without it. The engine also writes one table of its own,
 `lcm_flow_entries` (below).
 
@@ -128,7 +128,7 @@ A "customer" is a user with at least one completed transaction on the resolved o
 - Tables: plural snake_case (`track_events`). Columns: snake_case.
 - Timestamps end in `_at` and are UTC (`order_at`, `event_at`). Dates end in `_date`. Day counts end in `_days`.
 - Money columns end in `_amount` and are in the reporting currency after conversion. Never sum mixed currencies.
-- Event names are `object_action` in snake_case, past tense for completed actions: `order_completed`, `signed_up`, `onboarding_step_completed`, `feature_used`, `subscription_cancelled`. The allowed set lives in `modules/02_behavioral_triggers_and_flows/schemas/custom_event_definitions.json`.
+- Event names are `object_action` in snake_case, past tense for completed actions: `order_completed`, `signed_up`, `onboarding_step_completed`, `feature_used`, `subscription_cancelled`. The allowed set lives in `config/tracking_plan.json`.
 - Event property keys are snake_case and typed; the same key means the same thing on every event (`order_id` is always the order id).
 - Derived columns carry their derivation in the name: `recency_days`, `r_score`, `rfm_segment`, `cohort_month`, `months_since_first_order`.
 - Scores are integers 1 to 5. Segments are lowercase snake_case strings (`champions`, `at_risk`, `hibernating`, `instant_churn`).
@@ -225,10 +225,10 @@ Add a fourth dimension where the business is episodic: expected next need, deriv
 
 ## 8. How the repository tests its SQL
 
-Every SQL block in the repository declares its dialect, in the fence info string (`sql postgres`, `sql snowflake`, `sql bigquery`) or on its first line (`-- dialect: postgresql`). `tools/repo_check.py`, which runs in CI, then:
+Every SQL block in the repository declares its dialect, in the fence info string (`sql postgres`, `sql snowflake`, `sql bigquery`) or on its first line (`-- dialect: postgresql`). `engine/repo_check.py`, which runs in CI, then:
 
 1. parses every block in its declared dialect with sqlglot, an open-source SQL parser. A parse is a syntax check, not a compile against a live warehouse: a function the warehouse lacks can still parse;
-2. executes every PostgreSQL `SELECT` or `WITH` block on DuckDB, over the deterministic fixtures in `tests/fixtures` (built by `tests/fixtures/make_fixtures.py`). DuckDB implements the PostgreSQL features these queries use; it is not PostgreSQL, so a run is strong evidence, not proof. Blocks that read a materialized output carry `-- no-run` and are parsed only;
+2. executes every PostgreSQL `SELECT` or `WITH` block on DuckDB, over the deterministic fixtures in `examples/brands/ridgeview_saas/data` (built by `examples/brands/ridgeview_saas/data/make_data.py`). DuckDB implements the PostgreSQL features these queries use; it is not PostgreSQL, so a run is strong evidence, not proof. Blocks that read a materialized output carry `-- no-run` and are parsed only;
 3. for the RFM and LTV reference queries, transpiles the Snowflake and BigQuery versions to DuckDB and requires them to reproduce the PostgreSQL output's key columns when transpiled to DuckDB: segment and R, F, M scores for every customer (RFM), observed customers and cumulative LTV for every cohort and period (LTV) (`tests/test_sql.py`). Other columns are not compared.
 
-Nothing in CI runs against a live Snowflake, BigQuery or PostgreSQL account. Run `python3 tools/sql_check.py <file> --dialect <dialect>` on any generated query, and `--run` for PostgreSQL against the fixtures, before it goes into a scheduled job.
+Nothing in CI runs against a live Snowflake, BigQuery or PostgreSQL account. Run `python3 engine/sql/check.py <file> --dialect <dialect>` on any generated query, and `--run` for PostgreSQL against the fixtures, before it goes into a scheduled job.

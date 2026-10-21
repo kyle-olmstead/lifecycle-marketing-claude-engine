@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.0.0 (2026-10)
+
+In progress.
+
 ## 2.3.0 (2026-10)
 
 **It tells you what to build next.** Ask "what are my top 3 priority builds today and why?", or read the top of the

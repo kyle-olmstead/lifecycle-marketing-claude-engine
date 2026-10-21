@@ -1,10 +1,10 @@
-"""The ROI memo's figures come from scripts/roi_model.py; if either changes, they must change together."""
+"""The ROI memo's figures come from engine/measurement/roi.py; if either changes, they must change together."""
 import json
 import subprocess
 import sys
 
 from tests.conftest import ROOT
-from scripts import roi_model
+from engine.measurement import roi as roi_model
 
 MEMO = (ROOT / "docs" / "ROI_MEMO.md").read_text(encoding="utf-8")
 
@@ -29,7 +29,7 @@ def test_every_task_row_in_the_memo_matches_the_model():
 
 
 def test_the_model_runs_with_other_inputs():
-    out = subprocess.run([sys.executable, "scripts/roi_model.py", "--pay", "130000", "--team", "4", "--json"], cwd=ROOT,
+    out = subprocess.run([sys.executable, "engine/measurement/roi.py", "--pay", "130000", "--team", "4", "--json"], cwd=ROOT,
                          capture_output=True, text=True, check=True).stdout
     r = json.loads(out)
     assert r["inputs"]["team"] == 4 and r["cost_of_a_marketer"]["pay"] == 130000

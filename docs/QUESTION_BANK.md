@@ -11,7 +11,7 @@
 In Claude either works. After `lcm`, type the plain version: the terminal router is rules, not a model, and CI checks
 that every plain question with an `lcm` command reaches the job named here. Questions marked *the ... skill in Claude*
 have no terminal job; `lcm` says so instead of guessing. This page is written from `config/question_bank.yaml`
-(`python3 tools/question_bank.py --write`).
+(`python3 engine/questions.py --write`).
 
 | Cadence | Questions |
 |---|---|
@@ -220,7 +220,7 @@ have no terminal job; `lcm` says so instead of guessing. This page is written fr
 *Expert version:* What do the time returned, the inbox protection and the measurement discipline add up to for our team, at our pay, volume and email revenue?
 
 - **How:** `lcm` job `roi`: `lcm "what is our lifecycle program worth next year?"`
-- **You get:** The business case from docs/ROI_MEMO.md at the default numbers; rerun scripts/roi_model.py with yours.
+- **You get:** The business case from docs/ROI_MEMO.md at the default numbers; rerun engine/measurement/roi.py with yours.
 - **Needs:** your pay, team size and email revenue for your own figures
 - **Cannot answer:** Modeled, not measured; the memo says how to measure the task hours.
 

@@ -1,6 +1,6 @@
 # The business case, in plain English
 
-*What this engine is worth, explained so that anyone can follow the math. Every number here comes from one small program, `scripts/roi_model.py`, that you can run with your own figures. Where a number comes from a public source, the source is at the end. Where a number is an assumption, it says so. Where something has not been measured yet, it says that too.*
+*What this engine is worth, explained so that anyone can follow the math. Every number here comes from one small program, `engine/measurement/roi.py`, that you can run with your own figures. Where a number comes from a public source, the source is at the end. Where a number is an assumption, it says so. Where something has not been measured yet, it says that too.*
 
 ---
 
@@ -181,11 +181,11 @@ This engine has **not** been run in a production deployment yet. Here is the hon
 ## Run it with your numbers
 
 ```
-python3 scripts/roi_model.py                                           # the figures in this memo
-python3 scripts/roi_model.py --pay 130000 --team 4                     # your pay and team size
-python3 scripts/roi_model.py --benefits-load 0.43                      # the government benefits figure instead of 20 percent
-python3 scripts/roi_model.py --email-revenue 8000000 --incremental-share 0.3 --spam-share 0.25
-python3 scripts/roi_model.py --json
+python3 engine/measurement/roi.py                                           # the figures in this memo
+python3 engine/measurement/roi.py --pay 130000 --team 4                     # your pay and team size
+python3 engine/measurement/roi.py --benefits-load 0.43                      # the government benefits figure instead of 20 percent
+python3 engine/measurement/roi.py --email-revenue 8000000 --incremental-share 0.3 --spam-share 0.25
+python3 engine/measurement/roi.py --json
 ```
 
 | Assumption | Used here | What moves when you change it |
@@ -211,4 +211,4 @@ python3 scripts/roi_model.py --json
 - [Klaviyo, email marketing benchmarks](https://www.klaviyo.com/products/email-marketing/benchmarks): flows generate about 41 percent of email revenue from 5.3 percent of sends, across more than 183,000 customers.
 - [Burr & Forman, The TCPA: recoverable damages](https://www.burr.com/telephone-consumer-protection-act/the-tcpa-recoverable-damages), summarizing 47 U.S.C. 227(b)(3): $500 per violation, up to $1,500 for willful or knowing violations.
 - [Federal Trade Commission, CAN-SPAM Act: a compliance guide for business](https://www.ftc.gov/business-guidance/resources/can-spam-act-compliance-guide-business): penalties up to $53,088 per violating email.
-- `scripts/roi_model.py` in this repository: the arithmetic. `examples/stats/winback_readout.json`: the fictional worked readout.
+- `engine/measurement/roi.py` in this repository: the arithmetic. `examples/stats/winback_readout.json`: the fictional worked readout.

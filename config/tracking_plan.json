@@ -1,0 +1,860 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kyle-olmstead/lifecycle-marketing-claude-engine/config/tracking_plan.json",
+  "title": "LMM Engine custom event definitions",
+  "description": "The tracking plan the behavioral flows are built on, as an executable schema. Each event validates as a Segment-style track call. Every event earns its place by naming the flows and segments it unlocks (x-tracking-plan); an event that unlocks nothing does not ship. Names are object_action in snake_case, past tense; property keys mean the same thing on every event.",
+  "type": "object",
+  "required": [
+    "event",
+    "event_id",
+    "timestamp",
+    "properties"
+  ],
+  "properties": {
+    "type": {
+      "const": "track"
+    },
+    "event": {
+      "enum": [
+        "signed_up",
+        "onboarding_step_completed",
+        "activation_reached",
+        "session_started",
+        "feature_used",
+        "product_viewed",
+        "checkout_started",
+        "order_completed",
+        "subscription_started",
+        "subscription_cancelled",
+        "push_permission_changed",
+        "sms_consent_changed"
+      ]
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 8,
+      "description": "idempotency key: messageId in Segment and RudderStack, insert_id in Mixpanel and Amplitude"
+    },
+    "user_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "anonymous_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC, ISO 8601, when the action happened (not when it was received)"
+    },
+    "properties": {
+      "type": "object"
+    },
+    "context": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "enum": [
+            "web",
+            "ios",
+            "android",
+            "server",
+            "warehouse"
+          ]
+        },
+        "ip": {
+          "type": "string"
+        },
+        "locale": {
+          "type": "string"
+        },
+        "timezone": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "anyOf": [
+    {
+      "required": [
+        "user_id"
+      ],
+      "properties": {
+        "user_id": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "required": [
+        "anonymous_id"
+      ],
+      "properties": {
+        "anonymous_id": {
+          "type": "string"
+        }
+      }
+    }
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "signed_up"
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "then": {
+        "properties": {
+          "properties": {
+            "$ref": "#/$defs/signed_up"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "onboarding_step_completed"
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "then": {
+        "properties": {
+          "properties": {
+            "$ref": "#/$defs/onboarding_step_completed"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "activation_reached"
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "then": {
+        "properties": {
+          "properties": {
+            "$ref": "#/$defs/activation_reached"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "session_started"
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "then": {
+        "properties": {
+          "properties": {
+            "$ref": "#/$defs/session_started"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "feature_used"
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "then": {
+        "properties": {
+          "properties": {
+            "$ref": "#/$defs/feature_used"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "product_viewed"
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "then": {
+        "properties": {
+          "properties": {
+            "$ref": "#/$defs/product_viewed"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "checkout_started"
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "then": {
+        "properties": {
+          "properties": {
+            "$ref": "#/$defs/checkout_started"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "order_completed"
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "then": {
+        "properties": {
+          "properties": {
+            "$ref": "#/$defs/order_completed"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "subscription_started"
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "then": {
+        "properties": {
+          "properties": {
+            "$ref": "#/$defs/subscription_started"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "subscription_cancelled"
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "then": {
+        "properties": {
+          "properties": {
+            "$ref": "#/$defs/subscription_cancelled"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "push_permission_changed"
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "then": {
+        "properties": {
+          "properties": {
+            "$ref": "#/$defs/push_permission_changed"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "sms_consent_changed"
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "then": {
+        "properties": {
+          "properties": {
+            "$ref": "#/$defs/sms_consent_changed"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "signed_up": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "plan"
+      ],
+      "properties": {
+        "method": {
+          "enum": [
+            "email",
+            "google",
+            "microsoft",
+            "sso",
+            "invite"
+          ]
+        },
+        "plan": {
+          "type": "string",
+          "minLength": 1
+        },
+        "referrer_user_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "utm_source": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "utm_campaign": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "onboarding_step_completed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step",
+        "step_index"
+      ],
+      "properties": {
+        "step": {
+          "enum": [
+            "connected_data_source",
+            "invited_teammate",
+            "created_first_report"
+          ]
+        },
+        "step_index": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        }
+      }
+    },
+    "activation_reached": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "definition",
+        "days_since_signup"
+      ],
+      "properties": {
+        "definition": {
+          "type": "string",
+          "minLength": 1,
+          "description": "the aha definition in force when this fired, so a later change of definition does not rewrite history"
+        },
+        "days_since_signup": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "session_started": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "platform"
+      ],
+      "properties": {
+        "platform": {
+          "enum": [
+            "web",
+            "ios",
+            "android",
+            "desktop"
+          ]
+        },
+        "app_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "feature_used": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "feature"
+      ],
+      "properties": {
+        "feature": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "product_viewed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product_id"
+      ],
+      "properties": {
+        "product_id": {
+          "type": "string"
+        },
+        "category": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "price": {
+          "type": "number",
+          "minimum": 0,
+          "description": "currency units; round to cents upstream. Not enforced with multipleOf 0.01, which rejects values such as 19.99 under binary floating point"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      }
+    },
+    "checkout_started": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checkout_id",
+        "value",
+        "currency",
+        "items"
+      ],
+      "properties": {
+        "checkout_id": {
+          "type": "string"
+        },
+        "value": {
+          "type": "number",
+          "minimum": 0,
+          "description": "currency units; round to cents upstream. Not enforced with multipleOf 0.01, which rejects values such as 19.99 under binary floating point"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/line_item"
+          }
+        }
+      }
+    },
+    "order_completed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "order_id",
+        "net_amount",
+        "currency"
+      ],
+      "properties": {
+        "order_id": {
+          "type": "string"
+        },
+        "net_amount": {
+          "type": "number",
+          "minimum": 0,
+          "description": "currency units; round to cents upstream. Not enforced with multipleOf 0.01, which rejects values such as 19.99 under binary floating point"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "items": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/line_item"
+              }
+            }
+          ]
+        },
+        "is_first_order": {
+          "type": "boolean"
+        }
+      }
+    },
+    "subscription_started": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subscription_id",
+        "plan",
+        "interval",
+        "mrr"
+      ],
+      "properties": {
+        "subscription_id": {
+          "type": "string"
+        },
+        "plan": {
+          "type": "string"
+        },
+        "interval": {
+          "enum": [
+            "month",
+            "year"
+          ]
+        },
+        "mrr": {
+          "type": "number",
+          "minimum": 0,
+          "description": "currency units; round to cents upstream. Not enforced with multipleOf 0.01, which rejects values such as 19.99 under binary floating point"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "trial": {
+          "type": "boolean"
+        }
+      }
+    },
+    "subscription_cancelled": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subscription_id",
+        "reason",
+        "effective_at"
+      ],
+      "properties": {
+        "subscription_id": {
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "price",
+            "missing_feature",
+            "switched_competitor",
+            "not_using",
+            "business_closed",
+            "other",
+            "unknown"
+          ]
+        },
+        "reason_text": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 1000
+        },
+        "effective_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "push_permission_changed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "granted",
+        "platform"
+      ],
+      "properties": {
+        "granted": {
+          "type": "boolean"
+        },
+        "platform": {
+          "enum": [
+            "ios",
+            "android",
+            "web"
+          ]
+        }
+      }
+    },
+    "sms_consent_changed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "granted",
+        "source",
+        "mechanism"
+      ],
+      "properties": {
+        "granted": {
+          "type": "boolean"
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mechanism": {
+          "enum": [
+            "double_opt_in",
+            "single_opt_in_keyword",
+            "web_form_checkbox",
+            "revoked_keyword",
+            "revoked_support"
+          ]
+        }
+      }
+    },
+    "line_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product_id",
+        "quantity",
+        "price"
+      ],
+      "properties": {
+        "product_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "price": {
+          "type": "number",
+          "minimum": 0,
+          "description": "currency units; round to cents upstream. Not enforced with multipleOf 0.01, which rejects values such as 19.99 under binary floating point"
+        }
+      }
+    }
+  },
+  "x-tracking-plan": [
+    {
+      "event": "signed_up",
+      "layer": "behavior",
+      "sources": [
+        "server"
+      ],
+      "unlocks": [
+        "activation flow entry",
+        "signup cohorts",
+        "D7 to D90 retention (queries/rolling_d30_retention.sql)"
+      ]
+    },
+    {
+      "event": "onboarding_step_completed",
+      "layer": "behavior",
+      "sources": [
+        "server"
+      ],
+      "unlocks": [
+        "activation flow branching",
+        "leak map by step"
+      ]
+    },
+    {
+      "event": "activation_reached",
+      "layer": "behavior",
+      "sources": [
+        "server"
+      ],
+      "unlocks": [
+        "activation flow goal and exit",
+        "activated vs not retention split",
+        "lifecycle stage activated"
+      ]
+    },
+    {
+      "event": "session_started",
+      "layer": "behavior",
+      "sources": [
+        "web",
+        "ios",
+        "android"
+      ],
+      "unlocks": [
+        "in-app modal eligibility",
+        "engagement recency",
+        "absence-based at-risk trigger"
+      ]
+    },
+    {
+      "event": "feature_used",
+      "layer": "behavior",
+      "sources": [
+        "web",
+        "ios",
+        "android",
+        "server"
+      ],
+      "unlocks": [
+        "feature adoption nudges",
+        "depth score"
+      ]
+    },
+    {
+      "event": "product_viewed",
+      "layer": "behavior",
+      "sources": [
+        "web",
+        "ios",
+        "android"
+      ],
+      "unlocks": [
+        "browse abandonment"
+      ]
+    },
+    {
+      "event": "checkout_started",
+      "layer": "behavior",
+      "sources": [
+        "web",
+        "ios",
+        "android",
+        "server"
+      ],
+      "unlocks": [
+        "checkout abandonment flow entry"
+      ]
+    },
+    {
+      "event": "order_completed",
+      "layer": "transaction",
+      "sources": [
+        "server"
+      ],
+      "unlocks": [
+        "post-purchase flow",
+        "abandonment exit",
+        "RFM and LTV (warehouse orders table remains the source of truth)"
+      ]
+    },
+    {
+      "event": "subscription_started",
+      "layer": "transaction",
+      "sources": [
+        "server"
+      ],
+      "unlocks": [
+        "subscriber onboarding",
+        "renewal reminders"
+      ]
+    },
+    {
+      "event": "subscription_cancelled",
+      "layer": "transaction",
+      "sources": [
+        "server"
+      ],
+      "unlocks": [
+        "cancellation save and win-back flows",
+        "churn reason reporting"
+      ]
+    },
+    {
+      "event": "push_permission_changed",
+      "layer": "state",
+      "sources": [
+        "ios",
+        "android",
+        "web"
+      ],
+      "unlocks": [
+        "push channel eligibility"
+      ]
+    },
+    {
+      "event": "sms_consent_changed",
+      "layer": "state",
+      "sources": [
+        "server"
+      ],
+      "unlocks": [
+        "SMS channel eligibility with an auditable consent record (source, timestamp, mechanism)"
+      ]
+    }
+  ],
+  "x-platform-notes": {
+    "customerio": "custom events arrive as {{event.<property>}} in event-triggered campaigns",
+    "braze": "custom events and properties: {{event_properties.${property}}} in event-triggered messages",
+    "klaviyo": "events arrive as metrics; read properties with {{ event|lookup:'property' }}",
+    "hubspot": "custom behavioral events have portal-specific internal names; map each event once and record the internal name here",
+    "mixpanel": "send event_id as $insert_id for deduplication",
+    "amplitude": "send event_id as insert_id for deduplication"
+  }
+}

@@ -20,13 +20,13 @@ metadata:
 
 ## Step 0: Rules and tools
 
-Read `${CLAUDE_PLUGIN_ROOT}/core/system_prompt.md`. The teammate's code needs Python 3.12 or later
+Read `${CLAUDE_PLUGIN_ROOT}/prompts/core/system_prompt.md`. The teammate's code needs Python 3.12 or later
 and `${CLAUDE_PLUGIN_ROOT}/requirements.txt` (install once with
 `python3 -m pip install -r ${CLAUDE_PLUGIN_ROOT}/requirements.txt`). If code cannot run here, use
 the module prompts directly (`lifecycle-flows`, `lifecycle-copy`, `lifecycle-measurement`) and label
 every artifact "unchecked".
 
-**One command for every job.** `python3 ${CLAUDE_PLUGIN_ROOT}/agents/cli.py "<the user's request>"`
+**One command for every job.** `python3 ${CLAUDE_PLUGIN_ROOT}/engine/cli/main.py "<the user's request>"`
 routes a plain-English request (or a YAML job file) to the right tool. Run it with `--dry-run` first
 when the request is ambiguous: it prints the job and anything still missing, and runs nothing. The
 sections below are the same jobs called directly, for when you need their options.
@@ -36,7 +36,7 @@ sections below are the same jobs called directly, for when you need their option
 When the user asks what to build, what their priorities are, or for campaign ideas, run:
 
 ```text
-python3 ${CLAUDE_PLUGIN_ROOT}/agents/priorities.py --data <exports> --top 3 --out <workdir>/lmm-engine [--value-per-conversion <dollars>] [--domain <sending domain>]
+python3 ${CLAUDE_PLUGIN_ROOT}/engine/agents/priorities.py --data <exports> --top 3 --out <workdir>/lmm-engine [--value-per-conversion <dollars>] [--domain <sending domain>]
 ```
 
 - Lead with the ranked list as written: fixes first, then the top builds, each with its evidence, the monthly range
@@ -59,7 +59,7 @@ the user's question to the closest entry and follow its route; say plainly when 
   at the top of the file before planning:
 
   ```text
-  python3 ${CLAUDE_PLUGIN_ROOT}/agents/orchestrator.py brief --text "<the user's sentence>" --product "<product>" [--set postal_address="<address>"] --out <workdir>/lmm-engine/briefs/<name>.yaml
+  python3 ${CLAUDE_PLUGIN_ROOT}/engine/pipeline/orchestrator.py brief --text "<the user's sentence>" --product "<product>" [--set postal_address="<address>"] --out <workdir>/lmm-engine/briefs/<name>.yaml
   ```
 
 - Fill what you can from `lmm-engine/context.xml` (platform, sending gate, postal address, sender,
@@ -71,7 +71,7 @@ the user's question to the closest entry and follow its route; say plainly when 
 ## Step 2: Plan
 
 ```text
-python3 ${CLAUDE_PLUGIN_ROOT}/agents/orchestrator.py plan --brief <brief.yaml> [--data <folder of users, orders, track_events exports>] --copy-mode handoff --out <workdir>/lmm-engine/plans
+python3 ${CLAUDE_PLUGIN_ROOT}/engine/pipeline/orchestrator.py plan --brief <brief.yaml> [--data <folder of users, orders, track_events exports>] --copy-mode handoff --out <workdir>/lmm-engine/plans
 ```
 
 - Every run is saved under `plans/<flow>/runs/<run id>/`. If it stops part way (exit code 4), read the
@@ -82,7 +82,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/agents/orchestrator.py plan --brief <brief.yaml> [
   Without data, the plan says the read date is not computed. Keep it so.
 - The daily win-back job is in `cohort/job/`: `ledger_<dialect>.sql` once, then each day
   `queue_<dialect>.sql` (writes who is due as pending), `pending_<dialect>.sql` (the rows to push with
-  `tools/event_payloads.py`), and `mark_<dialect>.sql` for each row once its request succeeded. A
+  `adapters/destinations/event_payloads.py`), and `mark_<dialect>.sql` for each row once its request succeeded. A
   failed push stays pending for the next run; each lapse is in the ledger once, so nobody enters twice.
 - **Copy:** use `--copy-mode handoff`, then write the drafts yourself from `copy_briefs.md` following
   `${CLAUDE_PLUGIN_ROOT}/skills/lifecycle-copy/SKILL.md`, save `drafts.json`, and re-run with
@@ -109,12 +109,12 @@ questions for the user or their counsel.
 ## Daily health check, tiers, blasts and domains
 
 ```text
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/daily.py --data <exports> --domains <example.com,...> --out <workdir>/lmm-engine/daily
-python3 ${CLAUDE_PLUGIN_ROOT}/agents/engagement.py --data <exports> [--platform klaviyo|hubspot|braze|customerio] --out <workdir>/lmm-engine/engagement
-python3 ${CLAUDE_PLUGIN_ROOT}/agents/cohort_analyst.py blast-vs-trigger --brief <brief.yaml> --data <exports> [--dates 2026-09-01,2026-10-01]
-python3 ${CLAUDE_PLUGIN_ROOT}/tools/dns_collect.py <domain> [--selectors s1,s2] --analyze --markdown
-python3 ${CLAUDE_PLUGIN_ROOT}/agents/tracking.py --data <exports> [--events-dir <receiver folder>]
-python3 ${CLAUDE_PLUGIN_ROOT}/agents/retention.py --data <exports> [--by plan|country|lifecycle_stage]
+python3 ${CLAUDE_PLUGIN_ROOT}/engine/workflows/daily.py --data <exports> --domains <example.com,...> --out <workdir>/lmm-engine/daily
+python3 ${CLAUDE_PLUGIN_ROOT}/engine/agents/engagement.py --data <exports> [--platform klaviyo|hubspot|braze|customerio] --out <workdir>/lmm-engine/engagement
+python3 ${CLAUDE_PLUGIN_ROOT}/engine/agents/cohort_analyst.py blast-vs-trigger --brief <brief.yaml> --data <exports> [--dates 2026-09-01,2026-10-01]
+python3 ${CLAUDE_PLUGIN_ROOT}/engine/deliverability/dns_collect.py <domain> [--selectors s1,s2] --analyze --markdown
+python3 ${CLAUDE_PLUGIN_ROOT}/engine/agents/tracking.py --data <exports> [--events-dir <receiver folder>]
+python3 ${CLAUDE_PLUGIN_ROOT}/engine/agents/retention.py --data <exports> [--by plan|country|lifecycle_stage]
 ```
 
 - The daily job audits every brief in `briefs/active/`; `summary.md` is the report and `status.json`
@@ -124,7 +124,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/agents/retention.py --data <exports> [--by plan|co
   request files the tool wrote.
 - A domain check needs DNS access; if lookups fail here, say so and ask for `dig` output instead.
 
-With a warehouse connector instead of files: `python3 ${CLAUDE_PLUGIN_ROOT}/agents/cohort_analyst.py audit-sql --brief
+With a warehouse connector instead of files: `python3 ${CLAUDE_PLUGIN_ROOT}/engine/agents/cohort_analyst.py audit-sql --brief
 <brief> --dialect <bigquery|snowflake|postgres> --out <dir>`, run the three queries through the
 connector, save each result as JSON (`daily.json`, `snapshot.json`, `funnel.json`), then
 `audit --from-results <dir>`. For tiers, run `engagement.py --sql-only --dialect <dialect>` and run

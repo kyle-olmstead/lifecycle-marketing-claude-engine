@@ -1,0 +1,1348 @@
+{
+  "run_id": "c730fc449f0d",
+  "generated_at": "2026-10-21T03:07:15+00:00",
+  "engine_version": "2.3.0",
+  "brief": {
+    "product_name": "Ridgeview",
+    "flow_type": "winback",
+    "goal": "Build a 5-touch automated win-back flow for users who completed onboarding but haven't created a report in 14 days",
+    "platform": "customerio",
+    "business_model": "subscription",
+    "qualifying_event": {
+      "event": "onboarding_step_completed",
+      "where": {
+        "step_index": 3
+      },
+      "label": "completed onboarding"
+    },
+    "core_conversion_event": {
+      "event": "feature_used",
+      "where": {
+        "feature": "reports"
+      },
+      "label": "created a report"
+    },
+    "churn_threshold_days": 14,
+    "touches": 5,
+    "channels": [
+      "email",
+      "in_app"
+    ],
+    "holdout_pct": 15.0,
+    "randomization_unit": "user",
+    "monthly_entrants": null,
+    "baseline_conversion_rate": null,
+    "min_detectable_lift": 0.25,
+    "outcome_window_days": 30,
+    "sending_gate": "GREEN",
+    "warehouse_dialect": "postgres",
+    "sender_name": "Dana Ortiz at Ridgeview",
+    "brand_voice": "plain, specific, second person, no exclamation marks; operations vocabulary (reports, data sources, teammates)",
+    "postal_address": "100 Example Way, Suite 400, Springfield, OR 97477",
+    "cta_url": "https://app.ridgeview.example/reports/new",
+    "recipient_countries": [],
+    "offer_policy": "no discounts or offers",
+    "frequency_cap_per_week": 3,
+    "send_hour_local": 10,
+    "quiet_hours": "21:00 to 08:00 recipient local time",
+    "copy_variants": 2,
+    "assumptions": [
+      {
+        "field": "monthly_entrants",
+        "value": 28.0,
+        "why": "estimated from the data (DEMO DATA): 28 a month, mean threshold crossings over 3 complete month(s) to 2026-09"
+      },
+      {
+        "field": "baseline_conversion_rate",
+        "value": 0.1746,
+        "why": "estimated from the data (DEMO DATA): 17.5%, 22 of 126 matured threshold crossings came back within 30 days with no flow"
+      },
+      {
+        "field": "outcome_window_days",
+        "value": 30,
+        "why": "not stated; set to 30 days so the whole flow (last touch on day 18) plus a week is inside it"
+      }
+    ]
+  },
+  "gate_policy": {
+    "gate": "GREEN",
+    "effective_gate": "GREEN",
+    "sending_allowed": true,
+    "entry_filters": [],
+    "audience": "every entrant with consent for the channel",
+    "note": "GREEN gate: normal sending within the frequency cap"
+  },
+  "cohort": {
+    "name": "Customer.io winback cohort: Ridgeview",
+    "plain_english": "People who completed onboarding and then went 14 days without the core action (created a report). They enter on day 14, once per lapse, and leave the moment they do the core action again.",
+    "trigger_event": "core_action_lapsed_14d",
+    "entry_rules": [
+      "completed onboarding (onboarding_step_completed where step_index = 3) at least once (evaluated at entry)",
+      "14 or more calendar days since the core action (feature_used where feature = reports), counted from their own last one, or from qualifying if they never did it",
+      "queued on the first daily run after crossing (a missed run catches up for 3 days) and pushed from the ledger lcm_flow_entries, which holds each lapse once"
+    ],
+    "exclusions": [
+      "no consent for any channel in the flow",
+      "on the platform's suppression list",
+      "internal or test account"
+    ],
+    "exit_rule": "leaves the moment they create a report again (checked before every step)",
+    "platform_pattern": "Event-triggered campaign on core_action_lapsed_14d, re-entry allowed. Exit: performs feature_used where feature = reports (conversion goal with exit on conversion). Holdout: True/False branch on the event attribute in_holdout.",
+    "sql": {
+      "postgres": "-- dialect: postgres\n-- Ridgeview, winback flow: who is due on the run date (today).\n-- Qualifying: completed onboarding (onboarding_step_completed where step_index = 3). Core action: created a report (feature_used where feature = reports).\n-- Entry: 14 calendar days or more since the last core action (or since qualifying, if none since): the anchor date is\n-- between 14 and 17 days before the run date, and this lapse (user, anchor date) is not yet in lcm_flow_entries.\n-- A missed run catches up for 3 days. The ESP applies consent and suppression; this query decides who crossed.\n-- Holdout: holdout_bucket < 15 (salt 'ridgeview_winback_14d'); identical in every dialect and in agents/sql_dialects.holdout_bucket.\nWITH qualified AS (\n  SELECT s.user_id, MIN(s.event_at) AS qualified_at\n  FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND (qe.properties ->> 'step_index') = '3' AND qe.user_id IS NOT NULL) s\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE\n  GROUP BY s.user_id\n),\nlast_core AS (\n  SELECT s.user_id, MAX(s.event_at) AS last_core_at\n  FROM (SELECT ce.user_id, ce.event_at FROM track_events ce WHERE ce.event_name = 'feature_used' AND (ce.properties ->> 'feature') = 'reports' AND ce.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE\n  GROUP BY s.user_id\n),\nanchored AS (\n  SELECT q.user_id, q.qualified_at, lc.last_core_at,\n         CAST(GREATEST(COALESCE(lc.last_core_at, q.qualified_at), q.qualified_at) AS DATE) AS anchor_date\n  FROM qualified q\n  LEFT JOIN last_core lc ON lc.user_id = q.user_id\n)\nSELECT u.user_id, u.email, a.qualified_at, a.last_core_at, a.anchor_date,\n       (CURRENT_DATE - a.anchor_date) AS days_inactive,\n       u.email_consent_at IS NOT NULL AS email_consent,\n       u.sms_consent_at IS NOT NULL AS sms_consent,\n       ((('x' || substr(md5(u.user_id || ':ridgeview_winback_14d'), 1, 7))::bit(28)::int) % 100) AS holdout_bucket,\n       ((('x' || substr(md5(u.user_id || ':ridgeview_winback_14d'), 1, 7))::bit(28)::int) % 100) < 15 AS in_holdout\nFROM anchored a\nJOIN users u ON u.user_id = a.user_id\nLEFT JOIN lcm_flow_entries l ON l.flow = 'ridgeview_winback_14d' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date\nWHERE a.anchor_date BETWEEN (CURRENT_DATE - 17) AND (CURRENT_DATE - 14)\n  AND l.user_id IS NULL\nORDER BY u.user_id\n",
+      "snowflake": "-- dialect: snowflake\n-- Ridgeview, winback flow: who is due on the run date (today).\n-- Qualifying: completed onboarding (onboarding_step_completed where step_index = 3). Core action: created a report (feature_used where feature = reports).\n-- Entry: 14 calendar days or more since the last core action (or since qualifying, if none since): the anchor date is\n-- between 14 and 17 days before the run date, and this lapse (user, anchor date) is not yet in lcm_flow_entries.\n-- A missed run catches up for 3 days. The ESP applies consent and suppression; this query decides who crossed.\n-- Holdout: holdout_bucket < 15 (salt 'ridgeview_winback_14d'); identical in every dialect and in agents/sql_dialects.holdout_bucket.\nWITH qualified AS (\n  SELECT s.user_id, MIN(s.event_at) AS qualified_at\n  FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND qe.properties:step_index::string = '3' AND qe.user_id IS NOT NULL) s\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nlast_core AS (\n  SELECT s.user_id, MAX(s.event_at) AS last_core_at\n  FROM (SELECT ce.user_id, ce.event_at FROM track_events ce WHERE ce.event_name = 'feature_used' AND ce.properties:feature::string = 'reports' AND ce.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nanchored AS (\n  SELECT q.user_id, q.qualified_at, lc.last_core_at,\n         CAST(GREATEST(COALESCE(lc.last_core_at, q.qualified_at), q.qualified_at) AS DATE) AS anchor_date\n  FROM qualified q\n  LEFT JOIN last_core lc ON lc.user_id = q.user_id\n)\nSELECT u.user_id, u.email, a.qualified_at, a.last_core_at, a.anchor_date,\n       DATEDIFF(day, a.anchor_date, CURRENT_DATE()) AS days_inactive,\n       u.email_consent_at IS NOT NULL AS email_consent,\n       u.sms_consent_at IS NOT NULL AS sms_consent,\n       MOD(TO_NUMBER(SUBSTR(MD5(u.user_id || ':ridgeview_winback_14d'), 1, 7), 'XXXXXXX'), 100) AS holdout_bucket,\n       MOD(TO_NUMBER(SUBSTR(MD5(u.user_id || ':ridgeview_winback_14d'), 1, 7), 'XXXXXXX'), 100) < 15 AS in_holdout\nFROM anchored a\nJOIN users u ON u.user_id = a.user_id\nLEFT JOIN lcm_flow_entries l ON l.flow = 'ridgeview_winback_14d' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date\nWHERE a.anchor_date BETWEEN DATEADD(day, -17, CURRENT_DATE()) AND DATEADD(day, -14, CURRENT_DATE())\n  AND l.user_id IS NULL\nORDER BY u.user_id\n",
+      "bigquery": "-- dialect: bigquery\n-- Ridgeview, winback flow: who is due on the run date (today).\n-- Qualifying: completed onboarding (onboarding_step_completed where step_index = 3). Core action: created a report (feature_used where feature = reports).\n-- Entry: 14 calendar days or more since the last core action (or since qualifying, if none since): the anchor date is\n-- between 14 and 17 days before the run date, and this lapse (user, anchor date) is not yet in lcm_flow_entries.\n-- A missed run catches up for 3 days. The ESP applies consent and suppression; this query decides who crossed.\n-- Holdout: holdout_bucket < 15 (salt 'ridgeview_winback_14d'); identical in every dialect and in agents/sql_dialects.holdout_bucket.\nWITH qualified AS (\n  SELECT s.user_id, MIN(s.event_at) AS qualified_at\n  FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND JSON_VALUE(qe.properties, '$.step_index') = '3' AND qe.user_id IS NOT NULL) s\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nlast_core AS (\n  SELECT s.user_id, MAX(s.event_at) AS last_core_at\n  FROM (SELECT ce.user_id, ce.event_at FROM track_events ce WHERE ce.event_name = 'feature_used' AND JSON_VALUE(ce.properties, '$.feature') = 'reports' AND ce.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nanchored AS (\n  SELECT q.user_id, q.qualified_at, lc.last_core_at,\n         CAST(GREATEST(COALESCE(lc.last_core_at, q.qualified_at), q.qualified_at) AS DATE) AS anchor_date\n  FROM qualified q\n  LEFT JOIN last_core lc ON lc.user_id = q.user_id\n)\nSELECT u.user_id, u.email, a.qualified_at, a.last_core_at, a.anchor_date,\n       DATE_DIFF(CURRENT_DATE(), a.anchor_date, DAY) AS days_inactive,\n       u.email_consent_at IS NOT NULL AS email_consent,\n       u.sms_consent_at IS NOT NULL AS sms_consent,\n       MOD(CAST(CONCAT('0x', SUBSTR(TO_HEX(MD5(CONCAT(u.user_id, ':ridgeview_winback_14d'))), 1, 7)) AS INT64), 100) AS holdout_bucket,\n       MOD(CAST(CONCAT('0x', SUBSTR(TO_HEX(MD5(CONCAT(u.user_id, ':ridgeview_winback_14d'))), 1, 7)) AS INT64), 100) < 15 AS in_holdout\nFROM anchored a\nJOIN users u ON u.user_id = a.user_id\nLEFT JOIN lcm_flow_entries l ON l.flow = 'ridgeview_winback_14d' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date\nWHERE a.anchor_date BETWEEN DATE_ADD(CURRENT_DATE(), INTERVAL -17 DAY) AND DATE_ADD(CURRENT_DATE(), INTERVAL -14 DAY)\n  AND l.user_id IS NULL\nORDER BY u.user_id\n",
+      "duckdb": "-- dialect: duckdb\n-- Ridgeview, winback flow: who is due on the run date (the literal as-of date).\n-- Qualifying: completed onboarding (onboarding_step_completed where step_index = 3). Core action: created a report (feature_used where feature = reports).\n-- Entry: 14 calendar days or more since the last core action (or since qualifying, if none since): the anchor date is\n-- between 14 and 17 days before the run date, and this lapse (user, anchor date) is not yet in lcm_flow_entries.\n-- A missed run catches up for 3 days. The ESP applies consent and suppression; this query decides who crossed.\n-- Holdout: holdout_bucket < 15 (salt 'ridgeview_winback_14d'); identical in every dialect and in agents/sql_dialects.holdout_bucket.\nWITH qualified AS (\n  SELECT s.user_id, MIN(s.event_at) AS qualified_at\n  FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND json_extract_string(qe.properties, '$.step_index') = '3' AND qe.user_id IS NOT NULL) s\n  WHERE CAST(s.event_at AS DATE) <= DATE '2026-10-18'\n  GROUP BY s.user_id\n),\nlast_core AS (\n  SELECT s.user_id, MAX(s.event_at) AS last_core_at\n  FROM (SELECT ce.user_id, ce.event_at FROM track_events ce WHERE ce.event_name = 'feature_used' AND json_extract_string(ce.properties, '$.feature') = 'reports' AND ce.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id\n  WHERE CAST(s.event_at AS DATE) <= DATE '2026-10-18'\n  GROUP BY s.user_id\n),\nanchored AS (\n  SELECT q.user_id, q.qualified_at, lc.last_core_at,\n         CAST(GREATEST(COALESCE(lc.last_core_at, q.qualified_at), q.qualified_at) AS DATE) AS anchor_date\n  FROM qualified q\n  LEFT JOIN last_core lc ON lc.user_id = q.user_id\n)\nSELECT u.user_id, u.email, a.qualified_at, a.last_core_at, a.anchor_date,\n       (DATE '2026-10-18' - a.anchor_date) AS days_inactive,\n       u.email_consent_at IS NOT NULL AS email_consent,\n       u.sms_consent_at IS NOT NULL AS sms_consent,\n       (CAST('0x' || substr(md5(u.user_id || ':ridgeview_winback_14d'), 1, 7) AS INTEGER) % 100) AS holdout_bucket,\n       (CAST('0x' || substr(md5(u.user_id || ':ridgeview_winback_14d'), 1, 7) AS INTEGER) % 100) < 15 AS in_holdout\nFROM anchored a\nJOIN users u ON u.user_id = a.user_id\nLEFT JOIN lcm_flow_entries l ON l.flow = 'ridgeview_winback_14d' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date\nWHERE a.anchor_date BETWEEN (DATE '2026-10-18' - 17) AND (DATE '2026-10-18' - 14)\n  AND l.user_id IS NULL\nORDER BY u.user_id\n"
+    },
+    "history_sql": {
+      "postgres": "-- dialect: postgres\n-- Ridgeview: threshold crossings by month (would-be entrants) and the natural return rate: the share of\n-- matured crossings (at least 30 days old) whose next core action came within 30 days, with no flow running.\nWITH qualified AS (\n  SELECT s.user_id, MIN(s.event_at) AS qualified_at\n  FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND (qe.properties ->> 'step_index') = '3' AND qe.user_id IS NOT NULL) s\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE\n  GROUP BY s.user_id\n),\nlast_core AS (\n  SELECT s.user_id, MAX(s.event_at) AS last_core_at\n  FROM (SELECT ce.user_id, ce.event_at FROM track_events ce WHERE ce.event_name = 'feature_used' AND (ce.properties ->> 'feature') = 'reports' AND ce.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE\n  GROUP BY s.user_id\n),\nanchored AS (\n  SELECT q.user_id, q.qualified_at, lc.last_core_at,\n         CAST(GREATEST(COALESCE(lc.last_core_at, q.qualified_at), q.qualified_at) AS DATE) AS anchor_date\n  FROM qualified q\n  LEFT JOIN last_core lc ON lc.user_id = q.user_id\n),\ncore_and_anchor AS (\n  SELECT s.user_id, s.event_at\n  FROM (SELECT ce2.user_id, ce2.event_at FROM track_events ce2 WHERE ce2.event_name = 'feature_used' AND (ce2.properties ->> 'feature') = 'reports' AND ce2.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id AND s.event_at >= q.qualified_at\n  UNION ALL\n  SELECT user_id, qualified_at AS event_at FROM qualified\n),\nseq AS (\n  SELECT user_id, CAST(event_at AS DATE) AS d,\n         LEAD(CAST(event_at AS DATE)) OVER (PARTITION BY user_id ORDER BY event_at) AS next_d\n  FROM core_and_anchor\n),\nlapses AS (\n  SELECT user_id, (d + 14) AS crossed_on, next_d\n  FROM seq\n  WHERE (next_d IS NULL OR next_d > (d + 14)) AND (d + 14) <= CURRENT_DATE\n)\nSELECT CAST(DATE_TRUNC('month', l.crossed_on) AS DATE) AS month,\n       COUNT(*) AS entrants,\n       SUM(CASE WHEN l.crossed_on <= (CURRENT_DATE - 30) THEN 1 ELSE 0 END) AS matured,\n       SUM(CASE WHEN l.crossed_on <= (CURRENT_DATE - 30) AND l.next_d IS NOT NULL\n                 AND l.next_d <= (l.crossed_on + 30) THEN 1 ELSE 0 END) AS returned\nFROM lapses l\nGROUP BY 1\nORDER BY 1\n",
+      "snowflake": "-- dialect: snowflake\n-- Ridgeview: threshold crossings by month (would-be entrants) and the natural return rate: the share of\n-- matured crossings (at least 30 days old) whose next core action came within 30 days, with no flow running.\nWITH qualified AS (\n  SELECT s.user_id, MIN(s.event_at) AS qualified_at\n  FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND qe.properties:step_index::string = '3' AND qe.user_id IS NOT NULL) s\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nlast_core AS (\n  SELECT s.user_id, MAX(s.event_at) AS last_core_at\n  FROM (SELECT ce.user_id, ce.event_at FROM track_events ce WHERE ce.event_name = 'feature_used' AND ce.properties:feature::string = 'reports' AND ce.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nanchored AS (\n  SELECT q.user_id, q.qualified_at, lc.last_core_at,\n         CAST(GREATEST(COALESCE(lc.last_core_at, q.qualified_at), q.qualified_at) AS DATE) AS anchor_date\n  FROM qualified q\n  LEFT JOIN last_core lc ON lc.user_id = q.user_id\n),\ncore_and_anchor AS (\n  SELECT s.user_id, s.event_at\n  FROM (SELECT ce2.user_id, ce2.event_at FROM track_events ce2 WHERE ce2.event_name = 'feature_used' AND ce2.properties:feature::string = 'reports' AND ce2.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id AND s.event_at >= q.qualified_at\n  UNION ALL\n  SELECT user_id, qualified_at AS event_at FROM qualified\n),\nseq AS (\n  SELECT user_id, CAST(event_at AS DATE) AS d,\n         LEAD(CAST(event_at AS DATE)) OVER (PARTITION BY user_id ORDER BY event_at) AS next_d\n  FROM core_and_anchor\n),\nlapses AS (\n  SELECT user_id, DATEADD(day, 14, d) AS crossed_on, next_d\n  FROM seq\n  WHERE (next_d IS NULL OR next_d > DATEADD(day, 14, d)) AND DATEADD(day, 14, d) <= CURRENT_DATE()\n)\nSELECT CAST(DATE_TRUNC('month', l.crossed_on) AS DATE) AS month,\n       COUNT(*) AS entrants,\n       SUM(CASE WHEN l.crossed_on <= DATEADD(day, -30, CURRENT_DATE()) THEN 1 ELSE 0 END) AS matured,\n       SUM(CASE WHEN l.crossed_on <= DATEADD(day, -30, CURRENT_DATE()) AND l.next_d IS NOT NULL\n                 AND l.next_d <= DATEADD(day, 30, l.crossed_on) THEN 1 ELSE 0 END) AS returned\nFROM lapses l\nGROUP BY 1\nORDER BY 1\n",
+      "bigquery": "-- dialect: bigquery\n-- Ridgeview: threshold crossings by month (would-be entrants) and the natural return rate: the share of\n-- matured crossings (at least 30 days old) whose next core action came within 30 days, with no flow running.\nWITH qualified AS (\n  SELECT s.user_id, MIN(s.event_at) AS qualified_at\n  FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND JSON_VALUE(qe.properties, '$.step_index') = '3' AND qe.user_id IS NOT NULL) s\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nlast_core AS (\n  SELECT s.user_id, MAX(s.event_at) AS last_core_at\n  FROM (SELECT ce.user_id, ce.event_at FROM track_events ce WHERE ce.event_name = 'feature_used' AND JSON_VALUE(ce.properties, '$.feature') = 'reports' AND ce.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nanchored AS (\n  SELECT q.user_id, q.qualified_at, lc.last_core_at,\n         CAST(GREATEST(COALESCE(lc.last_core_at, q.qualified_at), q.qualified_at) AS DATE) AS anchor_date\n  FROM qualified q\n  LEFT JOIN last_core lc ON lc.user_id = q.user_id\n),\ncore_and_anchor AS (\n  SELECT s.user_id, s.event_at\n  FROM (SELECT ce2.user_id, ce2.event_at FROM track_events ce2 WHERE ce2.event_name = 'feature_used' AND JSON_VALUE(ce2.properties, '$.feature') = 'reports' AND ce2.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id AND s.event_at >= q.qualified_at\n  UNION ALL\n  SELECT user_id, qualified_at AS event_at FROM qualified\n),\nseq AS (\n  SELECT user_id, CAST(event_at AS DATE) AS d,\n         LEAD(CAST(event_at AS DATE)) OVER (PARTITION BY user_id ORDER BY event_at) AS next_d\n  FROM core_and_anchor\n),\nlapses AS (\n  SELECT user_id, DATE_ADD(d, INTERVAL 14 DAY) AS crossed_on, next_d\n  FROM seq\n  WHERE (next_d IS NULL OR next_d > DATE_ADD(d, INTERVAL 14 DAY)) AND DATE_ADD(d, INTERVAL 14 DAY) <= CURRENT_DATE()\n)\nSELECT CAST(DATE_TRUNC(l.crossed_on, MONTH) AS DATE) AS month,\n       COUNT(*) AS entrants,\n       SUM(CASE WHEN l.crossed_on <= DATE_ADD(CURRENT_DATE(), INTERVAL -30 DAY) THEN 1 ELSE 0 END) AS matured,\n       SUM(CASE WHEN l.crossed_on <= DATE_ADD(CURRENT_DATE(), INTERVAL -30 DAY) AND l.next_d IS NOT NULL\n                 AND l.next_d <= DATE_ADD(l.crossed_on, INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS returned\nFROM lapses l\nGROUP BY 1\nORDER BY 1\n"
+    },
+    "job_sql": {
+      "postgres": {
+        "ledger": "-- dialect: postgres\n-- The ledger of win-back entries: an outbox. queue writes due lapses as 'pending', the job pushes every pending row,\n-- and mark sets them to 'pushed'. A lapse is in here at most once, so nobody enters twice for one lapse. Create once.\nCREATE TABLE IF NOT EXISTS lcm_flow_entries (\n  flow VARCHAR NOT NULL,\n  user_id VARCHAR NOT NULL,\n  anchor_date DATE NOT NULL,\n  holdout_bucket INTEGER NOT NULL,\n  in_holdout BOOLEAN NOT NULL,\n  status VARCHAR NOT NULL,\n  queued_at TIMESTAMP NOT NULL,\n  pushed_at TIMESTAMP,\n  PRIMARY KEY (flow, user_id, anchor_date)\n)\n",
+        "queue": "-- dialect: postgres\n-- Daily step 1 of 3 for ridgeview_winback_14d: queue every lapse that is due as 'pending'.\nINSERT INTO lcm_flow_entries (flow, user_id, anchor_date, holdout_bucket, in_holdout, status, queued_at)\nSELECT 'ridgeview_winback_14d', e.user_id, e.anchor_date, e.holdout_bucket, e.in_holdout, 'pending', CURRENT_TIMESTAMP\nFROM (\nWITH qualified AS (\n  SELECT s.user_id, MIN(s.event_at) AS qualified_at\n  FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND (qe.properties ->> 'step_index') = '3' AND qe.user_id IS NOT NULL) s\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE\n  GROUP BY s.user_id\n),\nlast_core AS (\n  SELECT s.user_id, MAX(s.event_at) AS last_core_at\n  FROM (SELECT ce.user_id, ce.event_at FROM track_events ce WHERE ce.event_name = 'feature_used' AND (ce.properties ->> 'feature') = 'reports' AND ce.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE\n  GROUP BY s.user_id\n),\nanchored AS (\n  SELECT q.user_id, q.qualified_at, lc.last_core_at,\n         CAST(GREATEST(COALESCE(lc.last_core_at, q.qualified_at), q.qualified_at) AS DATE) AS anchor_date\n  FROM qualified q\n  LEFT JOIN last_core lc ON lc.user_id = q.user_id\n)\nSELECT u.user_id, u.email, a.qualified_at, a.last_core_at, a.anchor_date,\n       (CURRENT_DATE - a.anchor_date) AS days_inactive,\n       u.email_consent_at IS NOT NULL AS email_consent,\n       u.sms_consent_at IS NOT NULL AS sms_consent,\n       ((('x' || substr(md5(u.user_id || ':ridgeview_winback_14d'), 1, 7))::bit(28)::int) % 100) AS holdout_bucket,\n       ((('x' || substr(md5(u.user_id || ':ridgeview_winback_14d'), 1, 7))::bit(28)::int) % 100) < 15 AS in_holdout\nFROM anchored a\nJOIN users u ON u.user_id = a.user_id\nLEFT JOIN lcm_flow_entries l ON l.flow = 'ridgeview_winback_14d' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date\nWHERE a.anchor_date BETWEEN (CURRENT_DATE - 17) AND (CURRENT_DATE - 14)\n  AND l.user_id IS NULL\n) e\n",
+        "pending": "-- dialect: postgres\n-- Daily step 2 of 3 for ridgeview_winback_14d: push these rows, one trigger event each (adapters/destinations/event_payloads.py).\nSELECT l.user_id, u.email, l.anchor_date, (CURRENT_DATE - l.anchor_date) AS days_inactive,\n       l.holdout_bucket, l.in_holdout\nFROM lcm_flow_entries l\nJOIN users u ON u.user_id = l.user_id\nWHERE l.flow = 'ridgeview_winback_14d' AND l.status = 'pending'\nORDER BY l.anchor_date, l.user_id\n",
+        "mark": "-- dialect: postgres\n-- no-run: needs bound parameters\n-- Daily step 3 of 3 for ridgeview_winback_14d: once per row whose push succeeded. Bind named parameters :user_id and :anchor_date (SQLAlchemy text() binds :name in every dialect).\nUPDATE lcm_flow_entries SET status = 'pushed', pushed_at = CURRENT_TIMESTAMP\nWHERE flow = 'ridgeview_winback_14d' AND status = 'pending' AND user_id = :user_id AND anchor_date = CAST(:anchor_date AS DATE)\n"
+      },
+      "snowflake": {
+        "ledger": "-- dialect: snowflake\n-- The ledger of win-back entries: an outbox. queue writes due lapses as 'pending', the job pushes every pending row,\n-- and mark sets them to 'pushed'. A lapse is in here at most once, so nobody enters twice for one lapse. Create once.\nCREATE TABLE IF NOT EXISTS lcm_flow_entries (\n  flow VARCHAR NOT NULL,\n  user_id VARCHAR NOT NULL,\n  anchor_date DATE NOT NULL,\n  holdout_bucket INTEGER NOT NULL,\n  in_holdout BOOLEAN NOT NULL,\n  status VARCHAR NOT NULL,\n  queued_at TIMESTAMP NOT NULL,\n  pushed_at TIMESTAMP,\n  PRIMARY KEY (flow, user_id, anchor_date)\n)\n",
+        "queue": "-- dialect: snowflake\n-- Daily step 1 of 3 for ridgeview_winback_14d: queue every lapse that is due as 'pending'.\nINSERT INTO lcm_flow_entries (flow, user_id, anchor_date, holdout_bucket, in_holdout, status, queued_at)\nSELECT 'ridgeview_winback_14d', e.user_id, e.anchor_date, e.holdout_bucket, e.in_holdout, 'pending', CURRENT_TIMESTAMP()\nFROM (\nWITH qualified AS (\n  SELECT s.user_id, MIN(s.event_at) AS qualified_at\n  FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND qe.properties:step_index::string = '3' AND qe.user_id IS NOT NULL) s\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nlast_core AS (\n  SELECT s.user_id, MAX(s.event_at) AS last_core_at\n  FROM (SELECT ce.user_id, ce.event_at FROM track_events ce WHERE ce.event_name = 'feature_used' AND ce.properties:feature::string = 'reports' AND ce.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nanchored AS (\n  SELECT q.user_id, q.qualified_at, lc.last_core_at,\n         CAST(GREATEST(COALESCE(lc.last_core_at, q.qualified_at), q.qualified_at) AS DATE) AS anchor_date\n  FROM qualified q\n  LEFT JOIN last_core lc ON lc.user_id = q.user_id\n)\nSELECT u.user_id, u.email, a.qualified_at, a.last_core_at, a.anchor_date,\n       DATEDIFF(day, a.anchor_date, CURRENT_DATE()) AS days_inactive,\n       u.email_consent_at IS NOT NULL AS email_consent,\n       u.sms_consent_at IS NOT NULL AS sms_consent,\n       MOD(TO_NUMBER(SUBSTR(MD5(u.user_id || ':ridgeview_winback_14d'), 1, 7), 'XXXXXXX'), 100) AS holdout_bucket,\n       MOD(TO_NUMBER(SUBSTR(MD5(u.user_id || ':ridgeview_winback_14d'), 1, 7), 'XXXXXXX'), 100) < 15 AS in_holdout\nFROM anchored a\nJOIN users u ON u.user_id = a.user_id\nLEFT JOIN lcm_flow_entries l ON l.flow = 'ridgeview_winback_14d' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date\nWHERE a.anchor_date BETWEEN DATEADD(day, -17, CURRENT_DATE()) AND DATEADD(day, -14, CURRENT_DATE())\n  AND l.user_id IS NULL\n) e\n",
+        "pending": "-- dialect: snowflake\n-- Daily step 2 of 3 for ridgeview_winback_14d: push these rows, one trigger event each (adapters/destinations/event_payloads.py).\nSELECT l.user_id, u.email, l.anchor_date, DATEDIFF(day, l.anchor_date, CURRENT_DATE()) AS days_inactive,\n       l.holdout_bucket, l.in_holdout\nFROM lcm_flow_entries l\nJOIN users u ON u.user_id = l.user_id\nWHERE l.flow = 'ridgeview_winback_14d' AND l.status = 'pending'\nORDER BY l.anchor_date, l.user_id\n",
+        "mark": "-- dialect: snowflake\n-- no-run: needs bound parameters\n-- Daily step 3 of 3 for ridgeview_winback_14d: once per row whose push succeeded. Bind named parameters :user_id and :anchor_date (SQLAlchemy text() binds :name in every dialect).\nUPDATE lcm_flow_entries SET status = 'pushed', pushed_at = CURRENT_TIMESTAMP()\nWHERE flow = 'ridgeview_winback_14d' AND status = 'pending' AND user_id = :user_id AND anchor_date = CAST(:anchor_date AS DATE)\n"
+      },
+      "bigquery": {
+        "ledger": "-- dialect: bigquery\n-- The ledger of win-back entries: an outbox. queue writes due lapses as 'pending', the job pushes every pending row,\n-- and mark sets them to 'pushed'. A lapse is in here at most once, so nobody enters twice for one lapse. Create once.\nCREATE TABLE IF NOT EXISTS lcm_flow_entries (\n  flow STRING NOT NULL,\n  user_id STRING NOT NULL,\n  anchor_date DATE NOT NULL,\n  holdout_bucket INT64 NOT NULL,\n  in_holdout BOOL NOT NULL,\n  status STRING NOT NULL,\n  queued_at TIMESTAMP NOT NULL,\n  pushed_at TIMESTAMP\n)\n",
+        "queue": "-- dialect: bigquery\n-- Daily step 1 of 3 for ridgeview_winback_14d: queue every lapse that is due as 'pending'.\nINSERT INTO lcm_flow_entries (flow, user_id, anchor_date, holdout_bucket, in_holdout, status, queued_at)\nSELECT 'ridgeview_winback_14d', e.user_id, e.anchor_date, e.holdout_bucket, e.in_holdout, 'pending', CURRENT_TIMESTAMP()\nFROM (\nWITH qualified AS (\n  SELECT s.user_id, MIN(s.event_at) AS qualified_at\n  FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND JSON_VALUE(qe.properties, '$.step_index') = '3' AND qe.user_id IS NOT NULL) s\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nlast_core AS (\n  SELECT s.user_id, MAX(s.event_at) AS last_core_at\n  FROM (SELECT ce.user_id, ce.event_at FROM track_events ce WHERE ce.event_name = 'feature_used' AND JSON_VALUE(ce.properties, '$.feature') = 'reports' AND ce.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nanchored AS (\n  SELECT q.user_id, q.qualified_at, lc.last_core_at,\n         CAST(GREATEST(COALESCE(lc.last_core_at, q.qualified_at), q.qualified_at) AS DATE) AS anchor_date\n  FROM qualified q\n  LEFT JOIN last_core lc ON lc.user_id = q.user_id\n)\nSELECT u.user_id, u.email, a.qualified_at, a.last_core_at, a.anchor_date,\n       DATE_DIFF(CURRENT_DATE(), a.anchor_date, DAY) AS days_inactive,\n       u.email_consent_at IS NOT NULL AS email_consent,\n       u.sms_consent_at IS NOT NULL AS sms_consent,\n       MOD(CAST(CONCAT('0x', SUBSTR(TO_HEX(MD5(CONCAT(u.user_id, ':ridgeview_winback_14d'))), 1, 7)) AS INT64), 100) AS holdout_bucket,\n       MOD(CAST(CONCAT('0x', SUBSTR(TO_HEX(MD5(CONCAT(u.user_id, ':ridgeview_winback_14d'))), 1, 7)) AS INT64), 100) < 15 AS in_holdout\nFROM anchored a\nJOIN users u ON u.user_id = a.user_id\nLEFT JOIN lcm_flow_entries l ON l.flow = 'ridgeview_winback_14d' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date\nWHERE a.anchor_date BETWEEN DATE_ADD(CURRENT_DATE(), INTERVAL -17 DAY) AND DATE_ADD(CURRENT_DATE(), INTERVAL -14 DAY)\n  AND l.user_id IS NULL\n) e\n",
+        "pending": "-- dialect: bigquery\n-- Daily step 2 of 3 for ridgeview_winback_14d: push these rows, one trigger event each (adapters/destinations/event_payloads.py).\nSELECT l.user_id, u.email, l.anchor_date, DATE_DIFF(CURRENT_DATE(), l.anchor_date, DAY) AS days_inactive,\n       l.holdout_bucket, l.in_holdout\nFROM lcm_flow_entries l\nJOIN users u ON u.user_id = l.user_id\nWHERE l.flow = 'ridgeview_winback_14d' AND l.status = 'pending'\nORDER BY l.anchor_date, l.user_id\n",
+        "mark": "-- dialect: bigquery\n-- no-run: needs bound parameters\n-- Daily step 3 of 3 for ridgeview_winback_14d: once per row whose push succeeded. Bind BigQuery query parameters @user_id (STRING) and @anchor_date (DATE).\nUPDATE lcm_flow_entries SET status = 'pushed', pushed_at = CURRENT_TIMESTAMP()\nWHERE flow = 'ridgeview_winback_14d' AND status = 'pending' AND user_id = @user_id AND anchor_date = @anchor_date\n"
+      }
+    },
+    "sql_checks": {
+      "entry postgres": "parses",
+      "entry snowflake": "parses",
+      "entry bigquery": "parses",
+      "history postgres": "parses",
+      "history snowflake": "parses",
+      "history bigquery": "parses",
+      "ledger postgres": "parses",
+      "ledger snowflake": "parses",
+      "ledger bigquery": "parses",
+      "queue postgres": "parses",
+      "queue snowflake": "parses",
+      "queue bigquery": "parses",
+      "pending postgres": "parses",
+      "pending snowflake": "parses",
+      "pending bigquery": "parses",
+      "mark postgres": "parses",
+      "mark snowflake": "parses",
+      "mark bigquery": "parses",
+      "entry duckdb": "ran on demo data: 3 entrant(s) on 2026-10-18"
+    },
+    "data_dependencies": [
+      {
+        "name": "onboarding_step_completed (step_index=3)",
+        "kind": "event",
+        "status": "verified",
+        "fill_rate": 1.0,
+        "note": "qualifies a person for the flow; 708 events from 324 people; property step_index filled on 100% of events, 158 match 3"
+      },
+      {
+        "name": "feature_used (feature=reports)",
+        "kind": "event",
+        "status": "verified",
+        "fill_rate": 1.0,
+        "note": "the core action: entry clock, exit and primary metric; 915 events from 209 people; property feature filled on 100% of events, 242 match reports"
+      },
+      {
+        "name": "email",
+        "kind": "attribute",
+        "status": "verified",
+        "fill_rate": 1.0,
+        "note": "address for every email touch; users.email filled 100%"
+      },
+      {
+        "name": "email_consent",
+        "kind": "attribute",
+        "status": "verified",
+        "fill_rate": 0.8625,
+        "note": "email marketing consent; users.email_consent_at filled 86%"
+      },
+      {
+        "name": "session_started",
+        "kind": "event",
+        "status": "verified",
+        "fill_rate": null,
+        "note": "in-app messages show at the next session"
+      },
+      {
+        "name": "in_holdout",
+        "kind": "attribute",
+        "status": "unknown",
+        "fill_rate": null,
+        "note": "set by the daily entry job on the pushed event; schedule the job before launch"
+      },
+      {
+        "name": "lcm_flow_entries",
+        "kind": "object",
+        "status": "unknown",
+        "fill_rate": null,
+        "note": "the ledger (outbox) of entries; create it once with cohort/job/ledger_<dialect>.sql"
+      },
+      {
+        "name": "lcm_sunset",
+        "kind": "attribute",
+        "status": "unknown",
+        "fill_rate": null,
+        "note": "suppression flag the sunset step writes; create the property in the platform before launch"
+      }
+    ],
+    "monthly_entrants": {
+      "value": 28.0,
+      "label": "DEMO DATA",
+      "basis": "mean threshold crossings over 3 complete month(s) to 2026-09"
+    },
+    "baseline_conversion_rate": {
+      "value": 0.1746,
+      "label": "DEMO DATA",
+      "basis": "22 of 126 matured threshold crossings came back within 30 days with no flow"
+    },
+    "entrants_on_as_of": 3,
+    "leak": "step 2 invited_teammate (33% of people who reach step 1 connected_data_source stop before it)",
+    "countries": {
+      "US": 0.4367,
+      "AU": 0.1582,
+      "CA": 0.1519,
+      "DE": 0.1266,
+      "GB": 0.1266
+    },
+    "as_of": "2026-10-18",
+    "trigger_payload_example": {
+      "method": "POST",
+      "url": "https://cdp.customer.io/v1/track",
+      "headers": {
+        "Authorization": "Basic ${CUSTOMERIO_PIPELINES_API_KEY_BASE64}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "userId": "u_0002",
+        "event": "core_action_lapsed_14d",
+        "properties": {
+          "days_inactive": 14,
+          "in_holdout": false,
+          "holdout_bucket": 42,
+          "flow": "ridgeview_winback_14d",
+          "anchor_date": "2026-10-04"
+        },
+        "timestamp": "2026-10-18T05:00:00Z",
+        "messageId": "ridgeview_winback_14d:u_0002:2026-10-04"
+      }
+    }
+  },
+  "flow": {
+    "flow_spec": {
+      "flow": "Win-back: Ridgeview, 14 days since the core action (created a report)",
+      "platform": "customerio",
+      "analytics": "warehouse (postgres) and Customer.io",
+      "template_dialect": "customerio",
+      "lifecycle_stage": "active to lapsed",
+      "objective": "Build a 5-touch automated win-back flow for users who completed onboarding but haven't created a report in 14 days",
+      "clv_lever": "lifespan",
+      "gate_required": "GREEN",
+      "trigger": {
+        "type": "absence",
+        "definition": "14 days without created a report (feature_used where feature = reports), measured from each person's own last feature_used; the daily entry job pushes core_action_lapsed_14d once per lapse",
+        "source_object": "warehouse track_events (postgres) via the cohort entry query, pushed to Customer.io as the custom event core_action_lapsed_14d",
+        "re_entry": "allowed: after doing feature_used again a person can lapse again and re-enter; the entry query fires once per lapse"
+      },
+      "entry_filters": [
+        {
+          "condition": "completed onboarding (onboarding_step_completed where step_index = 3) at least once",
+          "evaluated": "entry_only"
+        }
+      ],
+      "ongoing_filters": [
+        {
+          "condition": "has not done feature_used where feature = reports since entering",
+          "evaluated": "every_step"
+        },
+        {
+          "condition": "can receive email marketing (subscribed, not bounced, not sunset-suppressed)",
+          "evaluated": "every_step"
+        }
+      ],
+      "suppressions": [
+        "unsubscribed from marketing email, or hard bounced",
+        "marked any message as spam (complaint), ever",
+        "sunset-suppressed (lcm_sunset is true); only a fresh opt-in lifts it",
+        "internal, test and seed addresses",
+        "currently in a higher-priority flow (transactional, billing, post-purchase)",
+        "received a re-permission ask from any flow in the last 180 days"
+      ],
+      "holdout": {
+        "percent": 15.0,
+        "persistent": true,
+        "unit": "user",
+        "assignment": "persistent, by user: bucket = first 7 hex digits of md5(user_id || ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout, computed in the daily queue query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population",
+        "sizing": "about 28 entrants a month (DEMO DATA), 17.5% return within 30 days with no flow (DEMO DATA), 25% relative lift (4.4 pts) worth acting on: 781 holdout entrants at 15%, 186.0 months of entries plus the 30-day outcome window, so the read lands about 186.9 months after launch (engine/measurement/stats.py feasible --entries-per-month 28 --holdout 0.15 --baseline 0.1746 --mde-rel 0.25 --outcome-window-days 30)",
+        "read": "directional only"
+      },
+      "frequency": {
+        "cap": "at most 3 lifecycle messages a person a week across flows (the workspace message limit)",
+        "quiet_hours": "send at 10:00 recipient local; nothing between 21:00 to 08:00 recipient local time",
+        "priority": 3
+      },
+      "steps": [
+        {
+          "id": "holdout_split",
+          "wait": {
+            "type": "none"
+          },
+          "channel": "none",
+          "message": "-",
+          "goal": "-",
+          "branch": {
+            "condition": "in_holdout is true (event property from the daily entry job)",
+            "yes": "exit (holdout)",
+            "no": "t1_email"
+          }
+        },
+        {
+          "id": "t1_email",
+          "wait": {
+            "type": "until_time_local",
+            "local_time": "10:00"
+          },
+          "channel": "email",
+          "message": "value reminder: Remind them of the one outcome Ridgeview gave them, tied to what they last did, with one link that lets them create a report again. No offer.",
+          "goal": "feature_used",
+          "requires": [
+            "email_consent"
+          ]
+        },
+        {
+          "id": "t2_email",
+          "wait": {
+            "type": "fixed",
+            "duration": "P3D"
+          },
+          "channel": "email",
+          "message": "friction removal: Name the most common reason people stop at this point and remove it: a template, a two-minute path, or a reply to a person.",
+          "goal": "feature_used",
+          "requires": [
+            "email_consent"
+          ]
+        },
+        {
+          "id": "t3_in_app",
+          "wait": {
+            "type": "fixed",
+            "duration": "P4D"
+          },
+          "channel": "in_app",
+          "message": "whats new: One change in Ridgeview since they were last active that makes it easier to create a report. Show it; do not list features. Queued for the next session; expires after 3 days.",
+          "goal": "feature_used"
+        },
+        {
+          "id": "t4_email",
+          "wait": {
+            "type": "fixed",
+            "duration": "P5D"
+          },
+          "channel": "email",
+          "message": "social proof: How a team like theirs uses Ridgeview to create a report each week: one specific, true example with a number.",
+          "goal": "feature_used",
+          "requires": [
+            "email_consent"
+          ]
+        },
+        {
+          "id": "t5_email",
+          "wait": {
+            "type": "fixed",
+            "duration": "P6D"
+          },
+          "channel": "email",
+          "message": "repermission: Ask plainly whether they still want these messages, with one button to stay. Say what happens if they do nothing.",
+          "goal": "click to stay subscribed",
+          "requires": [
+            "email_consent"
+          ]
+        },
+        {
+          "id": "sunset",
+          "wait": {
+            "type": "fixed",
+            "duration": "P14D"
+          },
+          "channel": "none",
+          "condition": "no click on the re-permission email and no feature_used since entering",
+          "message": "Set lcm_sunset = true: suppressed from marketing, record kept, lifted only by a fresh opt-in",
+          "goal": "-"
+        }
+      ],
+      "exit": {
+        "goal": "created a report (feature_used where feature = reports)",
+        "unenroll_immediately": true,
+        "then": "normal lifecycle messaging"
+      },
+      "measurement": {
+        "primary_metric": "created a report (feature_used where feature = reports) within 30 days of entry, treatment vs holdout, both arms counted from their entry date",
+        "read_after": "not inside 12 months at this volume (it would take about 187 months): keep the holdout, report against a pre/post baseline, and label every result directional",
+        "compared_against": "holdout",
+        "guardrails": [
+          "spam complaint rate per send below 0.1% (Gmail's target; 0.3% is its hard limit)",
+          "unsubscribe rate per send, against the 90-day median for your lifecycle sends; pause a touch running above twice it",
+          "hard bounce rate below 1%"
+        ]
+      },
+      "data_dependencies": [
+        {
+          "name": "onboarding_step_completed (step_index=3)",
+          "kind": "event",
+          "status": "verified",
+          "fill_rate": 1.0,
+          "note": "qualifies a person for the flow; 708 events from 324 people; property step_index filled on 100% of events, 158 match 3"
+        },
+        {
+          "name": "feature_used (feature=reports)",
+          "kind": "event",
+          "status": "verified",
+          "fill_rate": 1.0,
+          "note": "the core action: entry clock, exit and primary metric; 915 events from 209 people; property feature filled on 100% of events, 242 match reports"
+        },
+        {
+          "name": "email",
+          "kind": "attribute",
+          "status": "verified",
+          "fill_rate": 1.0,
+          "note": "address for every email touch; users.email filled 100%"
+        },
+        {
+          "name": "email_consent",
+          "kind": "attribute",
+          "status": "verified",
+          "fill_rate": 0.8625,
+          "note": "email marketing consent; users.email_consent_at filled 86%"
+        },
+        {
+          "name": "session_started",
+          "kind": "event",
+          "status": "verified",
+          "note": "in-app messages show at the next session"
+        },
+        {
+          "name": "in_holdout",
+          "kind": "attribute",
+          "status": "unknown",
+          "note": "set by the daily entry job on the pushed event; schedule the job before launch"
+        },
+        {
+          "name": "lcm_flow_entries",
+          "kind": "object",
+          "status": "unknown",
+          "note": "the ledger (outbox) of entries; create it once with cohort/job/ledger_<dialect>.sql"
+        },
+        {
+          "name": "lcm_sunset",
+          "kind": "attribute",
+          "status": "unknown",
+          "note": "suppression flag the sunset step writes; create the property in the platform before launch"
+        }
+      ]
+    },
+    "simulation": {
+      "version": 1,
+      "flow": "Win-back: Ridgeview, 14 days since the core action (created a report)",
+      "core_event": "feature_used",
+      "goal_event": "feature_used",
+      "holdout_pct": 15.0,
+      "frequency_cap_per_week": 3,
+      "send_hour_local": 10,
+      "quiet_hours_local": [
+        21.0,
+        8.0
+      ],
+      "in_app_display_days": 3,
+      "max_touches": 5,
+      "engaged_only": false,
+      "steps": {
+        "holdout_split": {
+          "branch": {
+            "holdout": true
+          }
+        },
+        "t1_email": {
+          "condition": null
+        },
+        "t2_email": {
+          "condition": null
+        },
+        "t3_in_app": {
+          "condition": null
+        },
+        "t4_email": {
+          "condition": null
+        },
+        "t5_email": {
+          "condition": null
+        },
+        "sunset": {
+          "condition": {
+            "all": [
+              {
+                "not": {
+                  "event_since_entry": "message_clicked"
+                }
+              },
+              {
+                "not": {
+                  "event_since_entry": "feature_used"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "touches": [
+      {
+        "step_id": "t1_email",
+        "index": 1,
+        "day": 0,
+        "channel": "email",
+        "role": "value_reminder",
+        "job": "Remind them of the one outcome Ridgeview gave them, tied to what they last did, with one link that lets them create a report again. No offer.",
+        "framework": "BAB: before, after, bridge",
+        "goal": "feature_used",
+        "requires": [
+          "email_consent"
+        ],
+        "condition": null
+      },
+      {
+        "step_id": "t2_email",
+        "index": 2,
+        "day": 3,
+        "channel": "email",
+        "role": "friction_removal",
+        "job": "Name the most common reason people stop at this point and remove it: a template, a two-minute path, or a reply to a person.",
+        "framework": "PAS: problem, agitation kept factual, solution",
+        "goal": "feature_used",
+        "requires": [
+          "email_consent"
+        ],
+        "condition": null
+      },
+      {
+        "step_id": "t3_in_app",
+        "index": 3,
+        "day": 7,
+        "channel": "in_app",
+        "role": "whats_new",
+        "job": "One change in Ridgeview since they were last active that makes it easier to create a report. Show it; do not list features.",
+        "framework": "AIDA: attention, interest, desire, action",
+        "goal": "feature_used",
+        "requires": [],
+        "condition": null
+      },
+      {
+        "step_id": "t4_email",
+        "index": 4,
+        "day": 12,
+        "channel": "email",
+        "role": "social_proof",
+        "job": "How a team like theirs uses Ridgeview to create a report each week: one specific, true example with a number.",
+        "framework": "Social proof through one concrete case",
+        "goal": "feature_used",
+        "requires": [
+          "email_consent"
+        ],
+        "condition": null
+      },
+      {
+        "step_id": "t5_email",
+        "index": 5,
+        "day": 18,
+        "channel": "email",
+        "role": "repermission",
+        "job": "Ask plainly whether they still want these messages, with one button to stay. Say what happens if they do nothing.",
+        "framework": "Plain re-permission; no guilt, no countdown",
+        "goal": "click to stay subscribed",
+        "requires": [
+          "email_consent"
+        ],
+        "condition": null
+      }
+    ],
+    "mermaid": "flowchart TD\n  entry([\"Enters: core_action_lapsed_14d\"]) --> holdout_split{\"in_holdout?\"}\n  holdout_split -- \"yes (15%)\" --> exit_holdout([\"Exit: holdout, no messages\"])\n  holdout_split -- \"no\" --> t1_email[\"Day 0: email (value reminder)\"]\n  t1_email -- \"next\" --> t2_email[\"Day 3: email (friction removal)\"]\n  t2_email -- \"next\" --> t3_in_app[\"Day 7: in-app (whats new)\"]\n  t3_in_app -- \"next\" --> t4_email[\"Day 12: email (social proof)\"]\n  t4_email -- \"next\" --> t5_email[\"Day 18: email (repermission)\"]\n  t5_email -- \"next\" --> sunset[\"Day 32: sunset if no click\"]\n  sunset --> done([\"Exit: flow complete\"])\n  goal([\"feature_used where feature = reports at any step\"]) -.->|\"exits immediately\"| exit_goal([\"Exit: converted\"])",
+    "build_steps": [
+      "Create the ledger once (cohort/job/ledger_postgres.sql). Then schedule the daily job after the warehouse load: run cohort/job/queue_postgres.sql; read the rows from cohort/job/pending_postgres.sql and send one core_action_lapsed_14d event per row with adapters/destinations/event_payloads.py (customerio), holdout members included; after each request succeeds, run cohort/job/mark_postgres.sql for every row it carried. Rows whose request failed stay pending and go out on the next run. Do not push from cohort/entry_postgres.sql: it does not write the ledger, so the same lapse would go out on several days.",
+      "Create an event-triggered campaign and leave every message in Draft until it is approved. Trigger: core_action_lapsed_14d.",
+      "Entry filters (checked once at entry): completed onboarding (onboarding_step_completed where step_index = 3) at least once.",
+      "Checked before every step (Exit condition (conversion goal, exit on conversion)): has not done feature_used where feature = reports since entering; can receive email marketing (subscribed, not bounced, not sunset-suppressed).",
+      "First step, True/False branch: in_holdout is true goes to exit; everyone else continues. Nothing sends before this split.",
+      "Time delay to day 0 at 10:00 recipient local, then email message t1_email: value reminder.",
+      "Time delay to day 3 at 10:00 recipient local, then email message t2_email: friction removal.",
+      "Time delay to day 7 at 10:00 recipient local, then in-app message t3_in_app: whats new.",
+      "Time delay to day 12 at 10:00 recipient local, then email message t4_email: social proof.",
+      "Time delay to day 18 at 10:00 recipient local, then email message t5_email: repermission.",
+      "Time delay 14 days, then: if no click on the re-permission email, update the person: lcm_sunset = true. Make lcm_sunset a suppression in every marketing send.",
+      "Frequency: at most 3 lifecycle messages a person a week across flows (the workspace message limit); send at 10:00 recipient local; nothing between 21:00 to 08:00 recipient local time.",
+      "Before enabling: run engine/policy/simulator.py on flow_spec.json, send every message to a seed list, and get approval. Exit on feature_used where feature = reports must be live before the first send."
+    ]
+  },
+  "copy_plan": [
+    {
+      "step_id": "t1_email",
+      "channel": "email",
+      "mode": "offline",
+      "copy_brief": "Product: Ridgeview. Flow: winback, touch 1 of 5, day 0, channel email.\nWho: people who completed onboarding and then went 14 days without created a report.\nThis message's job (value reminder): Remind them of the one outcome Ridgeview gave them, tied to what they last did, with one link that lets them create a report again. No offer.\nFramework: BAB: before, after, bridge. The single goal: feature_used.\nBefore this: nothing; this is the first message.\nSender: Dana Ortiz at Ridgeview. Voice: plain, specific, second person, no exclamation marks; operations vocabulary (reports, data sources, teammates).\nOffer policy (binding): no discounts or offers. Never invent a deadline, scarcity, a statistic, a customer or a feature.\nPersonalization: only {first_name} and {product_name} are available; write the template code nowhere, words only.\nEmail: subject carries the weight in the first 35 to 40 characters; preview text is a second, distinct promise; one call to action; 2 to 4 short paragraphs; no images needed.",
+      "variants": [
+        {
+          "variant_id": "A",
+          "framework": "BAB: before, after, bridge",
+          "hypothesis": "Stressing that setup is already done raises the core-action rate within 7 days because it removes the restart cost; falsified if B converts as well or better.",
+          "fields": {
+            "subject": "Your {product_name} workspace is where you left it",
+            "preheader": "Pick up from your last session in {product_name}",
+            "headline": "Everything is still set up",
+            "paragraphs": [
+              "Hi {first_name}, your data sources are still connected and your last work is saved.",
+              "Most people who come back start with the same thing they did last time: they create a report. It takes a few minutes, and the setup is already done."
+            ],
+            "cta_label": "Open where you left off"
+          },
+          "rendered": {
+            "t1_email_A.html": "<!-- dialect: customerio -->\n<!-- ridgeview_winback_14d / t1_email. Rendered by engine/agents/copywriter.py; lint: python3 engine/render/template_lint.py --dialect customerio --email <this file> -->\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <meta name=\"color-scheme\" content=\"light dark\">\n  <meta name=\"supported-color-schemes\" content=\"light dark\">\n  <title>Your Ridgeview workspace is where you left it</title>\n  <style>\n    :root { color-scheme: light dark; }\n    body { margin: 0; padding: 0; }\n    .lcm-card { background-color: #FFFFFF; }\n    .lcm-text { color: #1C1C1C; }\n    @media (prefers-color-scheme: dark) {\n      .lcm-card { background-color: #1E1E1E !important; }\n      .lcm-text { color: #F2F2F2 !important; }\n    }\n  </style>\n</head>\n<body>\n<div class=\"preheader\" style=\"display:none;max-height:0;overflow:hidden;\">Pick up from your last session in Ridgeview</div>\n<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\">\n  <tr>\n    <td align=\"center\">\n      <table role=\"presentation\" class=\"lcm-card\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;\">\n        <tr><td style=\"padding:32px 24px;\">\n          <h1 class=\"lcm-text\" style=\"margin:0 0 16px;font:bold 22px/1.3 Arial,sans-serif;\">Everything is still set up</h1>\n          <p class=\"lcm-text\" style=\"margin:0 0 16px;font:16px/1.5 Arial,sans-serif;\">Hi {{ customer.first_name | default: \"there\" }}, your data sources are still connected and your last work is saved.</p>\n          <p class=\"lcm-text\" style=\"margin:0 0 16px;font:16px/1.5 Arial,sans-serif;\">Most people who come back start with the same thing they did last time: they create a report. It takes a few minutes, and the setup is already done.</p>\n          <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\"><tr>\n            <td style=\"border-radius:6px;background-color:#1F5F4A;\">\n              <a href=\"https://app.ridgeview.example/reports/new?utm_source=lifecycle&amp;utm_medium=email&amp;utm_campaign=ridgeview_winback_14d&amp;utm_content=t1_email\" style=\"display:inline-block;padding:12px 20px;font:bold 16px Arial,sans-serif;color:#FFFFFF;text-decoration:none;\">Open where you left off</a>\n            </td>\n          </tr></table>\n        </td></tr>\n        <tr><td class=\"lcm-text\" style=\"padding:16px 24px;font:12px/1.5 Arial,sans-serif;\">\n          Dana Ortiz at Ridgeview<br>\n          100 Example Way, Suite 400, Springfield, OR 97477<br>\n          <a href=\"{% unsubscribe_url %}\">Unsubscribe</a>\n        </td></tr>\n      </table>\n    </td>\n  </tr>\n</table>\n</body>\n</html>\n",
+            "t1_email_A.txt": "Everything is still set up\n\nHi {{ customer.first_name | default: \"there\" }}, your data sources are still connected and your last work is saved.\n\nMost people who come back start with the same thing they did last time: they create a report. It takes a few minutes, and the setup is already done.\n\nOpen where you left off: https://app.ridgeview.example/reports/new?utm_source=lifecycle&utm_medium=email&utm_campaign=ridgeview_winback_14d&utm_content=t1_email\n\nDana Ortiz at Ridgeview\n100 Example Way, Suite 400, Springfield, OR 97477\nUnsubscribe: {% unsubscribe_url %}\n",
+            "t1_email_A.subject.txt": "Subject: Your Ridgeview workspace is where you left it\nPreview text: Pick up from your last session in Ridgeview\n"
+          },
+          "errors": [],
+          "warnings": []
+        },
+        {
+          "variant_id": "B",
+          "framework": "Plain, factual reminder",
+          "hypothesis": "A factual, specific gap in the subject raises clicks more than a benefit line because it is concrete; falsified if A's click rate is equal or higher.",
+          "fields": {
+            "subject": "14 days since you last created a report",
+            "preheader": "A plain note, no offer",
+            "headline": "It has been 14 days",
+            "paragraphs": [
+              "Hi {first_name}, the last time you created a report in {product_name} was 14 days ago.",
+              "If something got in the way, reply and tell me what it was. If you just got busy, the button below takes you straight back."
+            ],
+            "cta_label": "Go back to {product_name}"
+          },
+          "rendered": {
+            "t1_email_B.html": "<!-- dialect: customerio -->\n<!-- ridgeview_winback_14d / t1_email. Rendered by engine/agents/copywriter.py; lint: python3 engine/render/template_lint.py --dialect customerio --email <this file> -->\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <meta name=\"color-scheme\" content=\"light dark\">\n  <meta name=\"supported-color-schemes\" content=\"light dark\">\n  <title>14 days since you last created a report</title>\n  <style>\n    :root { color-scheme: light dark; }\n    body { margin: 0; padding: 0; }\n    .lcm-card { background-color: #FFFFFF; }\n    .lcm-text { color: #1C1C1C; }\n    @media (prefers-color-scheme: dark) {\n      .lcm-card { background-color: #1E1E1E !important; }\n      .lcm-text { color: #F2F2F2 !important; }\n    }\n  </style>\n</head>\n<body>\n<div class=\"preheader\" style=\"display:none;max-height:0;overflow:hidden;\">A plain note, no offer</div>\n<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\">\n  <tr>\n    <td align=\"center\">\n      <table role=\"presentation\" class=\"lcm-card\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;\">\n        <tr><td style=\"padding:32px 24px;\">\n          <h1 class=\"lcm-text\" style=\"margin:0 0 16px;font:bold 22px/1.3 Arial,sans-serif;\">It has been 14 days</h1>\n          <p class=\"lcm-text\" style=\"margin:0 0 16px;font:16px/1.5 Arial,sans-serif;\">Hi {{ customer.first_name | default: \"there\" }}, the last time you created a report in Ridgeview was 14 days ago.</p>\n          <p class=\"lcm-text\" style=\"margin:0 0 16px;font:16px/1.5 Arial,sans-serif;\">If something got in the way, reply and tell me what it was. If you just got busy, the button below takes you straight back.</p>\n          <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\"><tr>\n            <td style=\"border-radius:6px;background-color:#1F5F4A;\">\n              <a href=\"https://app.ridgeview.example/reports/new?utm_source=lifecycle&amp;utm_medium=email&amp;utm_campaign=ridgeview_winback_14d&amp;utm_content=t1_email\" style=\"display:inline-block;padding:12px 20px;font:bold 16px Arial,sans-serif;color:#FFFFFF;text-decoration:none;\">Go back to Ridgeview</a>\n            </td>\n          </tr></table>\n        </td></tr>\n        <tr><td class=\"lcm-text\" style=\"padding:16px 24px;font:12px/1.5 Arial,sans-serif;\">\n          Dana Ortiz at Ridgeview<br>\n          100 Example Way, Suite 400, Springfield, OR 97477<br>\n          <a href=\"{% unsubscribe_url %}\">Unsubscribe</a>\n        </td></tr>\n      </table>\n    </td>\n  </tr>\n</table>\n</body>\n</html>\n",
+            "t1_email_B.txt": "It has been 14 days\n\nHi {{ customer.first_name | default: \"there\" }}, the last time you created a report in Ridgeview was 14 days ago.\n\nIf something got in the way, reply and tell me what it was. If you just got busy, the button below takes you straight back.\n\nGo back to Ridgeview: https://app.ridgeview.example/reports/new?utm_source=lifecycle&utm_medium=email&utm_campaign=ridgeview_winback_14d&utm_content=t1_email\n\nDana Ortiz at Ridgeview\n100 Example Way, Suite 400, Springfield, OR 97477\nUnsubscribe: {% unsubscribe_url %}\n",
+            "t1_email_B.subject.txt": "Subject: 14 days since you last created a report\nPreview text: A plain note, no offer\n"
+          },
+          "errors": [],
+          "warnings": []
+        }
+      ],
+      "note": null
+    },
+    {
+      "step_id": "t2_email",
+      "channel": "email",
+      "mode": "offline",
+      "copy_brief": "Product: Ridgeview. Flow: winback, touch 2 of 5, day 3, channel email.\nWho: people who completed onboarding and then went 14 days without created a report.\nThis message's job (friction removal): Name the most common reason people stop at this point and remove it: a template, a two-minute path, or a reply to a person.\nFramework: PAS: problem, agitation kept factual, solution. The single goal: feature_used.\nBefore this: day 0 email (value reminder).\nSender: Dana Ortiz at Ridgeview. Voice: plain, specific, second person, no exclamation marks; operations vocabulary (reports, data sources, teammates).\nOffer policy (binding): no discounts or offers. Never invent a deadline, scarcity, a statistic, a customer or a feature.\nPersonalization: only {first_name} and {product_name} are available; write the template code nowhere, words only.\nEmail: subject carries the weight in the first 35 to 40 characters; preview text is a second, distinct promise; one call to action; 2 to 4 short paragraphs; no images needed.",
+      "variants": [
+        {
+          "variant_id": "A",
+          "framework": "PAS: problem, agitation kept factual, solution",
+          "hypothesis": "Naming the blocker raises the core-action rate among lapsed users because it addresses the actual reason they left; falsified if B converts as well or better.",
+          "fields": {
+            "subject": "The step most people get stuck on",
+            "preheader": "And the two-minute way past it",
+            "headline": "If you got stuck, this is usually where",
+            "paragraphs": [
+              "Hi {first_name}, when people stop using {product_name} after the first few weeks, it is usually one step: [the most common blocker from support tickets or the leak map].",
+              "[The shortest path past it, in one or two sentences]. If that is not it, reply to this email and a person will help."
+            ],
+            "cta_label": "Try the shortcut"
+          },
+          "rendered": {
+            "t2_email_A.html": "<!-- dialect: customerio -->\n<!-- ridgeview_winback_14d / t2_email. Rendered by engine/agents/copywriter.py; lint: python3 engine/render/template_lint.py --dialect customerio --email <this file> -->\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <meta name=\"color-scheme\" content=\"light dark\">\n  <meta name=\"supported-color-schemes\" content=\"light dark\">\n  <title>The step most people get stuck on</title>\n  <style>\n    :root { color-scheme: light dark; }\n    body { margin: 0; padding: 0; }\n    .lcm-card { background-color: #FFFFFF; }\n    .lcm-text { color: #1C1C1C; }\n    @media (prefers-color-scheme: dark) {\n      .lcm-card { background-color: #1E1E1E !important; }\n      .lcm-text { color: #F2F2F2 !important; }\n    }\n  </style>\n</head>\n<body>\n<div class=\"preheader\" style=\"display:none;max-height:0;overflow:hidden;\">And the two-minute way past it</div>\n<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\">\n  <tr>\n    <td align=\"center\">\n      <table role=\"presentation\" class=\"lcm-card\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;\">\n        <tr><td style=\"padding:32px 24px;\">\n          <h1 class=\"lcm-text\" style=\"margin:0 0 16px;font:bold 22px/1.3 Arial,sans-serif;\">If you got stuck, this is usually where</h1>\n          <p class=\"lcm-text\" style=\"margin:0 0 16px;font:16px/1.5 Arial,sans-serif;\">Hi {{ customer.first_name | default: \"there\" }}, when people stop using Ridgeview after the first few weeks, it is usually one step: [the most common blocker from support tickets or the leak map].</p>\n          <p class=\"lcm-text\" style=\"margin:0 0 16px;font:16px/1.5 Arial,sans-serif;\">[The shortest path past it, in one or two sentences]. If that is not it, reply to this email and a person will help.</p>\n          <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\"><tr>\n            <td style=\"border-radius:6px;background-color:#1F5F4A;\">\n              <a href=\"https://app.ridgeview.example/reports/new?utm_source=lifecycle&amp;utm_medium=email&amp;utm_campaign=ridgeview_winback_14d&amp;utm_content=t2_email\" style=\"display:inline-block;padding:12px 20px;font:bold 16px Arial,sans-serif;color:#FFFFFF;text-decoration:none;\">Try the shortcut</a>\n            </td>\n          </tr></table>\n        </td></tr>\n        <tr><td class=\"lcm-text\" style=\"padding:16px 24px;font:12px/1.5 Arial,sans-serif;\">\n          Dana Ortiz at Ridgeview<br>\n          100 Example Way, Suite 400, Springfield, OR 97477<br>\n          <a href=\"{% unsubscribe_url %}\">Unsubscribe</a>\n        </td></tr>\n      </table>\n    </td>\n  </tr>\n</table>\n</body>\n</html>\n",
+            "t2_email_A.txt": "If you got stuck, this is usually where\n\nHi {{ customer.first_name | default: \"there\" }}, when people stop using Ridgeview after the first few weeks, it is usually one step: [the most common blocker from support tickets or the leak map].\n\n[The shortest path past it, in one or two sentences]. If that is not it, reply to this email and a person will help.\n\nTry the shortcut: https://app.ridgeview.example/reports/new?utm_source=lifecycle&utm_medium=email&utm_campaign=ridgeview_winback_14d&utm_content=t2_email\n\nDana Ortiz at Ridgeview\n100 Example Way, Suite 400, Springfield, OR 97477\nUnsubscribe: {% unsubscribe_url %}\n",
+            "t2_email_A.subject.txt": "Subject: The step most people get stuck on\nPreview text: And the two-minute way past it\n"
+          },
+          "errors": [],
+          "warnings": [
+            "contains [bracketed] fill-ins: replace them with the real specifics before sending"
+          ]
+        },
+        {
+          "variant_id": "B",
+          "framework": "Solution first, problem implied",
+          "hypothesis": "Leading with a ready-made starting point raises the core-action rate more than naming the problem because it lowers effort at the moment of reading; falsified if A converts as well or better.",
+          "fields": {
+            "subject": "A template to create a report in two minutes",
+            "preheader": "Start from something that already works",
+            "headline": "Start from a template",
+            "paragraphs": [
+              "Hi {first_name}, starting from a blank page is the slowest part.",
+              "[Name the template or starter that fits their use case] is ready in your account. Open it, change two things, and you are done."
+            ],
+            "cta_label": "Open the template"
+          },
+          "rendered": {
+            "t2_email_B.html": "<!-- dialect: customerio -->\n<!-- ridgeview_winback_14d / t2_email. Rendered by engine/agents/copywriter.py; lint: python3 engine/render/template_lint.py --dialect customerio --email <this file> -->\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <meta name=\"color-scheme\" content=\"light dark\">\n  <meta name=\"supported-color-schemes\" content=\"light dark\">\n  <title>A template to create a report in two minutes</title>\n  <style>\n    :root { color-scheme: light dark; }\n    body { margin: 0; padding: 0; }\n    .lcm-card { background-color: #FFFFFF; }\n    .lcm-text { color: #1C1C1C; }\n    @media (prefers-color-scheme: dark) {\n      .lcm-card { background-color: #1E1E1E !important; }\n      .lcm-text { color: #F2F2F2 !important; }\n    }\n  </style>\n</head>\n<body>\n<div class=\"preheader\" style=\"display:none;max-height:0;overflow:hidden;\">Start from something that already works</div>\n<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\">\n  <tr>\n    <td align=\"center\">\n      <table role=\"presentation\" class=\"lcm-card\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;\">\n        <tr><td style=\"padding:32px 24px;\">\n          <h1 class=\"lcm-text\" style=\"margin:0 0 16px;font:bold 22px/1.3 Arial,sans-serif;\">Start from a template</h1>\n          <p class=\"lcm-text\" style=\"margin:0 0 16px;font:16px/1.5 Arial,sans-serif;\">Hi {{ customer.first_name | default: \"there\" }}, starting from a blank page is the slowest part.</p>\n          <p class=\"lcm-text\" style=\"margin:0 0 16px;font:16px/1.5 Arial,sans-serif;\">[Name the template or starter that fits their use case] is ready in your account. Open it, change two things, and you are done.</p>\n          <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\"><tr>\n            <td style=\"border-radius:6px;background-color:#1F5F4A;\">\n              <a href=\"https://app.ridgeview.example/reports/new?utm_source=lifecycle&amp;utm_medium=email&amp;utm_campaign=ridgeview_winback_14d&amp;utm_content=t2_email\" style=\"display:inline-block;padding:12px 20px;font:bold 16px Arial,sans-serif;color:#FFFFFF;text-decoration:none;\">Open the template</a>\n            </td>\n          </tr></table>\n        </td></tr>\n        <tr><td class=\"lcm-text\" style=\"padding:16px 24px;font:12px/1.5 Arial,sans-serif;\">\n          Dana Ortiz at Ridgeview<br>\n          100 Example Way, Suite 400, Springfield, OR 97477<br>\n          <a href=\"{% unsubscribe_url %}\">Unsubscribe</a>\n        </td></tr>\n      </table>\n    </td>\n  </tr>\n</table>\n</body>\n</html>\n",
+            "t2_email_B.txt": "Start from a template\n\nHi {{ customer.first_name | default: \"there\" }}, starting from a blank page is the slowest part.\n\n[Name the template or starter that fits their use case] is ready in your account. Open it, change two things, and you are done.\n\nOpen the template: https://app.ridgeview.example/reports/new?utm_source=lifecycle&utm_medium=email&utm_campaign=ridgeview_winback_14d&utm_content=t2_email\n\nDana Ortiz at Ridgeview\n100 Example Way, Suite 400, Springfield, OR 97477\nUnsubscribe: {% unsubscribe_url %}\n",
+            "t2_email_B.subject.txt": "Subject: A template to create a report in two minutes\nPreview text: Start from something that already works\n"
+          },
+          "errors": [],
+          "warnings": [
+            "contains [bracketed] fill-ins: replace them with the real specifics before sending"
+          ]
+        }
+      ],
+      "note": null
+    },
+    {
+      "step_id": "t3_in_app",
+      "channel": "in_app",
+      "mode": "offline",
+      "copy_brief": "Product: Ridgeview. Flow: winback, touch 3 of 5, day 7, channel in_app.\nWho: people who completed onboarding and then went 14 days without created a report.\nThis message's job (whats new): One change in Ridgeview since they were last active that makes it easier to create a report. Show it; do not list features.\nFramework: AIDA: attention, interest, desire, action. The single goal: feature_used.\nBefore this: day 0 email (value reminder); day 3 email (friction removal).\nSender: Dana Ortiz at Ridgeview. Voice: plain, specific, second person, no exclamation marks; operations vocabulary (reports, data sources, teammates).\nOffer policy (binding): no discounts or offers. Never invent a deadline, scarcity, a statistic, a customer or a feature.\nPersonalization: only {first_name} and {product_name} are available; write the template code nowhere, words only.\nIn-app: shows at the next session; headline up to about 60 characters, body up to about 200, button label up to about 24.",
+      "variants": [
+        {
+          "variant_id": "A",
+          "framework": "AIDA: attention, interest, desire, action",
+          "hypothesis": "A single concrete change raises clicks more than a roundup because it is easy to evaluate; falsified if B's click rate is equal or higher.",
+          "fields": {
+            "headline": "One thing changed",
+            "body": "[What the change does for them, with a concrete example].",
+            "cta_label": "See it"
+          },
+          "rendered": {
+            "t3_in_app_A.json": "{\n  \"headline\": \"One thing changed\",\n  \"body\": \"[What the change does for them, with a concrete example].\",\n  \"cta_label\": \"See it\",\n  \"preview\": {\n    \"headline\": \"One thing changed\",\n    \"body\": \"[What the change does for them, with a concrete example].\",\n    \"cta_label\": \"See it\"\n  }\n}"
+          },
+          "errors": [],
+          "warnings": [
+            "contains [bracketed] fill-ins: replace them with the real specifics before sending"
+          ]
+        },
+        {
+          "variant_id": "B",
+          "framework": "Reciprocity framed around feedback",
+          "hypothesis": "Framing the change as a response to customer requests raises clicks because it signals the product is improving for them; falsified if A's click rate is equal or higher.",
+          "fields": {
+            "headline": "[The change, as a benefit]",
+            "body": "It came from requests like yours. Try it on your own data.",
+            "cta_label": "Try it now"
+          },
+          "rendered": {
+            "t3_in_app_B.json": "{\n  \"headline\": \"[The change, as a benefit]\",\n  \"body\": \"It came from requests like yours. Try it on your own data.\",\n  \"cta_label\": \"Try it now\",\n  \"preview\": {\n    \"headline\": \"[The change, as a benefit]\",\n    \"body\": \"It came from requests like yours. Try it on your own data.\",\n    \"cta_label\": \"Try it now\"\n  }\n}"
+          },
+          "errors": [],
+          "warnings": [
+            "contains [bracketed] fill-ins: replace them with the real specifics before sending"
+          ]
+        }
+      ],
+      "note": null
+    },
+    {
+      "step_id": "t4_email",
+      "channel": "email",
+      "mode": "offline",
+      "copy_brief": "Product: Ridgeview. Flow: winback, touch 4 of 5, day 12, channel email.\nWho: people who completed onboarding and then went 14 days without created a report.\nThis message's job (social proof): How a team like theirs uses Ridgeview to create a report each week: one specific, true example with a number.\nFramework: Social proof through one concrete case. The single goal: feature_used.\nBefore this: day 0 email (value reminder); day 3 email (friction removal); day 7 in_app (whats new).\nSender: Dana Ortiz at Ridgeview. Voice: plain, specific, second person, no exclamation marks; operations vocabulary (reports, data sources, teammates).\nOffer policy (binding): no discounts or offers. Never invent a deadline, scarcity, a statistic, a customer or a feature.\nPersonalization: only {first_name} and {product_name} are available; write the template code nowhere, words only.\nEmail: subject carries the weight in the first 35 to 40 characters; preview text is a second, distinct promise; one call to action; 2 to 4 short paragraphs; no images needed.",
+      "variants": [
+        {
+          "variant_id": "A",
+          "framework": "Social proof through one concrete case",
+          "hypothesis": "A single specific customer routine raises the core-action rate more than general benefits because it is easy to imitate; falsified if B converts as well or better.",
+          "fields": {
+            "subject": "How [customer type] use {product_name} each week",
+            "preheader": "One routine, start to finish",
+            "headline": "A weekly routine that sticks",
+            "paragraphs": [
+              "Hi {first_name}, [a real customer or team like theirs] uses {product_name} every [day of week] to [specific outcome with a number].",
+              "The routine is short: they create a report, share it, and move on. You can copy it as is."
+            ],
+            "cta_label": "Copy the routine"
+          },
+          "rendered": {
+            "t4_email_A.html": "<!-- dialect: customerio -->\n<!-- ridgeview_winback_14d / t4_email. Rendered by engine/agents/copywriter.py; lint: python3 engine/render/template_lint.py --dialect customerio --email <this file> -->\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <meta name=\"color-scheme\" content=\"light dark\">\n  <meta name=\"supported-color-schemes\" content=\"light dark\">\n  <title>How [customer type] use Ridgeview each week</title>\n  <style>\n    :root { color-scheme: light dark; }\n    body { margin: 0; padding: 0; }\n    .lcm-card { background-color: #FFFFFF; }\n    .lcm-text { color: #1C1C1C; }\n    @media (prefers-color-scheme: dark) {\n      .lcm-card { background-color: #1E1E1E !important; }\n      .lcm-text { color: #F2F2F2 !important; }\n    }\n  </style>\n</head>\n<body>\n<div class=\"preheader\" style=\"display:none;max-height:0;overflow:hidden;\">One routine, start to finish</div>\n<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\">\n  <tr>\n    <td align=\"center\">\n      <table role=\"presentation\" class=\"lcm-card\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;\">\n        <tr><td style=\"padding:32px 24px;\">\n          <h1 class=\"lcm-text\" style=\"margin:0 0 16px;font:bold 22px/1.3 Arial,sans-serif;\">A weekly routine that sticks</h1>\n          <p class=\"lcm-text\" style=\"margin:0 0 16px;font:16px/1.5 Arial,sans-serif;\">Hi {{ customer.first_name | default: \"there\" }}, [a real customer or team like theirs] uses Ridgeview every [day of week] to [specific outcome with a number].</p>\n          <p class=\"lcm-text\" style=\"margin:0 0 16px;font:16px/1.5 Arial,sans-serif;\">The routine is short: they create a report, share it, and move on. You can copy it as is.</p>\n          <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\"><tr>\n            <td style=\"border-radius:6px;background-color:#1F5F4A;\">\n              <a href=\"https://app.ridgeview.example/reports/new?utm_source=lifecycle&amp;utm_medium=email&amp;utm_campaign=ridgeview_winback_14d&amp;utm_content=t4_email\" style=\"display:inline-block;padding:12px 20px;font:bold 16px Arial,sans-serif;color:#FFFFFF;text-decoration:none;\">Copy the routine</a>\n            </td>\n          </tr></table>\n        </td></tr>\n        <tr><td class=\"lcm-text\" style=\"padding:16px 24px;font:12px/1.5 Arial,sans-serif;\">\n          Dana Ortiz at Ridgeview<br>\n          100 Example Way, Suite 400, Springfield, OR 97477<br>\n          <a href=\"{% unsubscribe_url %}\">Unsubscribe</a>\n        </td></tr>\n      </table>\n    </td>\n  </tr>\n</table>\n</body>\n</html>\n",
+            "t4_email_A.txt": "A weekly routine that sticks\n\nHi {{ customer.first_name | default: \"there\" }}, [a real customer or team like theirs] uses Ridgeview every [day of week] to [specific outcome with a number].\n\nThe routine is short: they create a report, share it, and move on. You can copy it as is.\n\nCopy the routine: https://app.ridgeview.example/reports/new?utm_source=lifecycle&utm_medium=email&utm_campaign=ridgeview_winback_14d&utm_content=t4_email\n\nDana Ortiz at Ridgeview\n100 Example Way, Suite 400, Springfield, OR 97477\nUnsubscribe: {% unsubscribe_url %}\n",
+            "t4_email_A.subject.txt": "Subject: How [customer type] use Ridgeview each week\nPreview text: One routine, start to finish\n"
+          },
+          "errors": [],
+          "warnings": [
+            "contains [bracketed] fill-ins: replace them with the real specifics before sending"
+          ]
+        },
+        {
+          "variant_id": "B",
+          "framework": "Social proof through volume",
+          "hypothesis": "A volume number raises clicks less than one concrete case; falsified if B's click rate is higher than A's.",
+          "fields": {
+            "subject": "[Number] teams did this last week",
+            "preheader": "A quick look at what is working",
+            "headline": "What active teams are doing",
+            "paragraphs": [
+              "Hi {first_name}, last week [number from your data] teams used {product_name} to create a report.",
+              "The most common reason: [the outcome they get, in one sentence]."
+            ],
+            "cta_label": "Do it now"
+          },
+          "rendered": {
+            "t4_email_B.html": "<!-- dialect: customerio -->\n<!-- ridgeview_winback_14d / t4_email. Rendered by engine/agents/copywriter.py; lint: python3 engine/render/template_lint.py --dialect customerio --email <this file> -->\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <meta name=\"color-scheme\" content=\"light dark\">\n  <meta name=\"supported-color-schemes\" content=\"light dark\">\n  <title>[Number] teams did this last week</title>\n  <style>\n    :root { color-scheme: light dark; }\n    body { margin: 0; padding: 0; }\n    .lcm-card { background-color: #FFFFFF; }\n    .lcm-text { color: #1C1C1C; }\n    @media (prefers-color-scheme: dark) {\n      .lcm-card { background-color: #1E1E1E !important; }\n      .lcm-text { color: #F2F2F2 !important; }\n    }\n  </style>\n</head>\n<body>\n<div class=\"preheader\" style=\"display:none;max-height:0;overflow:hidden;\">A quick look at what is working</div>\n<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\">\n  <tr>\n    <td align=\"center\">\n      <table role=\"presentation\" class=\"lcm-card\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;\">\n        <tr><td style=\"padding:32px 24px;\">\n          <h1 class=\"lcm-text\" style=\"margin:0 0 16px;font:bold 22px/1.3 Arial,sans-serif;\">What active teams are doing</h1>\n          <p class=\"lcm-text\" style=\"margin:0 0 16px;font:16px/1.5 Arial,sans-serif;\">Hi {{ customer.first_name | default: \"there\" }}, last week [number from your data] teams used Ridgeview to create a report.</p>\n          <p class=\"lcm-text\" style=\"margin:0 0 16px;font:16px/1.5 Arial,sans-serif;\">The most common reason: [the outcome they get, in one sentence].</p>\n          <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\"><tr>\n            <td style=\"border-radius:6px;background-color:#1F5F4A;\">\n              <a href=\"https://app.ridgeview.example/reports/new?utm_source=lifecycle&amp;utm_medium=email&amp;utm_campaign=ridgeview_winback_14d&amp;utm_content=t4_email\" style=\"display:inline-block;padding:12px 20px;font:bold 16px Arial,sans-serif;color:#FFFFFF;text-decoration:none;\">Do it now</a>\n            </td>\n          </tr></table>\n        </td></tr>\n        <tr><td class=\"lcm-text\" style=\"padding:16px 24px;font:12px/1.5 Arial,sans-serif;\">\n          Dana Ortiz at Ridgeview<br>\n          100 Example Way, Suite 400, Springfield, OR 97477<br>\n          <a href=\"{% unsubscribe_url %}\">Unsubscribe</a>\n        </td></tr>\n      </table>\n    </td>\n  </tr>\n</table>\n</body>\n</html>\n",
+            "t4_email_B.txt": "What active teams are doing\n\nHi {{ customer.first_name | default: \"there\" }}, last week [number from your data] teams used Ridgeview to create a report.\n\nThe most common reason: [the outcome they get, in one sentence].\n\nDo it now: https://app.ridgeview.example/reports/new?utm_source=lifecycle&utm_medium=email&utm_campaign=ridgeview_winback_14d&utm_content=t4_email\n\nDana Ortiz at Ridgeview\n100 Example Way, Suite 400, Springfield, OR 97477\nUnsubscribe: {% unsubscribe_url %}\n",
+            "t4_email_B.subject.txt": "Subject: [Number] teams did this last week\nPreview text: A quick look at what is working\n"
+          },
+          "errors": [],
+          "warnings": [
+            "contains [bracketed] fill-ins: replace them with the real specifics before sending"
+          ]
+        }
+      ],
+      "note": null
+    },
+    {
+      "step_id": "t5_email",
+      "channel": "email",
+      "mode": "offline",
+      "copy_brief": "Product: Ridgeview. Flow: winback, touch 5 of 5, day 18, channel email.\nWho: people who completed onboarding and then went 14 days without created a report.\nThis message's job (repermission): Ask plainly whether they still want these messages, with one button to stay. Say what happens if they do nothing.\nFramework: Plain re-permission; no guilt, no countdown. The single goal: click to stay subscribed.\nBefore this: day 0 email (value reminder); day 3 email (friction removal); day 7 in_app (whats new); day 12 email (social proof).\nSender: Dana Ortiz at Ridgeview. Voice: plain, specific, second person, no exclamation marks; operations vocabulary (reports, data sources, teammates).\nOffer policy (binding): no discounts or offers. Never invent a deadline, scarcity, a statistic, a customer or a feature.\nPersonalization: only {first_name} and {product_name} are available; write the template code nowhere, words only.\nEmail: subject carries the weight in the first 35 to 40 characters; preview text is a second, distinct promise; one call to action; 2 to 4 short paragraphs; no images needed.",
+      "variants": [
+        {
+          "variant_id": "A",
+          "framework": "Plain re-permission; no guilt, no countdown",
+          "hypothesis": "An honest ask keeps the people who still care and lowers complaints from those who do not; expect 1 to 5% to click. Falsified if complaints on this send exceed the flow average.",
+          "fields": {
+            "subject": "Should we keep sending these?",
+            "preheader": "One click to stay; nothing to do to stop",
+            "headline": "Do you still want these emails?",
+            "paragraphs": [
+              "Hi {first_name}, you have not opened {product_name} in a while, so we want to check before we send more.",
+              "If you want to keep hearing from us, click below. If not, do nothing: in two weeks we will stop these emails. Your account and data stay as they are."
+            ],
+            "cta_label": "Yes, keep me subscribed"
+          },
+          "rendered": {
+            "t5_email_A.html": "<!-- dialect: customerio -->\n<!-- ridgeview_winback_14d / t5_email. Rendered by engine/agents/copywriter.py; lint: python3 engine/render/template_lint.py --dialect customerio --email <this file> -->\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <meta name=\"color-scheme\" content=\"light dark\">\n  <meta name=\"supported-color-schemes\" content=\"light dark\">\n  <title>Should we keep sending these?</title>\n  <style>\n    :root { color-scheme: light dark; }\n    body { margin: 0; padding: 0; }\n    .lcm-card { background-color: #FFFFFF; }\n    .lcm-text { color: #1C1C1C; }\n    @media (prefers-color-scheme: dark) {\n      .lcm-card { background-color: #1E1E1E !important; }\n      .lcm-text { color: #F2F2F2 !important; }\n    }\n  </style>\n</head>\n<body>\n<div class=\"preheader\" style=\"display:none;max-height:0;overflow:hidden;\">One click to stay; nothing to do to stop</div>\n<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\">\n  <tr>\n    <td align=\"center\">\n      <table role=\"presentation\" class=\"lcm-card\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;\">\n        <tr><td style=\"padding:32px 24px;\">\n          <h1 class=\"lcm-text\" style=\"margin:0 0 16px;font:bold 22px/1.3 Arial,sans-serif;\">Do you still want these emails?</h1>\n          <p class=\"lcm-text\" style=\"margin:0 0 16px;font:16px/1.5 Arial,sans-serif;\">Hi {{ customer.first_name | default: \"there\" }}, you have not opened Ridgeview in a while, so we want to check before we send more.</p>\n          <p class=\"lcm-text\" style=\"margin:0 0 16px;font:16px/1.5 Arial,sans-serif;\">If you want to keep hearing from us, click below. If not, do nothing: in two weeks we will stop these emails. Your account and data stay as they are.</p>\n          <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\"><tr>\n            <td style=\"border-radius:6px;background-color:#1F5F4A;\">\n              <a href=\"https://app.ridgeview.example/reports/new?utm_source=lifecycle&amp;utm_medium=email&amp;utm_campaign=ridgeview_winback_14d&amp;utm_content=t5_email\" style=\"display:inline-block;padding:12px 20px;font:bold 16px Arial,sans-serif;color:#FFFFFF;text-decoration:none;\">Yes, keep me subscribed</a>\n            </td>\n          </tr></table>\n        </td></tr>\n        <tr><td class=\"lcm-text\" style=\"padding:16px 24px;font:12px/1.5 Arial,sans-serif;\">\n          Dana Ortiz at Ridgeview<br>\n          100 Example Way, Suite 400, Springfield, OR 97477<br>\n          <a href=\"{% unsubscribe_url %}\">Unsubscribe</a>\n        </td></tr>\n      </table>\n    </td>\n  </tr>\n</table>\n</body>\n</html>\n",
+            "t5_email_A.txt": "Do you still want these emails?\n\nHi {{ customer.first_name | default: \"there\" }}, you have not opened Ridgeview in a while, so we want to check before we send more.\n\nIf you want to keep hearing from us, click below. If not, do nothing: in two weeks we will stop these emails. Your account and data stay as they are.\n\nYes, keep me subscribed: https://app.ridgeview.example/reports/new?utm_source=lifecycle&utm_medium=email&utm_campaign=ridgeview_winback_14d&utm_content=t5_email\n\nDana Ortiz at Ridgeview\n100 Example Way, Suite 400, Springfield, OR 97477\nUnsubscribe: {% unsubscribe_url %}\n",
+            "t5_email_A.subject.txt": "Subject: Should we keep sending these?\nPreview text: One click to stay; nothing to do to stop\n"
+          },
+          "errors": [],
+          "warnings": []
+        },
+        {
+          "variant_id": "B",
+          "framework": "Default-effect framing",
+          "hypothesis": "Stating the default (a pause) raises stay clicks over asking a question because it makes the consequence concrete; falsified if A's stay rate is equal or higher.",
+          "fields": {
+            "subject": "We will pause emails from {product_name}",
+            "preheader": "Unless you tell us otherwise",
+            "headline": "Pausing your emails",
+            "paragraphs": [
+              "Hi {first_name}, since you have not used {product_name} lately, we plan to stop sending you these emails in two weeks.",
+              "Want to keep them? One click does it. Either way, your account stays open."
+            ],
+            "cta_label": "Keep my emails"
+          },
+          "rendered": {
+            "t5_email_B.html": "<!-- dialect: customerio -->\n<!-- ridgeview_winback_14d / t5_email. Rendered by engine/agents/copywriter.py; lint: python3 engine/render/template_lint.py --dialect customerio --email <this file> -->\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <meta name=\"color-scheme\" content=\"light dark\">\n  <meta name=\"supported-color-schemes\" content=\"light dark\">\n  <title>We will pause emails from Ridgeview</title>\n  <style>\n    :root { color-scheme: light dark; }\n    body { margin: 0; padding: 0; }\n    .lcm-card { background-color: #FFFFFF; }\n    .lcm-text { color: #1C1C1C; }\n    @media (prefers-color-scheme: dark) {\n      .lcm-card { background-color: #1E1E1E !important; }\n      .lcm-text { color: #F2F2F2 !important; }\n    }\n  </style>\n</head>\n<body>\n<div class=\"preheader\" style=\"display:none;max-height:0;overflow:hidden;\">Unless you tell us otherwise</div>\n<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\">\n  <tr>\n    <td align=\"center\">\n      <table role=\"presentation\" class=\"lcm-card\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;\">\n        <tr><td style=\"padding:32px 24px;\">\n          <h1 class=\"lcm-text\" style=\"margin:0 0 16px;font:bold 22px/1.3 Arial,sans-serif;\">Pausing your emails</h1>\n          <p class=\"lcm-text\" style=\"margin:0 0 16px;font:16px/1.5 Arial,sans-serif;\">Hi {{ customer.first_name | default: \"there\" }}, since you have not used Ridgeview lately, we plan to stop sending you these emails in two weeks.</p>\n          <p class=\"lcm-text\" style=\"margin:0 0 16px;font:16px/1.5 Arial,sans-serif;\">Want to keep them? One click does it. Either way, your account stays open.</p>\n          <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\"><tr>\n            <td style=\"border-radius:6px;background-color:#1F5F4A;\">\n              <a href=\"https://app.ridgeview.example/reports/new?utm_source=lifecycle&amp;utm_medium=email&amp;utm_campaign=ridgeview_winback_14d&amp;utm_content=t5_email\" style=\"display:inline-block;padding:12px 20px;font:bold 16px Arial,sans-serif;color:#FFFFFF;text-decoration:none;\">Keep my emails</a>\n            </td>\n          </tr></table>\n        </td></tr>\n        <tr><td class=\"lcm-text\" style=\"padding:16px 24px;font:12px/1.5 Arial,sans-serif;\">\n          Dana Ortiz at Ridgeview<br>\n          100 Example Way, Suite 400, Springfield, OR 97477<br>\n          <a href=\"{% unsubscribe_url %}\">Unsubscribe</a>\n        </td></tr>\n      </table>\n    </td>\n  </tr>\n</table>\n</body>\n</html>\n",
+            "t5_email_B.txt": "Pausing your emails\n\nHi {{ customer.first_name | default: \"there\" }}, since you have not used Ridgeview lately, we plan to stop sending you these emails in two weeks.\n\nWant to keep them? One click does it. Either way, your account stays open.\n\nKeep my emails: https://app.ridgeview.example/reports/new?utm_source=lifecycle&utm_medium=email&utm_campaign=ridgeview_winback_14d&utm_content=t5_email\n\nDana Ortiz at Ridgeview\n100 Example Way, Suite 400, Springfield, OR 97477\nUnsubscribe: {% unsubscribe_url %}\n",
+            "t5_email_B.subject.txt": "Subject: We will pause emails from Ridgeview\nPreview text: Unless you tell us otherwise\n"
+          },
+          "errors": [],
+          "warnings": []
+        }
+      ],
+      "note": null
+    }
+  ],
+  "experiment": {
+    "holdout_pct": 15.0,
+    "unit": "user",
+    "salt": "ridgeview_winback_14d",
+    "assignment_sql": {
+      "postgres": "((('x' || substr(md5(user_id || ':ridgeview_winback_14d'), 1, 7))::bit(28)::int) % 100) < 15",
+      "snowflake": "MOD(TO_NUMBER(SUBSTR(MD5(user_id || ':ridgeview_winback_14d'), 1, 7), 'XXXXXXX'), 100) < 15",
+      "bigquery": "MOD(CAST(CONCAT('0x', SUBSTR(TO_HEX(MD5(CONCAT(user_id, ':ridgeview_winback_14d'))), 1, 7)) AS INT64), 100) < 15"
+    },
+    "assignment_rule": "persistent, by user: bucket = first 7 hex digits of md5(user_id || ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout, computed in the daily queue query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population",
+    "primary_metric": "created a report (feature_used where feature = reports) within 30 days of entry, treatment vs holdout, both arms counted from their entry date",
+    "outcome_window_days": 30,
+    "read": "directional only",
+    "sizing": "about 28 entrants a month (DEMO DATA), 17.5% return within 30 days with no flow (DEMO DATA), 25% relative lift (4.4 pts) worth acting on: 781 holdout entrants at 15%, 186.0 months of entries plus the 30-day outcome window, so the read lands about 186.9 months after launch (engine/measurement/stats.py feasible --entries-per-month 28 --holdout 0.15 --baseline 0.1746 --mde-rel 0.25 --outcome-window-days 30)",
+    "read_after": "not inside 12 months at this volume (it would take about 187 months): keep the holdout, report against a pre/post baseline, and label every result directional",
+    "feasibility": {
+      "entries_per_month": 28.0,
+      "holdout_share": 0.15,
+      "p_control": 0.1746,
+      "mde_abs": 0.04365,
+      "design_effect": 1.0,
+      "required_holdout_n": 781,
+      "required_treatment_n": 4426,
+      "enrollment_months": 186.0,
+      "outcome_window_days": 30,
+      "months_to_read": 186.9,
+      "recommended_design": "the holdout will not reach a readable sample inside the horizon. Use a pre/post baseline, label it directional, and watch an operational signal instead; do not report a lift percentage",
+      "expected_read": "directional only",
+      "alternatives": [
+        {
+          "holdout_share": 0.25,
+          "months_to_read": 126.7,
+          "fits_horizon": false,
+          "cost": "withholds 25% of entrants from the flow while it reads"
+        },
+        {
+          "holdout_share": 0.5,
+          "months_to_read": 93.8,
+          "fits_horizon": false,
+          "cost": "withholds 50% of entrants from the flow while it reads"
+        }
+      ],
+      "horizon_months": 12,
+      "randomization_unit": "account (company or workspace) where the buying unit is an account; entrants in one unit are not independent, so set design_effect = 1 + (entrants per unit - 1) x ICC"
+    },
+    "mde_by_horizon": [
+      {
+        "months_of_entries": 3,
+        "holdout_n": 12,
+        "treatment_n": 71,
+        "mde_abs_pts": 41.0,
+        "mde_rel": 2.3483
+      },
+      {
+        "months_of_entries": 6,
+        "holdout_n": 25,
+        "treatment_n": 142,
+        "mde_abs_pts": 28.24,
+        "mde_rel": 1.6173
+      },
+      {
+        "months_of_entries": 12,
+        "holdout_n": 50,
+        "treatment_n": 285,
+        "mde_abs_pts": 19.35,
+        "mde_rel": 1.108
+      }
+    ],
+    "sensitivity": [],
+    "decision_rule": "Keep the flow when the 95% interval for (treatment minus holdout) rate of feature_used where feature = reports lies above zero and the guardrails hold. If it spans zero at the planned read, report it as inconclusive: keep the holdout running or change the flow. Report attributed, incremental and the gap together (engine/measurement/stats.py incrementality).",
+    "srm_rule": "At every look, test the split against 85/15 (engine/measurement/stats.py readout --expected-holdout 0.15). A chi-square p below 0.001 means assignment or logging is broken; read nothing until it is fixed.",
+    "peeking_policy": "One planned read on the date above. Earlier looks check sample ratio and guardrails only; no early stop for a good-looking lift.",
+    "guardrail_metrics": [
+      "spam complaint rate per send below 0.1% (Gmail's target; 0.3% is its hard limit)",
+      "unsubscribe rate per send, against the 90-day median for your lifecycle sends; pause a touch running above twice it",
+      "hard bounce rate below 1%"
+    ],
+    "variant_tests": [
+      "Copy variants rotate evenly inside the treatment arm. Read them on clicks or the core action, never opens, and only directionally below about 1,000 sends per variant (size exactly with engine/measurement/stats.py size --baseline <click rate> --mde-rel 0.2)"
+    ]
+  },
+  "qa": {
+    "status": "READY WITH ASSUMPTIONS",
+    "checks": [
+      {
+        "name": "sending gate",
+        "status": "pass",
+        "detail": "GREEN gate: normal sending within the frequency cap"
+      },
+      {
+        "name": "data dependencies",
+        "status": "pass",
+        "detail": "every event and attribute the flow needs is present"
+      },
+      {
+        "name": "cohort SQL",
+        "status": "pass",
+        "detail": "every generated query parses in postgres, snowflake and bigquery; entry query ran on the data"
+      },
+      {
+        "name": "simulation: flow spec matches schemas/flow_spec.schema.json",
+        "status": "pass",
+        "detail": "valid"
+      },
+      {
+        "name": "simulation: step ids are unique",
+        "status": "pass",
+        "detail": "unique"
+      },
+      {
+        "name": "simulation: every branch target is a step or an exit",
+        "status": "pass",
+        "detail": "all resolve"
+      },
+      {
+        "name": "simulation: every step is reachable",
+        "status": "pass",
+        "detail": "all reachable"
+      },
+      {
+        "name": "simulation: holdout is held out before the first message",
+        "status": "pass",
+        "detail": "holdout_split at position 1"
+      },
+      {
+        "name": "simulation: exit on goal is immediate",
+        "status": "pass",
+        "detail": "goal: created a report (feature_used where feature = reports)"
+      },
+      {
+        "name": "simulation: nominal schedule respects the weekly frequency cap",
+        "status": "pass",
+        "detail": "at most 2 email/sms/push message(s) in any 7 days on any route, cap 3"
+      },
+      {
+        "name": "simulation: journey length",
+        "status": "pass",
+        "detail": "5 touch(es) over 18 days on the longest route"
+      },
+      {
+        "name": "simulation: holdout members receive nothing",
+        "status": "pass",
+        "detail": "outcome: exit (holdout), 0 message(s)"
+      },
+      {
+        "name": "simulation: no message without consent",
+        "status": "pass",
+        "detail": "0 message(s) to a person with no consent"
+      },
+      {
+        "name": "simulation: every send matches a consent",
+        "status": "pass",
+        "detail": "all matched"
+      },
+      {
+        "name": "simulation: nothing is sent after the core action",
+        "status": "pass",
+        "detail": "outcome: converted; 0 message(s) after converting"
+      },
+      {
+        "name": "simulation: frequency cap holds for every persona",
+        "status": "pass",
+        "detail": "most in any 7 days: 2, cap 3"
+      },
+      {
+        "name": "simulation: messages send at 10:00 local",
+        "status": "pass",
+        "detail": "all on time"
+      },
+      {
+        "name": "simulation: nothing sends in quiet hours",
+        "status": "pass",
+        "detail": "none"
+      },
+      {
+        "name": "simulation: no persona gets more than the touch count",
+        "status": "pass",
+        "detail": "max 5"
+      },
+      {
+        "name": "simulation: sunset applies only to people who did not click",
+        "status": "pass",
+        "detail": "non-clicker sunset: True; clicker sunset: False"
+      },
+      {
+        "name": "simulation: no journey loops",
+        "status": "pass",
+        "detail": "none"
+      },
+      {
+        "name": "trigger payload (customerio_pipelines_track)",
+        "status": "pass",
+        "detail": "valid against config/esp_payload_schemas.json"
+      },
+      {
+        "name": "copy: t1_email",
+        "status": "pass",
+        "detail": "2 variant(s) pass lint and guardrails (offline)"
+      },
+      {
+        "name": "copy: t2_email",
+        "status": "warn",
+        "detail": "2 variant(s) pass lint and guardrails (offline); contains [bracketed] fill-ins: replace them with the real specifics before sending"
+      },
+      {
+        "name": "copy: t3_in_app",
+        "status": "warn",
+        "detail": "2 variant(s) pass lint and guardrails (offline); contains [bracketed] fill-ins: replace them with the real specifics before sending"
+      },
+      {
+        "name": "copy: t4_email",
+        "status": "warn",
+        "detail": "2 variant(s) pass lint and guardrails (offline); contains [bracketed] fill-ins: replace them with the real specifics before sending"
+      },
+      {
+        "name": "copy: t5_email",
+        "status": "pass",
+        "detail": "2 variant(s) pass lint and guardrails (offline)"
+      },
+      {
+        "name": "holdout read",
+        "status": "warn",
+        "detail": "directional only: not inside 12 months at this volume (it would take about 187 months): keep the holdout, report against a pre/post baseline, and label every result directional"
+      },
+      {
+        "name": "compliance: one-click unsubscribe and complaint rate",
+        "status": "warn",
+        "detail": "mailbox providers: Gmail and Yahoo require bulk senders' marketing mail to carry one-click unsubscribe (RFC 8058) plus a visible unsubscribe link, honored within two days, and to keep user-reported spam under 0.3% (Gmail's target is under 0.1%). One-click unsubscribe is a header your platform adds: confirm it is on (engine/deliverability/analyze.py checks it in real headers)."
+      },
+      {
+        "name": "compliance: bulk-sender authentication",
+        "status": "warn",
+        "detail": "mailbox providers: Gmail, Yahoo and Microsoft (Outlook.com, Hotmail.com and Live.com since 5 May 2025) require senders of more than 5,000 messages a day to pass SPF and DKIM and publish DMARC (p=none or stricter) aligned with one of them; Microsoft sends failing mail to junk, then rejects it with 550 5.7.515. Run lcm \"check deliverability for <your sending domain>\" (engine/deliverability/dns_collect.py) and resolve anything RED before launch."
+      },
+      {
+        "name": "compliance: CAN-SPAM ad identification",
+        "status": "warn",
+        "detail": "United States: A commercial message must be identified as an advertisement unless the recipient gave prior affirmative consent to receive it. Confirm every recipient opted in to marketing email, or add a clear advertisement disclosure."
+      },
+      {
+        "name": "compliance: CASL consent",
+        "status": "warn",
+        "detail": "Canada: Commercial electronic messages need express or implied consent. Every email requires a consent record; 86% of records carry a consent timestamp. Implied consent expires: two years after a purchase, six months after an inquiry or application. Exclude Canadian records whose implied consent has lapsed, or confirm they gave express consent."
+      },
+      {
+        "name": "compliance: PECR consent or soft opt-in",
+        "status": "warn",
+        "detail": "United Kingdom: Marketing email to individuals needs specific consent, or the soft opt-in for people who bought or negotiated to buy a similar product and were offered an opt-out at collection and in every message. The ICO is revising this guidance after the Data (Use and Access) Act. Every email requires a consent record; 86% of records carry a consent timestamp. Confirm each UK record has consent or qualifies for the soft opt-in."
+      },
+      {
+        "name": "compliance: ePrivacy consent",
+        "status": "warn",
+        "detail": "European Union: Marketing email needs prior consent, except to existing customers for similar products with an opt-out at collection and in every message (ePrivacy Directive, article 13). Every email requires a consent record; 86% of records carry a consent timestamp. Confirm the lawful basis for each EU record and that consent records can be produced."
+      },
+      {
+        "name": "compliance: double opt-in evidence",
+        "status": "warn",
+        "detail": "Germany: UWG section 7 requires prior express consent for marketing email; the Federal Court of Justice (I ZR 164/09) puts the burden of proof on the sender, which in practice means a stored double opt-in confirmation per person. Confirm German records were collected with double opt-in and that each confirmation is stored."
+      },
+      {
+        "name": "compliance",
+        "status": "warn",
+        "detail": "16 rule(s) checked for Australia, Canada, Germany, European Union, United Kingdom, United States"
+      }
+    ]
+  },
+  "strategy": {
+    "touches": [
+      {
+        "index": 1,
+        "day": 0,
+        "role": "value_reminder",
+        "channel": "email",
+        "why": "opens on what they already got from the product: the cheapest reason to come back; email carries the long-form message, the unsubscribe and the fallback for every other channel"
+      },
+      {
+        "index": 2,
+        "day": 3,
+        "role": "friction_removal",
+        "channel": "email",
+        "why": "the most common reason people stop is a specific obstacle; naming and removing it beats a generic nudge; email carries the long-form message, the unsubscribe and the fallback for every other channel"
+      },
+      {
+        "index": 3,
+        "day": 7,
+        "role": "whats_new",
+        "channel": "in_app",
+        "why": "a lapsed user's picture of the product is out of date; one concrete change updates it; in-app waits for the next session, so it only reaches people already back, and expires after three days"
+      },
+      {
+        "index": 4,
+        "day": 12,
+        "role": "social_proof",
+        "channel": "email",
+        "why": "a routine copied from a similar team lowers the effort of deciding what to do; email carries the long-form message, the unsubscribe and the fallback for every other channel"
+      },
+      {
+        "index": 5,
+        "day": 18,
+        "role": "repermission",
+        "channel": "email",
+        "why": "ends honestly: asks whether to keep mailing, which protects the sender reputation every other flow depends on; email carries the long-form message, the unsubscribe and the fallback for every other channel"
+      }
+    ],
+    "channels_requested": [
+      "email",
+      "in_app"
+    ],
+    "channels_used": [
+      "email",
+      "in_app"
+    ],
+    "offer": "no offer anywhere in the flow (offer policy)",
+    "leak_step": null,
+    "decisions": [
+      {
+        "stage": "strategist",
+        "decision": "end with re-permission and a sunset",
+        "why": "people who ignore a whole win-back flow are the ones who complain; asking and then stopping protects the sender"
+      },
+      {
+        "stage": "strategist",
+        "decision": "offer stance",
+        "why": "no offer anywhere in the flow (offer policy)"
+      }
+    ]
+  },
+  "compliance": {
+    "status": "warn",
+    "jurisdictions": [
+      "Australia",
+      "Canada",
+      "Germany",
+      "European Union",
+      "United Kingdom",
+      "United States"
+    ],
+    "findings": [
+      {
+        "rule": "one-click unsubscribe and complaint rate",
+        "jurisdiction": "mailbox providers",
+        "status": "warn",
+        "detail": "Gmail and Yahoo require bulk senders' marketing mail to carry one-click unsubscribe (RFC 8058) plus a visible unsubscribe link, honored within two days, and to keep user-reported spam under 0.3% (Gmail's target is under 0.1%). One-click unsubscribe is a header your platform adds: confirm it is on (engine/deliverability/analyze.py checks it in real headers).",
+        "source": "https://support.google.com/mail/answer/81126"
+      },
+      {
+        "rule": "bulk-sender authentication",
+        "jurisdiction": "mailbox providers",
+        "status": "warn",
+        "detail": "Gmail, Yahoo and Microsoft (Outlook.com, Hotmail.com and Live.com since 5 May 2025) require senders of more than 5,000 messages a day to pass SPF and DKIM and publish DMARC (p=none or stricter) aligned with one of them; Microsoft sends failing mail to junk, then rejects it with 550 5.7.515. Run lcm \"check deliverability for <your sending domain>\" (engine/deliverability/dns_collect.py) and resolve anything RED before launch.",
+        "source": "https://support.google.com/mail/answer/81126"
+      },
+      {
+        "rule": "suppression of opt-outs, bounces and complaints",
+        "jurisdiction": "mailbox providers",
+        "status": "pass",
+        "detail": "Never mail people who unsubscribed, hard bounced or complained. Unsubscribes, hard bounces and spam complaints are suppressed in every step.",
+        "source": "https://support.google.com/mail/answer/81126"
+      },
+      {
+        "rule": "CAN-SPAM postal address",
+        "jurisdiction": "United States",
+        "status": "pass",
+        "detail": "Commercial email must include the sender's valid physical postal address (a registered PO box or private mailbox counts). A postal address or the platform's address token is in all 8 emails.",
+        "source": "https://www.ftc.gov/business-guidance/resources/can-spam-act-compliance-guide-business"
+      },
+      {
+        "rule": "CAN-SPAM opt-out",
+        "jurisdiction": "United States",
+        "status": "pass",
+        "detail": "Commercial email must offer a clear way to opt out that keeps working for at least 30 days after the send, honored within 10 business days. Every email carries the platform's unsubscribe link. Honoring requests within 10 business days is a process requirement on your platform: confirm it.",
+        "source": "https://www.ftc.gov/business-guidance/resources/can-spam-act-compliance-guide-business"
+      },
+      {
+        "rule": "CAN-SPAM honest subject and header",
+        "jurisdiction": "United States",
+        "status": "pass",
+        "detail": "Subject lines and header information must not mislead. No subject implies a prior conversation; the guardrails also block fake urgency and offers outside policy.",
+        "source": "https://www.ftc.gov/business-guidance/resources/can-spam-act-compliance-guide-business"
+      },
+      {
+        "rule": "CAN-SPAM ad identification",
+        "jurisdiction": "United States",
+        "status": "warn",
+        "detail": "A commercial message must be identified as an advertisement unless the recipient gave prior affirmative consent to receive it. Confirm every recipient opted in to marketing email, or add a clear advertisement disclosure.",
+        "source": "https://www.ftc.gov/business-guidance/resources/can-spam-act-compliance-guide-business"
+      },
+      {
+        "rule": "CASL consent",
+        "jurisdiction": "Canada",
+        "status": "warn",
+        "detail": "Commercial electronic messages need express or implied consent. Every email requires a consent record; 86% of records carry a consent timestamp. Implied consent expires: two years after a purchase, six months after an inquiry or application. Exclude Canadian records whose implied consent has lapsed, or confirm they gave express consent.",
+        "source": "https://ised-isde.canada.ca/site/canada-anti-spam-legislation/en/node/7"
+      },
+      {
+        "rule": "CASL identification and unsubscribe",
+        "jurisdiction": "Canada",
+        "status": "pass",
+        "detail": "Messages must identify the sender, give contact information and a no-cost unsubscribe mechanism, honored within 10 business days. Every email carries the platform's unsubscribe link. Honoring requests within 10 business days is a process requirement on your platform: confirm it.",
+        "source": "https://ised-isde.canada.ca/site/canada-anti-spam-legislation/en/node/7"
+      },
+      {
+        "rule": "CASL sender identification",
+        "jurisdiction": "Canada",
+        "status": "pass",
+        "detail": "Every message identifies who sent it and on whose behalf, with a mailing address and a phone number, email or web address that stays valid for 60 days. Every email footer names the sender and every SMS starts with the brand name.",
+        "source": "https://ised-isde.canada.ca/site/canada-anti-spam-legislation/en/node/7"
+      },
+      {
+        "rule": "PECR consent or soft opt-in",
+        "jurisdiction": "United Kingdom",
+        "status": "warn",
+        "detail": "Marketing email to individuals needs specific consent, or the soft opt-in for people who bought or negotiated to buy a similar product and were offered an opt-out at collection and in every message. The ICO is revising this guidance after the Data (Use and Access) Act. Every email requires a consent record; 86% of records carry a consent timestamp. Confirm each UK record has consent or qualifies for the soft opt-in.",
+        "source": "https://ico.org.uk/for-organisations/direct-marketing-and-privacy-and-electronic-communications/guide-to-pecr/electronic-and-telephone-marketing/electronic-mail-marketing/"
+      },
+      {
+        "rule": "ePrivacy consent",
+        "jurisdiction": "European Union",
+        "status": "warn",
+        "detail": "Marketing email needs prior consent, except to existing customers for similar products with an opt-out at collection and in every message (ePrivacy Directive, article 13). Every email requires a consent record; 86% of records carry a consent timestamp. Confirm the lawful basis for each EU record and that consent records can be produced.",
+        "source": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32002L0058"
+      },
+      {
+        "rule": "EU unsubscribe in every message",
+        "jurisdiction": "European Union",
+        "status": "pass",
+        "detail": "Every marketing message offers a free, easy opt-out. Every email carries the platform's unsubscribe link.",
+        "source": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32002L0058"
+      },
+      {
+        "rule": "double opt-in evidence",
+        "jurisdiction": "Germany",
+        "status": "warn",
+        "detail": "UWG section 7 requires prior express consent for marketing email; the Federal Court of Justice (I ZR 164/09) puts the burden of proof on the sender, which in practice means a stored double opt-in confirmation per person. Confirm German records were collected with double opt-in and that each confirmation is stored.",
+        "source": "https://www.gesetze-im-internet.de/uwg_2004/__7.html"
+      },
+      {
+        "rule": "Spam Act consent, identification and unsubscribe",
+        "jurisdiction": "Australia",
+        "status": "pass",
+        "detail": "Commercial messages need consent, must identify the sender and offer a functional unsubscribe that keeps working for 30 days after the send, honored within 5 working days. Every email carries the platform's unsubscribe link. Honoring requests within 5 working days is a process requirement on your platform: confirm it.",
+        "source": "https://www.acma.gov.au/avoid-sending-spam"
+      },
+      {
+        "rule": "Spam Act sender identification",
+        "jurisdiction": "Australia",
+        "status": "pass",
+        "detail": "Every message identifies the business that authorized it. Every email footer names the sender and every SMS starts with the brand name.",
+        "source": "https://www.acma.gov.au/avoid-sending-spam"
+      }
+    ],
+    "note": "Rules engine, not legal advice: it checks the plan against the rules in config/compliance_rules.json, each with its source. Confirm anything marked warn with counsel."
+  },
+  "decisions": [
+    {
+      "stage": "intake",
+      "decision": "sending gate GREEN",
+      "why": "GREEN gate: normal sending within the frequency cap"
+    },
+    {
+      "stage": "analyst",
+      "decision": "entry rule",
+      "why": "People who completed onboarding and then went 14 days without the core action (created a report). They enter on day 14, once per lapse, and leave the moment they do the core action again."
+    },
+    {
+      "stage": "strategist",
+      "decision": "end with re-permission and a sunset",
+      "why": "people who ignore a whole win-back flow are the ones who complain; asking and then stopping protects the sender"
+    },
+    {
+      "stage": "strategist",
+      "decision": "offer stance",
+      "why": "no offer anywhere in the flow (offer policy)"
+    },
+    {
+      "stage": "experiment",
+      "decision": "15% persistent holdout, read: directional only",
+      "why": "not inside 12 months at this volume (it would take about 187 months): keep the holdout, report against a pre/post baseline, and label every result directional"
+    },
+    {
+      "stage": "compliance",
+      "decision": "compliance warn",
+      "why": "jurisdictions in the audience: Australia, Canada, Germany, European Union, United Kingdom, United States"
+    }
+  ],
+  "parent_run_id": null,
+  "approvals": {}
+}

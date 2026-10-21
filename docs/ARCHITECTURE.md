@@ -12,10 +12,10 @@
 ```mermaid
 flowchart TB
     subgraph L1["Context: one file per brand"]
-        CTX["core/context_loader.xml<br/>stack, dialects, schemas, consent, gate, benchmarks, voice"]
+        CTX["templates/context/context_loader.xml<br/>stack, dialects, schemas, consent, gate, benchmarks, voice"]
     end
     subgraph L2["Protocol: how the engine thinks"]
-        SYS["core/system_prompt.md<br/>dual persona, operating principles, syntax rules,<br/>diagnostic workflows, module router"]
+        SYS["prompts/core/system_prompt.md<br/>dual persona, operating principles, syntax rules,<br/>diagnostic workflows, module router"]
     end
     subgraph L3["Modules: what the engine does"]
         M1["01 deliverability<br/>gate, headers, DNS, warming"]
@@ -28,7 +28,7 @@ flowchart TB
         T["tools/*.py<br/>deliverability, warmup, stats, sms,<br/>template_lint, sql_check, payloads"]
     end
     subgraph L5["Contracts and checks"]
-        S["schemas/, custom_event_definitions.json,<br/>tests/fixtures, tools/repo_check.py, CI"]
+        S["schemas/, custom_event_definitions.json,<br/>examples/brands/ridgeview_saas/data, engine/repo_check.py, CI"]
     end
     CTX --> SYS --> M1 & M2 & M3 & M4 & M5
     M1 & M2 & M3 & M4 & M5 --> T
@@ -37,12 +37,12 @@ flowchart TB
 
 | Layer | Files | Responsibility |
 |---|---|---|
-| Context | `core/context_loader.xml` | Everything a session needs about one brand, labeled by how it is known (LIVE PULL, SUPPLIED, ESTIMATE). Filled once, reused every session. |
-| Protocol | `core/system_prompt.md` | Identity (strategist plus engineer), the ten operating principles, zero-tolerance syntax rules, standard diagnostic workflows, and the router that picks a module. |
+| Context | `templates/context/context_loader.xml` | Everything a session needs about one brand, labeled by how it is known (LIVE PULL, SUPPLIED, ESTIMATE). Filled once, reused every session. |
+| Protocol | `prompts/core/system_prompt.md` | Identity (strategist plus engineer), the ten operating principles, zero-tolerance syntax rules, standard diagnostic workflows, and the router that picks a module. |
 | Modules | `modules/01_*` to `modules/05_*` | One prompt per job, each with explicit input variables, preconditions, a step protocol, an output format, a worked example and guardrails. |
 | Tools | `tools/*.py` | Deterministic computation, standard library plus a few parsers. No network, no API keys. |
 | Contracts | `schemas/`, `modules/02_*/schemas/` | JSON Schemas for event payloads and flow specifications, so outputs can be validated by machine. |
-| Checks | `tools/repo_check.py`, `tests/`, `.github/workflows/ci.yml` | Every SQL, template, JSON and XML example in the repository is checked against the rules the engine imposes on Claude. |
+| Checks | `engine/repo_check.py`, `tests/`, `.github/workflows/ci.yml` | Every SQL, template, JSON and XML example in the repository is checked against the rules the engine imposes on Claude. |
 | Teammate (2.1, stateful in 2.2) | `agents/`, `scripts/`, `config/`, `briefs/` | One brief in, a checked plan out: a resumable pipeline of agents (Analyst, Strategist, Architect, Copywriter, Experiment, QA, Compliance) runs the modules as code, a simulator dry-runs the flow, `lcm` routes plain-English requests, and a daily job watches the cohorts, the engagement tiers and the sending domains. See [`architectural_overview.md`](architectural_overview.md). |
 
 ## 2. Module dependencies
@@ -86,7 +86,7 @@ The engine draws the line explicitly:
 `skills/` load the right module for a request, read the user's connected platforms where a Claude
 connector exists, and run the tools when code execution is available.
 
-**Paste-in mode.** In any Claude surface: paste `core/system_prompt.md`, then the filled context
+**Paste-in mode.** In any Claude surface: paste `prompts/core/system_prompt.md`, then the filled context
 file, then the module prompt for the job. Everything still works except running the tools; the
 engine labels such output "unchecked".
 
@@ -110,7 +110,7 @@ engine labels such output "unchecked".
   and give every example block a dialect so `repo_check.py` tests it.
 - **A new event**: add its `$defs` schema and its `x-tracking-plan` line (naming what it unlocks)
   to `custom_event_definitions.json`, and a valid and an invalid example to `examples/events/`.
-- **A new platform dialect**: add it to `tools/template_lint.py` with a real parser where one
+- **A new platform dialect**: add it to `engine/render/template_lint.py` with a real parser where one
   exists, a fallback rule, and its unsubscribe and address tokens; then add a column to the dialect
   tables in `docs/LIQUID_CHEATSHEET.md` and the copy prompts.
 
@@ -119,5 +119,5 @@ engine labels such output "unchecked".
 The teammate runs the modules as code for one campaign at a time: the cohort analyst applies module
 04's data discipline, the campaign architect module 02's flow rules, the copywriter module 03's copy
 rules through the template linter, and the experimentation agent module 05's sizing through
-`tools/stats.py`. Its pipeline, contracts, verification and extension points are in
+`engine/measurement/stats.py`. Its pipeline, contracts, verification and extension points are in
 [`architectural_overview.md`](architectural_overview.md).

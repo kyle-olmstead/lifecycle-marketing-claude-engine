@@ -4,7 +4,7 @@
 > Braze and Customer.io use Liquid. Klaviyo uses its own Django-style language, HubSpot uses HubL,
 > and Salesforce Marketing Cloud uses AMPscript. Code written for one breaks in another, often
 > silently, so the engine names the dialect on every block and lints it with
-> `tools/template_lint.py`. Every code block on this page passes that linter in CI.
+> `engine/render/template_lint.py`. Every code block on this page passes that linter in CI.
 
 Platform facts were read from each vendor's documentation in October 2026. Platforms add tags and
 filters; check their docs for anything not listed here.
@@ -167,6 +167,6 @@ Hi %%=v(@fn)=%%,
 ## 9. Check any template
 
 ```text
-python3 tools/template_lint.py --dialect customerio email.html          # syntax and fallback rules
-python3 tools/template_lint.py --dialect klaviyo --email email.html     # plus unsubscribe, address, alt text, size, dark mode
+python3 engine/render/template_lint.py --dialect customerio email.html          # syntax and fallback rules
+python3 engine/render/template_lint.py --dialect klaviyo --email email.html     # plus unsubscribe, address, alt text, size, dark mode
 ```

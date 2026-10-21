@@ -14,15 +14,15 @@ metadata:
 # Lifecycle engine setup
 
 Produce `lmm-engine/context.xml` in the user's working folder, shaped like
-`${CLAUDE_PLUGIN_ROOT}/core/context_loader.xml`, with every value labeled LIVE PULL (with
+`${CLAUDE_PLUGIN_ROOT}/templates/context/context_loader.xml`, with every value labeled LIVE PULL (with
 `observed_at`), SUPPLIED or ESTIMATE. Every other skill reads this file before it does anything.
 
 ## Step 1: Read the operating rules
 
-Read `${CLAUDE_PLUGIN_ROOT}/core/system_prompt.md` once per conversation. Its operating principles
+Read `${CLAUDE_PLUGIN_ROOT}/prompts/core/system_prompt.md` once per conversation. Its operating principles
 and syntax rules bind every skill in this plugin.
 
-Then check that the repository tools can run: `python3 ${CLAUDE_PLUGIN_ROOT}/tools/repo_check.py`.
+Then check that the repository tools can run: `python3 ${CLAUDE_PLUGIN_ROOT}/engine/repo_check.py`.
 If it fails on an import, install the dependencies once with
 `python3 -m pip install -r ${CLAUDE_PLUGIN_ROOT}/requirements.txt` (Python 3.12 or later). If code
 cannot run in this environment, set `<environment><tools_available>` to `false` in the context file (`true` when the check passes) so every other

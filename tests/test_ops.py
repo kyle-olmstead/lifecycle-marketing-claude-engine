@@ -7,13 +7,17 @@ import pytest
 import sqlglot
 
 from tests.conftest import ROOT
-from agents import cli, cohort_analyst, engagement
-from agents.brief import load_brief
-from scripts import daily, sheets_sync
-from tools import contracts, deliverability, dns_collect, sql_check
+from engine.cli import main as cli
+from engine.agents import cohort_analyst, engagement
+from engine.brief import load_brief
+from engine.workflows import daily
+from adapters.destinations import sheets as sheets_sync
+from engine import contracts
+from engine.deliverability import analyze as deliverability, dns_collect
+from engine.sql import check as sql_check
 
-FIXTURES = str(ROOT / "tests" / "fixtures")
-EXAMPLE = ROOT / "briefs" / "examples" / "winback_14d.yaml"
+FIXTURES = str(ROOT / "examples" / "brands" / "ridgeview_saas" / "data")
+EXAMPLE = ROOT / "examples" / "brands" / "ridgeview_saas" / "briefs" / "winback_14d.yaml"
 
 
 # ----------------------------------------------------------------------------------------------
@@ -53,7 +57,7 @@ def test_fixture_tiers_feed_the_gate_and_the_counts_query_agrees():
     con = cohort_analyst.connect(FIXTURES)
     counts = {x["tier"]: int(x["people"]) for x in cohort_analyst._rows(con, engagement.counts_sql("duckdb", s["as_of"]))}
     assert engagement.summarize_counts(counts, s["as_of"]) == s
-    assert set(s["warmup_tiers"]) == {"engaged_30d", "engaged_90d", "engaged_180d", "unengaged"}   # tools/warmup.py's tier names
+    assert set(s["warmup_tiers"]) == {"engaged_30d", "engaged_90d", "engaged_180d", "unengaged"}   # engine/deliverability/warmup.py's tier names
     sync = engagement.sync_rows(r["rows"])
     assert all(x["lcm_engagement_tier"] != "suppressed" for x in sync) and any(x["lcm_sunset"] for x in sync)
 
@@ -135,7 +139,7 @@ def test_contracts_name_the_field_that_is_wrong():
 @pytest.mark.parametrize("name", sorted(contracts.SCHEMAS))
 def test_committed_schemas_match_the_models(name):
     committed = json.loads((ROOT / "schemas" / name).read_text())
-    assert committed == contracts.json_schema(contracts.SCHEMAS[name]), "run python3 tools/contracts.py --write-schemas"
+    assert committed == contracts.json_schema(contracts.SCHEMAS[name]), "run python3 engine/contracts.py --write-schemas"
 
 
 # ----------------------------------------------------------------------------------------------
@@ -219,7 +223,7 @@ def test_daily_bigquery_mode_runs_the_warehouse_sql(tmp_path):
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, [None if v is None else str(v) for v in row])) for row in cur.fetchall()]
 
-    st = daily.run("bigquery", briefs_dir=ROOT / "briefs" / "examples", out=tmp_path, bq=bq, sheet=False)
+    st = daily.run("bigquery", briefs_dir=ROOT / "examples" / "brands" / "ridgeview_saas" / "briefs", out=tmp_path, bq=bq, sheet=False)
     assert not st["errors"] and st["flows"] and st["engagement"]["status"] == "ok"
     assert (tmp_path / "ridgeview_winback_14d" / "warehouse_results" / "daily.json").exists()
 
@@ -282,7 +286,7 @@ def test_duplicate_dmarc_records_mean_no_dmarc():
 
 
 def test_customerio_batches_stay_under_the_documented_limit():
-    from tools.payloads import _bytes, attribute_sync
+    from adapters.destinations.payloads import _bytes, attribute_sync
     rows = [{"user_id": f"user_{i:06d}", "email": f"user_{i:06d}@example.com", "lcm_engagement_tier": "engaged_90d", "lcm_sunset": False}
             for i in range(20000)]
     reqs, _ = attribute_sync("customerio", rows)

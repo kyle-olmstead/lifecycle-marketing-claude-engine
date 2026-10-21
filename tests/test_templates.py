@@ -1,8 +1,8 @@
 import pytest
 
 from tests.conftest import ROOT
-from tools.sms import analyze as sms
-from tools.template_lint import lint
+from engine.render.sms import analyze as sms
+from engine.render.template_lint import lint
 
 GOOD = {
     "braze": "Hi {{ ${first_name} | default: 'there' }} {% connected_content https://api.example.com/x :save r %}{% if r.items.size < 1 %}{% abort_message('none') %}{% endif %} {{${set_user_to_unsubscribed_url}}}",
@@ -45,7 +45,7 @@ def test_unknown_filters_are_reported():
 
 
 def test_modular_email_template_passes_email_checks():
-    path = ROOT / "modules/03_copywriting_and_multichannel/templates/modular_email_components.html"
+    path = ROOT / "templates/email/components.html"
     r = lint(path.read_text(), "customerio", email=True)
     # the component library shows every image block once, so as a whole it is image-heavy; one email built from it is not
     assert r["ok"] and r["bytes"] < 90 * 1024
@@ -54,7 +54,7 @@ def test_modular_email_template_passes_email_checks():
 
 
 def test_text_to_image_ignores_template_tags_and_hidden_preheaders():
-    from tools.template_lint import text_to_image
+    from engine.render.template_lint import text_to_image
     body = '<div style="display:none">' + "x" * 400 + '</div>{{ customer.first_name }}{% if a %}{% endif %}<img src="a.png" alt="a">'
     r = text_to_image("<html><body>" + body + "<p>Short.</p></body></html>")
     assert r["visible_text_chars"] == len("Short.") and r["errors"] and "image-only" in r["errors"][0]
@@ -105,7 +105,7 @@ def test_sms_escape_characters_never_split_across_segments():
 
 
 def test_sms_opt_out_needs_an_instruction_not_the_word():
-    from tools.sms import has_opt_out
+    from engine.render.sms import has_opt_out
     for text in ("Acme: stop by our store this weekend", "NON-STOP savings", "end to end encrypted", "cancel to end your trial", "DON'T STOP NOW"):
         assert not has_opt_out(text), text
     assert has_opt_out("Acme: To opt out, respond Stop") and has_opt_out("reply \u201cstop\u201d") and has_opt_out("STOP=stop")

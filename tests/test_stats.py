@@ -3,7 +3,7 @@ import json
 import pytest
 
 from tests.conftest import ROOT
-from tools import stats as S
+from engine.measurement import stats as S
 
 
 def test_sample_size_matches_reference():

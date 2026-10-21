@@ -386,7 +386,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "Everything tools/deliverability.py analyze reads. observed_at marks the records as looked up (LIVE PULL) on that date.",
+  "description": "Everything engine/deliverability/analyze.py analyze reads. observed_at marks the records as looked up (LIVE PULL) on that date.",
   "properties": {
     "case": {
       "anyOf": [

@@ -4,7 +4,7 @@
 # version, the way you would say it; `expert` is the same question at full depth. `route` names the job `lcm` runs (CI
 # checks that each `ask` reaches it) or the skill Claude uses. `limits` is what the engine cannot answer, so nobody
 # mistakes a partial answer for a whole one. docs/QUESTION_BANK.md is written from this file:
-#   python3 tools/question_bank.py --write
+#   python3 engine/questions.py --write
 
 daily:
   - id: priorities
@@ -196,7 +196,7 @@ annual:
     expert: What do the time returned, the inbox protection and the measurement discipline add up to for our team, at our pay, volume and email revenue?
     route: {job: roi}
     command: lcm "what is our lifecycle program worth next year?"
-    you_get: The business case from docs/ROI_MEMO.md at the default numbers; rerun scripts/roi_model.py with yours.
+    you_get: The business case from docs/ROI_MEMO.md at the default numbers; rerun engine/measurement/roi.py with yours.
     needs: your pay, team size and email revenue for your own figures
     limits: Modeled, not measured; the memo says how to measure the task hours.
 

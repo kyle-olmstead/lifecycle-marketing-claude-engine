@@ -7,20 +7,21 @@ import jsonschema
 import pytest
 
 from tests.conftest import ROOT
-from agents import copywriter, orchestrator
-from agents.brief import load_brief, parse_text
-from agents.models import EventMatch
-from scripts import campaign_simulator
-from tools import template_lint
+from engine.agents import copywriter
+from engine.pipeline import orchestrator
+from engine.brief import load_brief, parse_text
+from engine.models import EventMatch
+from engine.policy import simulator as campaign_simulator
+from engine.render import template_lint
 
 FLOW_SCHEMA = json.loads((ROOT / "schemas/flow_spec.schema.json").read_text())
-EXAMPLE = ROOT / "briefs" / "examples" / "winback_14d.yaml"
+EXAMPLE = ROOT / "examples" / "brands" / "ridgeview_saas" / "briefs" / "winback_14d.yaml"
 EM_DASH = chr(0x2014)
 
 
 @pytest.fixture(scope="module")
 def plan():
-    return orchestrator.run(load_brief(EXAMPLE), str(ROOT / "tests/fixtures"), copy_mode="offline")
+    return orchestrator.run(load_brief(EXAMPLE), str(ROOT / "examples/brands/ridgeview_saas/data"), copy_mode="offline")
 
 
 def _all_checks_pass_except_known(p, allowed=("copy:", "holdout read", "compliance")):
@@ -37,7 +38,7 @@ def test_worked_example_is_ready_with_assumptions(plan):
 
 
 def test_worked_example_matches_the_committed_output(plan):
-    committed = ROOT / "examples" / "teammate" / "ridgeview_winback_14d"
+    committed = ROOT / "examples" / "brands" / "ridgeview_saas" / "runs" / "winback_14d"
     assert json.loads((committed / "flow_spec.json").read_text()) == plan.flow.flow_spec
     assert json.loads((committed / "simulation.json").read_text()) == plan.flow.simulation
 
@@ -102,7 +103,7 @@ def test_activation_flow():
     b = load_brief(EXAMPLE).model_copy(update={
         "flow_type": "activation", "touches": 4,
         "qualifying_event": EventMatch(event="onboarding_step_completed", where={"step_index": 3}, label="completed onboarding")})
-    p = orchestrator.run(b, str(ROOT / "tests/fixtures"), copy_mode="offline")
+    p = orchestrator.run(b, str(ROOT / "examples/brands/ridgeview_saas/data"), copy_mode="offline")
     spec = p.flow.flow_spec
     assert p.qa.status != "BLOCKED"
     assert spec["trigger"]["type"] == "event" and p.flow.touches[0].role == "first_step"

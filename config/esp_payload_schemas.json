@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/kyle-olmstead/lifecycle-marketing-claude-engine/config/esp_payload_schemas.json",
   "title": "LMM Engine ESP trigger-event request bodies",
-  "description": "Request bodies the engine builds for ESPs: one custom event per flow entrant (tools/event_payloads.py, checked by scripts/campaign_simulator.py --payloads) and person-attribute updates (tools/payloads.py attribute_sync, used by agents/engagement.py). One $defs entry per endpoint; x-endpoint records the method, URL, authentication, limits and the documentation each was read from",
+  "description": "Request bodies the engine builds for ESPs: one custom event per flow entrant (adapters/destinations/event_payloads.py, checked by engine/policy/simulator.py --payloads) and person-attribute updates (adapters/destinations/payloads.py attribute_sync, used by engine/agents/engagement.py). One $defs entry per endpoint; x-endpoint records the method, URL, authentication, limits and the documentation each was read from",
   "type": "object",
   "$defs": {
     "klaviyo_create_event": {

@@ -12,7 +12,7 @@ labels: [deliverability, incident]
 Run the analyzer and paste the first section (the gate and its signals):
 
 ```text
-python3 tools/deliverability.py analyze incident.json --markdown
+python3 engine/deliverability/analyze.py analyze incident.json --markdown
 ```
 
 ## Symptom
@@ -33,4 +33,4 @@ python3 tools/deliverability.py analyze incident.json --markdown
 
 ## What the analyzer got wrong (if anything)
 
-<!-- A parsed fact that does not match the evidence is a bug in tools/deliverability.py. Include the input that reproduces it. -->
+<!-- A parsed fact that does not match the evidence is a bug in engine/deliverability/analyze.py. Include the input that reproduces it. -->

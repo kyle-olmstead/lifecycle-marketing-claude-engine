@@ -15,7 +15,7 @@ metadata:
 
 ## Step 0: Load context and rules
 
-Read `${CLAUDE_PLUGIN_ROOT}/core/system_prompt.md` and `lmm-engine/context.xml` (run
+Read `${CLAUDE_PLUGIN_ROOT}/prompts/core/system_prompt.md` and `lmm-engine/context.xml` (run
 `lifecycle-setup` first if it does not exist).
 
 **Before running a tool:** the checks need Python 3.12 or later and the packages in
@@ -26,9 +26,9 @@ tool would have checked; never describe an unchecked artifact as verified.
 
 ## Step 1: Pick the module
 
-- Diagnosis, headers, DNS, gate: `${CLAUDE_PLUGIN_ROOT}/modules/01_deliverability_and_infrastructure/prompts/header_analyzer.md`
-- Warming a new or recovering IP or domain: `${CLAUDE_PLUGIN_ROOT}/modules/01_deliverability_and_infrastructure/prompts/warmup_schedule_generator.md`
-- DMARC rollout or alignment audit: `${CLAUDE_PLUGIN_ROOT}/modules/01_deliverability_and_infrastructure/checklists/dmarc_alignment_audit.md`
+- Diagnosis, headers, DNS, gate: `${CLAUDE_PLUGIN_ROOT}/prompts/jobs/deliverability/header_analyzer.md`
+- Warming a new or recovering IP or domain: `${CLAUDE_PLUGIN_ROOT}/prompts/jobs/deliverability/warmup_schedule_generator.md`
+- DMARC rollout or alignment audit: `${CLAUDE_PLUGIN_ROOT}/prompts/jobs/deliverability/dmarc_alignment_audit.md`
 
 Follow the module's protocol and output format exactly.
 
@@ -43,8 +43,8 @@ complaint and unsubscribe rates, and engagement split by recipient domain. Label
 When code execution is available, assemble the analyzer input and run:
 
 ```text
-python3 ${CLAUDE_PLUGIN_ROOT}/tools/deliverability.py analyze incident.json --markdown
-python3 ${CLAUDE_PLUGIN_ROOT}/tools/warmup.py --target <n> --tiers '<json>' --gate <verdict> --markdown
+python3 ${CLAUDE_PLUGIN_ROOT}/engine/deliverability/analyze.py analyze incident.json --markdown
+python3 ${CLAUDE_PLUGIN_ROOT}/engine/deliverability/warmup.py --target <n> --tiers '<json>' --gate <verdict> --markdown
 ```
 
 Without code execution, do the module's steps by hand and label the analysis manual.

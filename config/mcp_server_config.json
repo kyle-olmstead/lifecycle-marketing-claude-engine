@@ -9,7 +9,7 @@
   "mcpServers": {
     "lcm-teammate": {
       "command": "python3",
-      "args": ["REPLACE_WITH_ABSOLUTE_PATH/lifecycle-marketing-claude-engine/scripts/mcp_server.py"],
+      "args": ["REPLACE_WITH_ABSOLUTE_PATH/lifecycle-marketing-claude-engine/engine/mcp_server.py"],
       "env": {
         "LCM_OUT_DIR": "REPLACE_WITH_ABSOLUTE_PATH/lcm-plans",
         "ANTHROPIC_API_KEY": "REPLACE_WITH_KEY_OR_DELETE_THIS_LINE_FOR_OFFLINE_COPY"
@@ -81,13 +81,13 @@
       "name": "Google Sheets (developer preview)",
       "url": "https://sheetsmcp.googleapis.com/mcp/v1",
       "auth": "Google OAuth with your own OAuth client; enable sheetsmcp.googleapis.com; Claude's redirect URI is https://claude.ai/api/mcp/auth_callback",
-      "use": "read the reporting sheet that scripts/sheets_sync.py writes",
+      "use": "read the reporting sheet that adapters/destinations/sheets.py writes",
       "docs": "https://developers.google.com/workspace/sheets/api/guides/configure-mcp-server"
     }
   ],
   "noOfficialServer": {
     "Salesforce Marketing Cloud": "no vendor MCP server found; paste exports, or go through the warehouse (CONNECTORS.md)",
-    "Segment and RudderStack": "send events to scripts/webhook_parser.py or sync them to the warehouse",
-    "Google Analytics 4": "export to BigQuery and use the BigQuery server, or forward Measurement Protocol events to scripts/webhook_parser.py"
+    "Segment and RudderStack": "send events to adapters/sources/webhooks.py or sync them to the warehouse",
+    "Google Analytics 4": "export to BigQuery and use the BigQuery server, or forward Measurement Protocol events to adapters/sources/webhooks.py"
   }
 }

@@ -4,18 +4,40 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lmm-engine"
-version = "2.3.0"
-description = "Lifecycle marketing engine: agents that turn a one-sentence brief into a build-ready, compliant, measurable flow"
+version = "3.0.0"
+description = "Lifecycle marketing engine: a one-sentence brief in, a build-ready, compliant, measurable flow out"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
-# requirements.txt pins the verified versions; install with: pip install -r requirements.txt && pip install -e . --no-deps
+# Ranges here so `pip install -e .` and `uv sync` resolve on their own; requirements.txt pins the exact
+# versions CI verified. Either way works: pip install -e .  |  uv sync  |  pip install -r requirements.txt
+dependencies = [
+  "python-liquid>=2.3,<3",
+  "Jinja2>=3.1,<4",
+  "Django>=5.1",
+  "sqlglot>=30",
+  "duckdb>=1.4",
+  "jsonschema>=4.23",
+  "publicsuffixlist",
+  "pydantic>=2.11,<3",
+  "PyYAML>=6",
+  "dnspython>=2.7",
+  "httpx>=0.28",
+]
+
+[project.optional-dependencies]
+# Claude API copy, the webhook receiver, Google Sheets, the MCP server: only needed for those features
+claude = ["anthropic>=1.0"]
+server = ["fastapi>=0.115", "uvicorn>=0.30", "mcp>=1.0"]
+sheets = ["gspread>=6", "google-auth>=2.30"]
+dev = ["pytest>=8"]
+all = ["lmm-engine[claude,server,sheets,dev]"]
 
 [project.scripts]
-lcm = "agents.cli:main"
+lcm = "engine.cli.main:main"
 
-[tool.setuptools]
-packages = ["agents", "tools", "scripts"]
+[tool.setuptools.packages.find]
+include = ["engine*", "adapters*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

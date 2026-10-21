@@ -25,7 +25,7 @@ flowchart LR
     L --> P["ExecutionPlan<br/>plan.md, flow_spec.json,<br/>cohort/*.sql, copy/*"]
 ```
 
-Every arrow is a Pydantic model in `agents/models.py` (`Brief`, `CohortDefinition`, `Strategy`,
+Every arrow is a Pydantic model in `engine/models.py` (`Brief`, `CohortDefinition`, `Strategy`,
 `FlowPlan`, `TouchCopy`, `ExperimentDesign`, `QAReport`, `ComplianceReport`, `ExecutionPlan`). A
 malformed hand-off fails at the boundary. Provenance travels with the data: each unstated brief field
 is an `Assumption`, each estimate carries a label (SUPPLIED, LIVE PULL, ESTIMATE, DEMO DATA, UNKNOWN),
@@ -34,17 +34,17 @@ this" at the top of the plan.
 
 | Agent | Decides | Never decides |
 |---|---|---|
-| Analyst (`agents/cohort_analyst.py`) | entry and exit rules, the absence trigger pattern per platform, SQL in four dialects, which dependencies are verified or blocked, the audience's countries, the onboarding step with the largest drop | anything without data behind it: unknown volume stays unknown |
-| Strategist (`agents/strategist.py`) | the job of each touch, its day and channel, which requested channels the data cannot support, the offer stance, where the activation unblock touch aims | wording; anything the brief fixed |
-| Architect (`agents/campaign_architect.py`) | nothing strategic: it compiles the strategy into a flow spec, consent conditions and fallbacks, the sunset, and build steps in the platform's vocabulary | copy |
-| Copywriter (`agents/copywriter.py`) | nothing structural: it asks a writer (Claude, a human via handoff, or the offline library) for words, then renders and checks them | template syntax, compliance blocks: those are added by code |
-| Experiment (`agents/experimentation_agent.py`) | the holdout design and its read label, using `tools/stats.py` | a lift on a population too small to support one |
-| QA (`agents/stages.py`) | READY, READY WITH ASSUMPTIONS or BLOCKED from the checks below | |
-| Compliance (`agents/compliance.py`) | pass, warn or fail per rule in `config/compliance_rules.json`, for the jurisdictions in the audience; a fail blocks the plan | legal sign-off: warn means ask counsel |
+| Analyst (`engine/agents/cohort_analyst.py`) | entry and exit rules, the absence trigger pattern per platform, SQL in four dialects, which dependencies are verified or blocked, the audience's countries, the onboarding step with the largest drop | anything without data behind it: unknown volume stays unknown |
+| Strategist (`engine/agents/strategist.py`) | the job of each touch, its day and channel, which requested channels the data cannot support, the offer stance, where the activation unblock touch aims | wording; anything the brief fixed |
+| Architect (`engine/agents/campaign_architect.py`) | nothing strategic: it compiles the strategy into a flow spec, consent conditions and fallbacks, the sunset, and build steps in the platform's vocabulary | copy |
+| Copywriter (`engine/agents/copywriter.py`) | nothing structural: it asks a writer (Claude, a human via handoff, or the offline library) for words, then renders and checks them | template syntax, compliance blocks: those are added by code |
+| Experiment (`engine/agents/experimentation_agent.py`) | the holdout design and its read label, using `engine/measurement/stats.py` | a lift on a population too small to support one |
+| QA (`engine/pipeline/stages.py`) | READY, READY WITH ASSUMPTIONS or BLOCKED from the checks below | |
+| Compliance (`engine/policy/compliance.py`) | pass, warn or fail per rule in `config/compliance_rules.json`, for the jurisdictions in the audience; a fail blocks the plan | legal sign-off: warn means ask counsel |
 
 ## 1a. State: runs, resume, revise, approve
 
-`agents/pipeline.py` runs the stages in order and writes each one's output to
+`engine/pipeline/core.py` runs the stages in order and writes each one's output to
 `out/<flow>/runs/<run_id>/stages/<stage>.json`, with `state.json` recording every stage's status,
 attempts, timing, error and an input hash (the stage name, the engine version, the hashes of every
 stage before it, and the inputs that stage reads: the brief, the data location and a fingerprint of
@@ -81,7 +81,7 @@ sequenceDiagram
     participant ESP as ESP flow
     Job->>WH: 1. cohort/job/queue_<dialect>.sql<br/>due lapses into lcm_flow_entries as pending
     WH->>Job: 2. cohort/job/pending_<dialect>.sql<br/>every pending row, including earlier failures
-    Job->>ESP: one core_action_lapsed_<n>d event per row,<br/>with in_holdout and holdout_bucket (tools/event_payloads.py)
+    Job->>ESP: one core_action_lapsed_<n>d event per row,<br/>with in_holdout and holdout_bucket (adapters/destinations/event_payloads.py)
     Job->>WH: 3. cohort/job/mark_<dialect>.sql for each row whose request succeeded
     ESP->>ESP: first step: in_holdout? yes: exit. no: continue
     ESP->>ESP: every step: exit on the core event (with its property filter)
@@ -122,7 +122,7 @@ newsletter slot for a trigger, computed on their own data.
 
 **One assignment everywhere.** The bucket is the first 7 hex digits of
 `md5(user_id || ':' || salt)` as an integer, modulo 100. It is written once per dialect in
-`agents/sql_dialects.py` (PostgreSQL bit cast, Snowflake `TO_NUMBER(..., 'XXXXXXX')`, BigQuery
+`engine/sql/dialects.py` (PostgreSQL bit cast, Snowflake `TO_NUMBER(..., 'XXXXXXX')`, BigQuery
 `CAST('0x...' AS INT64)`, DuckDB) and once in Python. Tests assert that Python, DuckDB, BigQuery
 (transpiled) and PostgreSQL (executed) agree for every fixture user.
 
@@ -133,27 +133,27 @@ newsletter slot for a trigger, computed on their own data.
 | Sending gate | RED blocks; AMBER or no gate adds an engaged-only entry filter |
 | Data dependencies | with `--data`: every event exists, property filters match rows, fill rates; a missing qualifying or core event blocks |
 | Cohort SQL | entry and history queries parse in PostgreSQL, Snowflake and BigQuery (sqlglot); the DuckDB version runs on the data |
-| Flow structure | `scripts/campaign_simulator.py`: schema, unique ids, branch targets, reachability, holdout before the first message, weekly cap on every route |
+| Flow structure | `engine/policy/simulator.py`: schema, unique ids, branch targets, reachability, holdout before the first message, weekly cap on every route |
 | Journeys | synthetic people walk the flow hour by hour: holdout gets nothing, no send without consent, nothing after the core action, cap, send hour, the brief's quiet hours, touch count, sunset only for non-clickers |
 | Trigger payload | the example request validates against `config/esp_payload_schemas.json` |
-| Copy | every variant: dialect lint (`tools/template_lint.py`), unsubscribe and address present, SMS segments and opt-out (`tools/sms.py`), offer policy, fake urgency, deceptive subjects, unknown tokens, text-to-image |
-| Holdout read | causal, causal and slow, directional only, or not readable (`tools/stats.py feasible`) |
+| Copy | every variant: dialect lint (`engine/render/template_lint.py`), unsubscribe and address present, SMS segments and opt-out (`engine/render/sms.py`), offer policy, fake urgency, deceptive subjects, unknown tokens, text-to-image |
+| Holdout read | causal, causal and slow, directional only, or not readable (`engine/measurement/stats.py feasible`) |
 | Compliance | the rules for every jurisdiction in the audience: postal address, unsubscribe, sender identity, SMS hours (the strictest state window the rules track; Sundays flagged), SMS frequency, SMS and email consent, honest subjects, suppression, and the confirmations only a person can give |
 
 ## 4. The plumbing
 
 | Piece | Role | Security |
 |---|---|---|
-| `scripts/webhook_parser.py` | Segment (Actions or classic) and GA4 Measurement Protocol bodies into canonical `track_events` rows, validated against the tracking plan, deduplicated on `event_id` and identify `messageId` (across restarts, from the last 3 days of files), rejects quarantined with reasons | HMAC-SHA1 `X-Signature` over the whole body for Segment (batched requests, which Segment signs on the first event only, are refused: turn batching off), shared token for GA4, constant-time compares; track and identify messages over 72 hours old refused over HTTP as possible replays; refuses unsigned traffic unless explicitly allowed; 5 MB body cap |
-| `tools/event_payloads.py` | entry rows into Klaviyo, HubSpot (date-versioned 2026-09), Braze and Customer.io Pipelines requests within each vendor's limits | headers carry `${PLACEHOLDER}` names; no credential is ever written |
-| `tools/payloads.py attribute_sync` | the engagement tier and sunset flag as person-attribute updates: Klaviyo bulk import, HubSpot batch upsert, Braze `/users/track` (75 per request, `_update_existing_only`), Customer.io Pipelines batch | same; nothing is sent from the tool |
-| `agents/engagement.py` | engagement tiers from `message_events` (suppressed, engaged 30, 90 and 180 days, unengaged, new); clicks only; the unengaged share for the sending gate | reversible attribute, never an unsubscribe |
-| `tools/dns_collect.py` | the live DNS pull for the deliverability analyzer (below) | read-only lookups; refuses to report on a domain that does not resolve |
-| `scripts/daily.py` | the 05:00 UTC job: every brief in `briefs/active/`, the tiers, every domain in `LCM_DOMAINS`, one Sheets sync, `issues.json` for the workflow; one failing step does not stop the others | never writes to an ESP |
-| `scripts/sheets_sync.py` | six tabs (Campaign Plans, Cohort Health, Benchmarks, Anomalies, Engagement, Deliverability) upserted on a key, so re-runs update rather than duplicate; exponential backoff on 429 and 5xx | service account only; dry-run CSVs when not configured |
-| `.github/workflows/daily_cohort_audit.yml` | runs `scripts/daily.py` on BigQuery (keyless, Workload Identity Federation), a file URL, or demo fixtures; summary, Sheets, one issue per finding (opened, or commented on while open), artifact; fails at the end if a step failed | least-privilege `permissions`; secrets only in `secrets.*` |
-| `agents/cli.py` (`lcm`) | a sentence or a YAML job to one of seven jobs (plan, deliverability, engagement, blast, audit, readout, size) by rules, asking for what is missing | runs the same code as the module CLIs |
-| `scripts/mcp_server.py` | the teammate as eight MCP tools for Claude Desktop (mcp 2.x `MCPServer`): draft, plan, revise, approve, audit, engagement tiers, domain check, simulate | local stdio; writes only under `LCM_OUT_DIR`; sends nothing to any platform |
+| `adapters/sources/webhooks.py` | Segment (Actions or classic) and GA4 Measurement Protocol bodies into canonical `track_events` rows, validated against the tracking plan, deduplicated on `event_id` and identify `messageId` (across restarts, from the last 3 days of files), rejects quarantined with reasons | HMAC-SHA1 `X-Signature` over the whole body for Segment (batched requests, which Segment signs on the first event only, are refused: turn batching off), shared token for GA4, constant-time compares; track and identify messages over 72 hours old refused over HTTP as possible replays; refuses unsigned traffic unless explicitly allowed; 5 MB body cap |
+| `adapters/destinations/event_payloads.py` | entry rows into Klaviyo, HubSpot (date-versioned 2026-09), Braze and Customer.io Pipelines requests within each vendor's limits | headers carry `${PLACEHOLDER}` names; no credential is ever written |
+| `adapters/destinations/payloads.py attribute_sync` | the engagement tier and sunset flag as person-attribute updates: Klaviyo bulk import, HubSpot batch upsert, Braze `/users/track` (75 per request, `_update_existing_only`), Customer.io Pipelines batch | same; nothing is sent from the tool |
+| `engine/agents/engagement.py` | engagement tiers from `message_events` (suppressed, engaged 30, 90 and 180 days, unengaged, new); clicks only; the unengaged share for the sending gate | reversible attribute, never an unsubscribe |
+| `engine/deliverability/dns_collect.py` | the live DNS pull for the deliverability analyzer (below) | read-only lookups; refuses to report on a domain that does not resolve |
+| `engine/workflows/daily.py` | the 05:00 UTC job: every brief in `briefs/active/`, the tiers, every domain in `LCM_DOMAINS`, one Sheets sync, `issues.json` for the workflow; one failing step does not stop the others | never writes to an ESP |
+| `adapters/destinations/sheets.py` | six tabs (Campaign Plans, Cohort Health, Benchmarks, Anomalies, Engagement, Deliverability) upserted on a key, so re-runs update rather than duplicate; exponential backoff on 429 and 5xx | service account only; dry-run CSVs when not configured |
+| `.github/workflows/daily_cohort_audit.yml` | runs `engine/workflows/daily.py` on BigQuery (keyless, Workload Identity Federation), a file URL, or demo fixtures; summary, Sheets, one issue per finding (opened, or commented on while open), artifact; fails at the end if a step failed | least-privilege `permissions`; secrets only in `secrets.*` |
+| `engine/cli/main.py` (`lcm`) | a sentence or a YAML job to one of seven jobs (plan, deliverability, engagement, blast, audit, readout, size) by rules, asking for what is missing | runs the same code as the module CLIs |
+| `engine/mcp_server.py` | the teammate as eight MCP tools for Claude Desktop (mcp 2.x `MCPServer`): draft, plan, revise, approve, audit, engagement tiers, domain check, simulate | local stdio; writes only under `LCM_OUT_DIR`; sends nothing to any platform |
 
 **Anomaly detection.** For each daily metric, the modified z-score (Iglewicz and Hoaglin) of the
 latest complete day against the trailing 28 days: `0.6745 (x - median) / MAD`, flagged at |z| of
@@ -163,7 +163,7 @@ own finding: a stalled pipeline looks like a churn spike otherwise.
 
 ## 4a. Today's priorities, and the question bank
 
-`agents/priorities.py` answers "what should I build next?" from the data, and the daily job runs it first.
+`engine/agents/priorities.py` answers "what should I build next?" from the data, and the daily job runs it first.
 
 | Candidate | Found when | Sized as |
 |---|---|---|
@@ -181,15 +181,15 @@ a ready brief carrying today's sending gate (the worst of the domains and the li
 command; two core actions for one product get briefs named by their core action, so neither overwrites the other.
 
 `config/question_bank.yaml` lists 25 questions by cadence; each names the `lcm` job or skill that answers it and
-what it cannot answer. `tools/question_bank.py` checks that every routed question reaches its job and writes
-`docs/QUESTION_BANK.md`. Two jobs exist mainly for it. `agents/tracking.py` reads the week to yesterday (so a dead
+what it cannot answer. `engine/questions.py` checks that every routed question reaches its job and writes
+`docs/QUESTION_BANK.md`. Two jobs exist mainly for it. `engine/agents/tracking.py` reads the week to yesterday (so a dead
 feed reads as stale, not as last week's numbers), calls an event stopped only when a silence that long would happen
 by chance less than 1 time in 100 at its rate before, and judges each live flow's trigger and core action with the
-flow's own property filters. `agents/retention.py` draws the weekly retention curve and finds the cliff by comparing
+flow's own property filters. `engine/agents/retention.py` draws the weekly retention curve and finds the cliff by comparing
 the same people from one week to the next (a paired test, Bonferroni-corrected for the weeks tested, and only when
 the drop is not undone the following week), so a change in cohort mix never reads as churn.
 
-**DKIM selectors probed by default** (`tools/dns_collect.py SELECTOR_SOURCES`), read from each
+**DKIM selectors probed by default** (`engine/deliverability/dns_collect.py SELECTOR_SOURCES`), read from each
 provider's setup documentation on 2026-10-20: Google Workspace `google`; Microsoft 365 `selector1`,
 `selector2`; Klaviyo static CNAMEs `km1`, `km2`, `kt1`, `kt2`, `ks1`, `ks2` and legacy `kl1`, `kl2`;
 HubSpot `hs1`, `hs2` (current portals use `hs1-<hub id>`: pass `--hubspot-hub-id`); SendGrid, and
@@ -221,24 +221,24 @@ instead, so it reuses the engine's method and tools rather than restating them.
 
 | Specified | Here |
 |---|---|
-| `agents/orchestrator.py`, `cohort_analyst.py`, `campaign_architect.py`, `experimentation_agent.py` | same paths; plus `agents/copywriter.py` (the copywriter agent the pipeline names), `models.py`, `brief.py`, `guardrails.py`, `sql_dialects.py` |
-| `skills/behavioral_triggers.md` | `modules/02_behavioral_triggers_and_flows/` (the absence patterns per platform) and `agents/campaign_architect.py` |
-| `skills/direct_response_copy.md` | `modules/03_copywriting_and_multichannel/prompts/dynamic_liquid_email_writer.md` and the copywriter's system prompt |
-| `skills/retention_matrices.md` | `modules/04_data_schemas_and_sql/prompts/rfm_segmentation_builder.md`, the win-back module, and the audit's risk bands |
-| `skills/dma_compliance_and_deliverability.md` | `modules/01_deliverability_and_infrastructure/` and `agents/guardrails.py` |
+| `engine/pipeline/orchestrator.py`, `cohort_analyst.py`, `campaign_architect.py`, `experimentation_agent.py` | same paths; plus `engine/agents/copywriter.py` (the copywriter agent the pipeline names), `models.py`, `brief.py`, `guardrails.py`, `sql_dialects.py` |
+| `skills/behavioral_triggers.md` | `modules/02_behavioral_triggers_and_flows/` (the absence patterns per platform) and `engine/agents/campaign_architect.py` |
+| `skills/direct_response_copy.md` | `prompts/jobs/copy/email_writer.md` and the copywriter's system prompt |
+| `skills/retention_matrices.md` | `prompts/jobs/sql/rfm_segmentation.md`, the win-back module, and the audit's risk bands |
+| `skills/dma_compliance_and_deliverability.md` | `modules/01_deliverability_and_infrastructure/` and `engine/policy/guardrails.py` |
 | `config/mcp_server_config.json`, `config/esp_payload_schemas.json` | same paths |
-| `scripts/sheets_sync.py`, `scripts/webhook_parser.py` | same paths |
-| `scripts/test_campaign_simulator.py` | `scripts/campaign_simulator.py` (a `test_` prefix would make pytest collect it as a test module); its tests are in `tests/test_teammate_pipeline.py` |
-| `brief_template.yaml` | `briefs/brief_template.yaml`, with a worked example in `briefs/examples/` |
+| `adapters/destinations/sheets.py`, `adapters/sources/webhooks.py` | same paths |
+| `scripts/test_campaign_simulator.py` | `engine/policy/simulator.py` (a `test_` prefix would make pytest collect it as a test module); its tests are in `tests/test_teammate_pipeline.py` |
+| `brief_template.yaml` | `templates/brief.yaml`, with a worked example in `briefs/examples/` |
 | `docs/quickstart_for_marketers.md`, `docs/architectural_overview.md` | same paths |
 | `.github/workflows/daily_cohort_audit.yml` | same path |
 
 ## 7. Extending it
 
 - **A platform:** add its dialect to `PLATFORM_DIALECT`, its vocabulary to `campaign_architect.VOCAB`,
-  its absence pattern to `cohort_analyst.PLATFORM_PATTERNS`, its request to `tools/event_payloads.py`
+  its absence pattern to `cohort_analyst.PLATFORM_PATTERNS`, its request to `adapters/destinations/event_payloads.py`
   with a `$defs` entry in `config/esp_payload_schemas.json`, and its unsubscribe, address and
-  first-name tokens to `agents/copywriter.py`. The parametrized platform test picks it up.
+  first-name tokens to `engine/agents/copywriter.py`. The parametrized platform test picks it up.
 - **A touch role:** add it to `campaign_architect.ROLES` and the ordering tables, and a starter pair to
   the copywriter's offline library.
 - **A warehouse:** add a `Dialect` branch for date arithmetic, JSON access and the bucket, then add it
@@ -248,7 +248,7 @@ instead, so it reuses the engine's method and tools rather than restating them.
 - **A compliance rule:** append it to `config/compliance_rules.json` with a `check` from
   `agents/compliance.CHECKS` (or add a check function), a jurisdiction, and a `source`; the
   rules-have-sources test keeps it honest.
-- **A pipeline stage:** add it to `STAGES` and `OUTPUT_TYPES` in `agents/pipeline.py` and its function
+- **A pipeline stage:** add it to `STAGES` and `OUTPUT_TYPES` in `engine/pipeline/core.py` and its function
   to `agents/stages.FUNCS`; persistence, retries, resume and the status view pick it up.
 - **An lcm job:** add a pattern to `agents/cli.INTENTS`, its arguments in `route`, and its call in
   `run`.

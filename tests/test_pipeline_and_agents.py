@@ -5,12 +5,14 @@ from pathlib import Path
 import pytest
 
 from tests.conftest import ROOT
-from agents import cohort_analyst, compliance, orchestrator, stages, strategist
-from agents.brief import load_brief, parse_text
-from agents.pipeline import STAGES, PipelineError, Run, approve, revise
+from engine.agents import cohort_analyst, strategist
+from engine.policy import compliance
+from engine.pipeline import orchestrator, stages
+from engine.brief import load_brief, parse_text
+from engine.pipeline.core import STAGES, PipelineError, Run, approve, revise
 
-EXAMPLE = ROOT / "briefs" / "examples" / "winback_14d.yaml"
-FIXTURES = str(ROOT / "tests" / "fixtures")
+EXAMPLE = ROOT / "examples" / "brands" / "ridgeview_saas" / "briefs" / "winback_14d.yaml"
+FIXTURES = str(ROOT / "examples" / "brands" / "ridgeview_saas" / "data")
 
 
 @pytest.fixture()
@@ -266,7 +268,7 @@ def test_plan_set_removes_the_assumption_it_answers(tmp_path):
 
 
 def test_remote_load_failures_that_can_pass_on_retry_are_transient():
-    from agents.pipeline import _transient
+    from engine.pipeline.core import _transient
     assert cohort_analyst.TRANSIENT_LOAD.search("HTTP GET error: 503 Service Unavailable")
     assert not cohort_analyst.TRANSIENT_LOAD.search("HTTP GET error: 404 Not Found")
     assert _transient(ConnectionError("x")) and not _transient(FileNotFoundError("x"))

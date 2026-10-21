@@ -9,8 +9,10 @@ import pytest
 import yaml
 
 from tests.conftest import ROOT
-from scripts import campaign_simulator, sheets_sync, webhook_parser
-from tools import event_payloads
+from engine.policy import simulator as campaign_simulator
+from adapters.destinations import sheets as sheets_sync
+from adapters.sources import webhooks as webhook_parser
+from adapters.destinations import event_payloads
 
 TS = "2026-10-19T10:00:00Z"
 
@@ -146,10 +148,10 @@ def test_unsigned_traffic_is_refused_by_default(tmp_path, monkeypatch):
 
 
 def test_ingested_csv_feeds_the_cohort_analyst(tmp_path):
-    from agents import cohort_analyst
+    from engine.agents import cohort_analyst
     import shutil
     for t in ("users", "orders"):
-        shutil.copy(ROOT / "tests/fixtures" / f"{t}.csv", tmp_path / f"{t}.csv")
+        shutil.copy(ROOT / "examples/brands/ridgeview_saas/data" / f"{t}.csv", tmp_path / f"{t}.csv")
     ev, _u, _r = webhook_parser.from_segment([_seg(mid=f"msg_{i:010d}") for i in range(3)])
     webhook_parser.to_csv(ev, tmp_path)
     con = cohort_analyst.connect(str(tmp_path))
@@ -238,9 +240,9 @@ class FakeSheet:
 
 @pytest.fixture(scope="module")
 def audit_doc():
-    from agents import cohort_analyst
-    from agents.brief import load_brief
-    return json.loads(json.dumps(cohort_analyst.audit(load_brief(ROOT / "briefs/examples/winback_14d.yaml"), str(ROOT / "tests/fixtures")), default=str))
+    from engine.agents import cohort_analyst
+    from engine.brief import load_brief
+    return json.loads(json.dumps(cohort_analyst.audit(load_brief(ROOT / "examples/brands/ridgeview_saas/briefs/winback_14d.yaml"), str(ROOT / "examples/brands/ridgeview_saas/data")), default=str))
 
 
 def test_sync_is_idempotent(audit_doc):
@@ -303,13 +305,13 @@ def test_dry_run_without_credentials(audit_doc, tmp_path, monkeypatch):
 # ----------------------------------------------------------------------------------------------
 
 def test_mcp_server_tools(tmp_path, monkeypatch):
-    from scripts import mcp_server
+    from engine import mcp_server
     monkeypatch.setattr(mcp_server, "OUT", tmp_path)
     names = {t.name for t in asyncio.run(mcp_server.server.list_tools())}
     assert names == {"draft_brief", "plan_campaign", "revise_plan", "approve_variant", "audit_cohort", "engagement_tiers", "check_domain",
                      "simulate_flow", "priorities"}
-    r = asyncio.run(mcp_server.server.call_tool("plan_campaign", {"brief_path": str(ROOT / "briefs/examples/winback_14d.yaml"),
-                                                                  "data_dir": str(ROOT / "tests/fixtures"), "copy_mode": "offline"}))
+    r = asyncio.run(mcp_server.server.call_tool("plan_campaign", {"brief_path": str(ROOT / "examples/brands/ridgeview_saas/briefs/winback_14d.yaml"),
+                                                                  "data_dir": str(ROOT / "examples/brands/ridgeview_saas/data"), "copy_mode": "offline"}))
     text = r.content[0].text
     assert "Status: READY WITH ASSUMPTIONS" in text and (tmp_path / "ridgeview_winback_14d" / "flow_spec.json").exists()
     y = asyncio.run(mcp_server.server.call_tool("draft_brief", {"text": "5-touch win-back after 14 days inactive", "product_name": "Acme"}))
@@ -318,15 +320,15 @@ def test_mcp_server_tools(tmp_path, monkeypatch):
     assert ok.content[0].text.startswith("Approved")
     rv = asyncio.run(mcp_server.server.call_tool("revise_plan", {"flow": "ridgeview_winback_14d", "changes": {"holdout_pct": 20}}))
     assert "a revision of" in rv.content[0].text and "(approved)" in rv.content[0].text
-    tiers = asyncio.run(mcp_server.server.call_tool("engagement_tiers", {"data_dir": str(ROOT / "tests/fixtures")}))
+    tiers = asyncio.run(mcp_server.server.call_tool("engagement_tiers", {"data_dir": str(ROOT / "examples/brands/ridgeview_saas/data")}))
     assert "Unengaged share" in tiers.content[0].text
-    top = asyncio.run(mcp_server.server.call_tool("priorities", {"data_dir": str(ROOT / "tests/fixtures")}))
+    top = asyncio.run(mcp_server.server.call_tool("priorities", {"data_dir": str(ROOT / "examples/brands/ridgeview_saas/data")}))
     assert "Today's priorities" in top.content[0].text and "### 3. " in top.content[0].text
 
 
 def test_mcp_config():
     cfg = json.loads((ROOT / "config/mcp_server_config.json").read_text())
-    assert cfg["mcpServers"]["lcm-teammate"]["args"][0].endswith("scripts/mcp_server.py")
+    assert cfg["mcpServers"]["lcm-teammate"]["args"][0].endswith("engine/mcp_server.py")
     assert cfg["mcpServers"]["klaviyo"]["env"]["READ_ONLY"] == "true"
     assert all(c["url"].startswith("https://") and c["docs"].startswith("https://") for c in cfg["remoteConnectors"])
 
@@ -341,19 +343,19 @@ def test_daily_workflow():
     wf = yaml.safe_load((ROOT / ".github/workflows/daily_cohort_audit.yml").read_text())
     assert wf[True]["schedule"] == [{"cron": "0 5 * * *"}]  # PyYAML reads the 'on' key as True
     runs = " ".join(s.get("run", "") for s in wf["jobs"]["audit"]["steps"])
-    assert "scripts/daily.py" in runs
+    assert "engine/workflows/daily.py" in runs
     uses = [s["uses"] for s in wf["jobs"]["audit"]["steps"] if "uses" in s]
     assert "actions/checkout@v7" in uses and "actions/upload-artifact@v7" in uses   # Node 24 majors
-    assert (ROOT / "briefs/examples/winback_14d.yaml").exists()
+    assert (ROOT / "examples/brands/ridgeview_saas/briefs/winback_14d.yaml").exists()
 
 
 def test_parquet_exports_load_and_orders_are_optional(tmp_path):
     """A folder (or URL prefix) of .parquet files loads, parquet is preferred over csv, and a missing orders table is empty."""
     import duckdb
-    from agents import cohort_analyst
+    from engine.agents import cohort_analyst
     con = duckdb.connect()
     for t in ("users", "track_events"):
-        con.execute(f"COPY (SELECT * FROM read_csv('{ROOT / 'tests/fixtures' / (t + '.csv')}', header=true, all_varchar=true)) "
+        con.execute(f"COPY (SELECT * FROM read_csv('{ROOT / 'examples/brands/ridgeview_saas/data' / (t + '.csv')}', header=true, all_varchar=true)) "
                     f"TO '{tmp_path / (t + '.parquet')}' (FORMAT parquet)")
     (tmp_path / "users.csv").write_text("not,a,valid,users,file\n")   # parquet must win over a broken csv
     c = cohort_analyst.connect(str(tmp_path))
@@ -365,7 +367,7 @@ def test_parquet_exports_load_and_orders_are_optional(tmp_path):
 
 
 def test_brief_command_creates_its_folder(tmp_path):
-    from agents import orchestrator
+    from engine.pipeline import orchestrator
     out = tmp_path / "lmm-engine" / "briefs" / "acme.yaml"
     assert orchestrator._cli(["brief", "--text", "5-touch win-back after 14 days inactive", "--product", "Acme", "--out", str(out)]) == 0
     assert "churn_threshold_days: 14" in out.read_text()
@@ -376,14 +378,14 @@ def test_brief_command_creates_its_folder(tmp_path):
 # ----------------------------------------------------------------------------------------------
 
 def _activation(platform="klaviyo"):
-    from agents.brief import parse_text
+    from engine.brief import parse_text
     return parse_text("3-touch activation flow for people who signed up but have not created a report within 7 days", "Acme",
                       {"platform": platform})
 
 
 def test_forwarder_adds_the_warehouse_holdout_and_sends_only_with_credentials(tmp_path):
     import httpx
-    from agents.sql_dialects import holdout_bucket
+    from engine.sql.dialects import holdout_bucket
     seen = []
 
     def handler(request):
@@ -408,8 +410,8 @@ def test_forwarder_adds_the_warehouse_holdout_and_sends_only_with_credentials(tm
 
 def test_forwarder_records_esp_errors_and_skips_winback_briefs(tmp_path):
     import httpx
-    from agents.brief import load_brief
-    winback = load_brief(ROOT / "briefs/examples/winback_14d.yaml")
+    from engine.brief import load_brief
+    winback = load_brief(ROOT / "examples/brands/ridgeview_saas/briefs/winback_14d.yaml")
     fw = webhook_parser.Forwarder([winback, _activation("braze")], tmp_path, env={"BRAZE_REST_API_KEY": "k"},
                                   transport=httpx.MockTransport(lambda r: httpx.Response(400, text="bad")))
     assert [b.slug for b in fw.briefs] == ["acme_activation"]

@@ -15,7 +15,7 @@ metadata:
 
 ## Step 0: Load context and rules
 
-Read `${CLAUDE_PLUGIN_ROOT}/core/system_prompt.md` and `lmm-engine/context.xml`. No sending gate in
+Read `${CLAUDE_PLUGIN_ROOT}/prompts/core/system_prompt.md` and `lmm-engine/context.xml`. No sending gate in
 the context: run `deliverability-gate` first, or design suppression and remediation only.
 
 **Before running a tool:** the checks need Python 3.12 or later and the packages in
@@ -26,26 +26,26 @@ tool would have checked; never describe an unchecked artifact as verified.
 
 ## Step 1: Pick the module
 
-- Onboarding and activation: `${CLAUDE_PLUGIN_ROOT}/modules/02_behavioral_triggers_and_flows/prompts/activation_flow_architect.md`
-- Win-back, reactivation, sunset: `${CLAUDE_PLUGIN_ROOT}/modules/02_behavioral_triggers_and_flows/prompts/winback_branching_logic.md`
+- Onboarding and activation: `${CLAUDE_PLUGIN_ROOT}/prompts/jobs/flows/activation.md`
+- Win-back, reactivation, sunset: `${CLAUDE_PLUGIN_ROOT}/prompts/jobs/flows/winback.md`
 
 ## Step 2: Verify the data
 
-Read the tracking plan (`${CLAUDE_PLUGIN_ROOT}/modules/02_behavioral_triggers_and_flows/schemas/custom_event_definitions.json`
+Read the tracking plan (`${CLAUDE_PLUGIN_ROOT}/config/tracking_plan.json`
 or the user's). With a warehouse or analytics connector, pull fill rates and the leak map (the
 activation prompt's query); otherwise ask. Steps that depend on missing events are BLOCKED and ship off.
 
 ## Step 3: Size the holdout
 
 ```text
-python3 ${CLAUDE_PLUGIN_ROOT}/tools/stats.py feasible --entries-per-month <n> --holdout 0.10 --baseline <rate> --mde-abs <lift>
+python3 ${CLAUDE_PLUGIN_ROOT}/engine/measurement/stats.py feasible --entries-per-month <n> --holdout 0.10 --baseline <rate> --mde-abs <lift>
 ```
 
 ## Step 4: Write and check
 
 Produce every section of the module's output format. Validate the flow JSON against
 `${CLAUDE_PLUGIN_ROOT}/schemas/flow_spec.schema.json` and lint each template with
-`python3 ${CLAUDE_PLUGIN_ROOT}/tools/template_lint.py --dialect <dialect> <file>`. Save to
+`python3 ${CLAUDE_PLUGIN_ROOT}/engine/render/template_lint.py --dialect <dialect> <file>`. Save to
 `lmm-engine/flows/<flow-name>/`.
 
 ## Rules

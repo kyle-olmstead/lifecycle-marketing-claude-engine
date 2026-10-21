@@ -1,10 +1,10 @@
 import sqlglot
 
 from tests.conftest import ROOT, fenced
-from tools import sql_check
+from engine.sql import check as sql_check
 
-RFM = ROOT / "modules/04_data_schemas_and_sql/prompts/rfm_segmentation_builder.md"
-LTV = ROOT / "modules/04_data_schemas_and_sql/prompts/ltv_cohort_query_generator.md"
+RFM = ROOT / "prompts/jobs/sql/rfm_segmentation.md"
+LTV = ROOT / "prompts/jobs/sql/ltv_cohort.md"
 
 
 def _first(path, dialect):
@@ -13,7 +13,7 @@ def _first(path, dialect):
 
 
 def test_retention_query_runs_and_labels_small_cohorts(duck):
-    sql = (ROOT / "modules/04_data_schemas_and_sql/queries/rolling_d30_retention.sql").read_text()
+    sql = (ROOT / "prompts/jobs/sql/rolling_d30_retention.sql").read_text()
     cols, rows = sql_check.run(sql, duck)
     assert "d30_read" in cols and rows
     reads = {r[cols.index("d30_read")] for r in rows}

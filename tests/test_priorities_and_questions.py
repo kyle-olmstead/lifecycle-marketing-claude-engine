@@ -6,13 +6,15 @@ from pathlib import Path
 import pytest
 
 from tests.conftest import ROOT
-from agents import cli, priorities, retention, tracking
-from agents.brief import load_brief
-from scripts import daily, sheets_sync
-from tools import question_bank
+from engine.cli import main as cli
+from engine.agents import priorities, retention, tracking
+from engine.brief import load_brief
+from engine.workflows import daily
+from adapters.destinations import sheets as sheets_sync
+from engine import questions as question_bank
 
-FIXTURES = str(ROOT / "tests" / "fixtures")
-EXAMPLE = ROOT / "briefs" / "examples" / "winback_14d.yaml"
+FIXTURES = str(ROOT / "examples" / "brands" / "ridgeview_saas" / "data")
+EXAMPLE = ROOT / "examples" / "brands" / "ridgeview_saas" / "briefs" / "winback_14d.yaml"
 
 
 # ----------------------------------------------------------------------------------------------
@@ -154,7 +156,7 @@ def test_every_question_reaches_its_job_and_the_doc_is_current():
     bank = question_bank.load()
     assert question_bank.check(bank) == []
     assert sum(len(v) for v in bank.values()) >= 25 and all(len(v) >= 4 for v in bank.values())
-    assert (ROOT / "docs" / "QUESTION_BANK.md").read_text() == question_bank.render(bank), "run python3 tools/question_bank.py --write"
+    assert (ROOT / "docs" / "QUESTION_BANK.md").read_text() == question_bank.render(bank), "run python3 engine/questions.py --write"
 
 
 def test_every_lcm_command_in_the_bank_routes_the_same_way():

@@ -1,7 +1,7 @@
 import json
 
 from tests.conftest import ROOT
-from tools import deliverability as D
+from engine.deliverability import analyze as D
 
 
 def test_spf_counts_lookups_through_supplied_includes():

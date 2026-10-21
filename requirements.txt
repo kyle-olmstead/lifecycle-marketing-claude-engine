@@ -18,5 +18,5 @@ httpx==0.28.1
 gspread==6.2.1
 google-auth==2.62.0
 mcp==2.3.0
-# v2.2: live DNS pulls for the deliverability check (tools/dns_collect.py)
+# v2.2: live DNS pulls for the deliverability check (engine/deliverability/dns_collect.py)
 dnspython==2.9.0

@@ -14,7 +14,7 @@ metadata:
 
 ## Step 0: Load context and rules
 
-Read `${CLAUDE_PLUGIN_ROOT}/core/system_prompt.md`, `lmm-engine/context.xml` (warehouse dialect and
+Read `${CLAUDE_PLUGIN_ROOT}/prompts/core/system_prompt.md`, `lmm-engine/context.xml` (warehouse dialect and
 transaction object) and `${CLAUDE_PLUGIN_ROOT}/docs/SQL_SCHEMA_CONVENTIONS.md`.
 
 **Before running a tool:** the checks need Python 3.12 or later and the packages in
@@ -25,9 +25,9 @@ tool would have checked; never describe an unchecked artifact as verified.
 
 ## Step 1: Pick the module
 
-- RFM scores, segments and CDP sync: `${CLAUDE_PLUGIN_ROOT}/modules/04_data_schemas_and_sql/prompts/rfm_segmentation_builder.md`
-- Cohort LTV curves: `${CLAUDE_PLUGIN_ROOT}/modules/04_data_schemas_and_sql/prompts/ltv_cohort_query_generator.md`
-- Retention: `${CLAUDE_PLUGIN_ROOT}/modules/04_data_schemas_and_sql/queries/rolling_d30_retention.sql`
+- RFM scores, segments and CDP sync: `${CLAUDE_PLUGIN_ROOT}/prompts/jobs/sql/rfm_segmentation.md`
+- Cohort LTV curves: `${CLAUDE_PLUGIN_ROOT}/prompts/jobs/sql/ltv_cohort.md`
+- Retention: `${CLAUDE_PLUGIN_ROOT}/prompts/jobs/sql/rolling_d30_retention.sql`
 
 ## Step 2: Verify before writing
 
@@ -38,12 +38,12 @@ rates. Never filter on an unverified column.
 ## Step 3: Check the query
 
 ```text
-python3 ${CLAUDE_PLUGIN_ROOT}/tools/sql_check.py query.sql --dialect <dialect>
-python3 ${CLAUDE_PLUGIN_ROOT}/tools/sql_check.py query.sql --run        # PostgreSQL only, on the bundled fixtures
+python3 ${CLAUDE_PLUGIN_ROOT}/engine/sql/check.py query.sql --dialect <dialect>
+python3 ${CLAUDE_PLUGIN_ROOT}/engine/sql/check.py query.sql --run        # PostgreSQL only, on the bundled fixtures
 ```
 
 ## Step 4: Export
 
-Build request bodies within vendor limits with `python3 ${CLAUDE_PLUGIN_ROOT}/tools/payloads.py`.
+Build request bodies within vendor limits with `python3 ${CLAUDE_PLUGIN_ROOT}/adapters/destinations/payloads.py`.
 Run queries that read data only; never run statements that write to the user's warehouse or push to
 an ESP without explicit approval of that specific action.

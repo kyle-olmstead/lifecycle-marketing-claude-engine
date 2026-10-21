@@ -12,39 +12,39 @@ jobs:
       - name: Unit tests (tools, schemas, SQL on DuckDB fixtures, dialect equivalence, teammate agents)
         run: pytest -q
       - name: Every example in the repository passes its own syntax rules
-        run: python tools/repo_check.py
+        run: python engine/repo_check.py
       - name: Worked examples reproduce
         run: |
-          python tools/deliverability.py analyze examples/deliverability/incident.json --markdown > /dev/null
-          python tools/stats.py incrementality examples/stats/winback_readout.json --markdown > /dev/null
-          python tools/template_lint.py --dialect customerio --email modules/03_copywriting_and_multichannel/templates/modular_email_components.html > /dev/null
+          python engine/deliverability/analyze.py analyze examples/deliverability/incident.json --markdown > /dev/null
+          python engine/measurement/stats.py incrementality examples/stats/winback_readout.json --markdown > /dev/null
+          python engine/render/template_lint.py --dialect customerio --email templates/email/components.html > /dev/null
       - name: Teammate plans the worked example offline, and the plan passes its own simulation
         run: |
-          python -m agents.orchestrator plan --brief briefs/examples/winback_14d.yaml --data tests/fixtures --copy-mode offline --out out
-          python scripts/campaign_simulator.py out/ridgeview_winback_14d/flow_spec.json
-          for f in examples/flows/*.json; do python scripts/campaign_simulator.py "$f" > /dev/null; done
+          python -m engine.pipeline.orchestrator plan --brief examples/brands/ridgeview_saas/briefs/winback_14d.yaml --data examples/brands/ridgeview_saas/data --copy-mode offline --out out
+          python engine/policy/simulator.py out/ridgeview_winback_14d/flow_spec.json
+          for f in examples/flows/*.json; do python engine/policy/simulator.py "$f" > /dev/null; done
       - name: Daily job runs in demo mode with no step errors
         run: |
-          python scripts/daily.py --dry-run --strict --out out/daily > /dev/null
+          python engine/workflows/daily.py --dry-run --strict --out out/daily > /dev/null
           python -c "import json; s = json.load(open('out/daily/status.json')); assert s['flows'] and not s['errors'], s"
       - name: The plain-English front door routes and runs
         run: |
           pip install -e . --no-deps > /dev/null
           lcm --dry-run "check deliverability for example.com"
           lcm "how many people do we need to detect a 20% lift on a 10% baseline with a 15% holdout"
-          lcm "build the engagement tiers and the sunset list" --data tests/fixtures --platform braze --out out > /dev/null
-          lcm "compare our monthly newsletter with the win-back trigger" --brief briefs/examples/winback_14d.yaml --data tests/fixtures --out out > /dev/null
+          lcm "build the engagement tiers and the sunset list" --data examples/brands/ridgeview_saas/data --platform braze --out out > /dev/null
+          lcm "compare our monthly newsletter with the win-back trigger" --brief examples/brands/ridgeview_saas/briefs/winback_14d.yaml --data examples/brands/ridgeview_saas/data --out out > /dev/null
       - name: A saved run can be revised and inspected
         run: |
-          python -m agents.orchestrator revise --run out/ridgeview_winback_14d --set touches=4 --out out > /dev/null
-          python -m agents.orchestrator status --run out/ridgeview_winback_14d
+          python -m engine.pipeline.orchestrator revise --run out/ridgeview_winback_14d --set touches=4 --out out > /dev/null
+          python -m engine.pipeline.orchestrator status --run out/ridgeview_winback_14d
       - name: Every question in the question bank reaches its job, and priorities rank on the sample data
         run: |
-          python tools/question_bank.py
-          lcm "what are my top 3 priority builds today and why?" --data tests/fixtures --out out > /dev/null
+          python engine/questions.py
+          lcm "what are my top 3 priority builds today and why?" --data examples/brands/ridgeview_saas/data --out out > /dev/null
       - name: Schemas in schemas/ match the Pydantic contracts
         run: |
-          python tools/contracts.py --write-schemas > /dev/null
+          python engine/contracts.py --write-schemas > /dev/null
           git diff --exit-code schemas/
 
   postgres:

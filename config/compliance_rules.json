@@ -1,5 +1,5 @@
 {
-  "_readme": "Rules the Compliance agent (agents/compliance.py) checks a plan against. Each rule names its jurisdiction, the requirement in plain words, how it is checked (a function in agents/compliance.py), and its source. A rule that applies to one channel says so. This is a rules engine, not legal advice: requirements were read from the sources on the date in checked_on; laws change. Add a rule by appending an object with a check that exists in agents/compliance.py CHECKS.",
+  "_readme": "Rules the Compliance agent (engine/policy/compliance.py) checks a plan against. Each rule names its jurisdiction, the requirement in plain words, how it is checked (a function in engine/policy/compliance.py), and its source. A rule that applies to one channel says so. This is a rules engine, not legal advice: requirements were read from the sources on the date in checked_on; laws change. Add a rule by appending an object with a check that exists in engine/policy/compliance.py CHECKS.",
   "checked_on": "2026-10-20",
   "jurisdictions": {
     "ALL": "mailbox providers",
@@ -18,7 +18,7 @@
       "channel": "email",
       "check": "confirm",
       "requirement": "Gmail and Yahoo require bulk senders' marketing mail to carry one-click unsubscribe (RFC 8058) plus a visible unsubscribe link, honored within two days, and to keep user-reported spam under 0.3% (Gmail's target is under 0.1%).",
-      "confirm": "One-click unsubscribe is a header your platform adds: confirm it is on (tools/deliverability.py checks it in real headers).",
+      "confirm": "One-click unsubscribe is a header your platform adds: confirm it is on (engine/deliverability/analyze.py checks it in real headers).",
       "source": "https://support.google.com/mail/answer/81126",
       "sources": [
         "https://support.google.com/a/answer/14229414",
@@ -31,7 +31,7 @@
       "channel": "email",
       "check": "confirm",
       "requirement": "Gmail, Yahoo and Microsoft (Outlook.com, Hotmail.com and Live.com since 5 May 2025) require senders of more than 5,000 messages a day to pass SPF and DKIM and publish DMARC (p=none or stricter) aligned with one of them; Microsoft sends failing mail to junk, then rejects it with 550 5.7.515.",
-      "confirm": "Run lcm \"check deliverability for <your sending domain>\" (tools/dns_collect.py) and resolve anything RED before launch.",
+      "confirm": "Run lcm \"check deliverability for <your sending domain>\" (engine/deliverability/dns_collect.py) and resolve anything RED before launch.",
       "source": "https://support.google.com/mail/answer/81126",
       "sources": [
         "https://senders.yahooinc.com/best-practices/",

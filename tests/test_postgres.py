@@ -15,13 +15,13 @@ from datetime import date, timedelta
 import pytest
 
 from tests.conftest import ROOT
-from agents import cohort_analyst
-from agents.brief import load_brief
-from agents.sql_dialects import dialect, holdout_bucket
+from engine.agents import cohort_analyst
+from engine.brief import load_brief
+from engine.sql.dialects import dialect, holdout_bucket
 
 DSN = os.environ.get("LCM_PG")
 pytestmark = pytest.mark.skipif(not DSN or not shutil.which("psql"), reason="set LCM_PG and install psql to run on PostgreSQL")
-FIX = ROOT / "tests" / "fixtures"
+FIX = ROOT / "examples" / "brands" / "ridgeview_saas" / "data"
 
 
 @pytest.fixture(scope="module")
@@ -75,7 +75,7 @@ def _norm(rows):
 
 
 def test_postgres_matches_duckdb(pg):
-    b = load_brief(ROOT / "briefs/examples/winback_14d.yaml")
+    b = load_brief(ROOT / "examples/brands/ridgeview_saas/briefs/winback_14d.yaml")
     con = cohort_analyst.connect(str(FIX))
     entered = 0
     for k in range(0, 40, 3):
@@ -90,7 +90,7 @@ def test_postgres_matches_duckdb(pg):
 
 
 def test_postgres_daily_job_round_trip(pg):
-    b = load_brief(ROOT / "briefs/examples/winback_14d.yaml")
+    b = load_brief(ROOT / "examples/brands/ridgeview_saas/briefs/winback_14d.yaml")
     due = pg(cohort_analyst.entry_sql(b, "postgres", "2026-10-18"))
     assert due
     pg.run(cohort_analyst.queue_sql(b, "postgres", "2026-10-18"))

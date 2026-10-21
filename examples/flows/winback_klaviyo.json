@@ -40,7 +40,7 @@
     "persistent": true,
     "unit": "user",
     "assignment": "warehouse: lmm_holdout_winback = (abs(hash(customer_id)) % 5 = 0), synced as a profile property; holdout profiles still enter, wait the window and pass the repeat split, then exit at holdout_split, so both arms are the same population",
-    "sizing": "about 2,500 entrants a month, 4% 60-day repurchase among lapsed customers, 1.5-point lift: 2,039 holdout entrants at 20%, 4.1 months of entries plus the 60-day outcome window, so the read lands about 6.0 months after launch (a 10% holdout: about 9.3 months) (tools/stats.py feasible --outcome-window-days 60)",
+    "sizing": "about 2,500 entrants a month, 4% 60-day repurchase among lapsed customers, 1.5-point lift: 2,039 holdout entrants at 20%, 4.1 months of entries plus the 60-day outcome window, so the read lands about 6.0 months after launch (a 10% holdout: about 9.3 months) (engine/measurement/stats.py feasible --outcome-window-days 60)",
     "read": "causal, slow"
   },
   "frequency": {

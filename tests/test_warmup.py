@@ -1,6 +1,6 @@
 import pytest
 
-from tools.warmup import plan
+from engine.deliverability.warmup import plan
 
 TIERS = {"engaged_30d": 30000, "engaged_90d": 45000, "engaged_180d": 50000, "unengaged": 220000}
 

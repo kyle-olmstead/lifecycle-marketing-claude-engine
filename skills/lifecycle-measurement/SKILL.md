@@ -14,7 +14,7 @@ metadata:
 
 ## Step 0: Load context and rules
 
-Read `${CLAUDE_PLUGIN_ROOT}/core/system_prompt.md` and `lmm-engine/context.xml` (benchmarks with
+Read `${CLAUDE_PLUGIN_ROOT}/prompts/core/system_prompt.md` and `lmm-engine/context.xml` (benchmarks with
 their basis, live flows and holdouts, the transaction object).
 
 **Before running a tool:** the checks need Python 3.12 or later and the packages in
@@ -25,16 +25,16 @@ tool would have checked; never describe an unchecked artifact as verified.
 
 ## Step 1: Pick the module
 
-- Sizing a test or holdout: `${CLAUDE_PLUGIN_ROOT}/modules/05_experimentation_and_analytics/prompts/ab_power_calculator.md`
-- Reading a result: `${CLAUDE_PLUGIN_ROOT}/modules/05_experimentation_and_analytics/prompts/holdout_incrementality_analyzer.md`
-- Ordering a backlog: `${CLAUDE_PLUGIN_ROOT}/modules/05_experimentation_and_analytics/frameworks/test_hypothesis_matrix.md`
+- Sizing a test or holdout: `${CLAUDE_PLUGIN_ROOT}/prompts/jobs/measurement/ab_power_calculator.md`
+- Reading a result: `${CLAUDE_PLUGIN_ROOT}/prompts/jobs/measurement/holdout_incrementality.md`
+- Ordering a backlog: `${CLAUDE_PLUGIN_ROOT}/prompts/jobs/measurement/test_hypothesis_matrix.md`
 
 ## Step 2: Compute
 
 ```text
-python3 ${CLAUDE_PLUGIN_ROOT}/tools/stats.py size --baseline <rate> --mde-rel <lift>
-python3 ${CLAUDE_PLUGIN_ROOT}/tools/stats.py readout --xt <n> --nt <n> --xc <n> --nc <n> --expected-holdout <share>
-python3 ${CLAUDE_PLUGIN_ROOT}/tools/stats.py incrementality readout.json --markdown
+python3 ${CLAUDE_PLUGIN_ROOT}/engine/measurement/stats.py size --baseline <rate> --mde-rel <lift>
+python3 ${CLAUDE_PLUGIN_ROOT}/engine/measurement/stats.py readout --xt <n> --nt <n> --xc <n> --nc <n> --expected-holdout <share>
+python3 ${CLAUDE_PLUGIN_ROOT}/engine/measurement/stats.py incrementality readout.json --markdown
 ```
 
 With an analytics or warehouse connector, pull arm sizes and outcomes from the transaction object

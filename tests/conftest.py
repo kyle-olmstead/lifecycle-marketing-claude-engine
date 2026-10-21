@@ -28,7 +28,7 @@ def root() -> Path:
 
 @pytest.fixture(scope="session")
 def duck():
-    from tools import sql_check
+    from engine.sql import check as sql_check
     return sql_check.connect()
 
 

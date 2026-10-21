@@ -29,7 +29,7 @@ python3 -c "import json,jsonschema; jsonschema.validate(json.load(open('flow.jso
 - [ ] Re-entry or re-enrollment is set as the spec says
 - [ ] The trigger event and every branch field exist and are filled at the rates the spec assumed
 - [ ] Suppressions are attached (unsubscribed, hard bounced, conflicting flows)
-- [ ] Templates pass `python3 tools/template_lint.py --dialect <dialect> <file>`
+- [ ] Templates pass `python3 engine/render/template_lint.py --dialect <dialect> <file>`
 - [ ] The holdout assignment property is set on both arms
 
 ## Expected versus actual

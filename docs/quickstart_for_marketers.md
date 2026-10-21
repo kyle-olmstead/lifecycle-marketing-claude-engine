@@ -76,7 +76,7 @@ platform: braze
 
 ### Fill in the brief yourself
 
-Copy `briefs/brief_template.yaml`, fill in the three required lines, and run:
+Copy `templates/brief.yaml`, fill in the three required lines, and run:
 
 ```text
 lcm briefs/my_brief.yaml
@@ -102,7 +102,7 @@ optional lines change the plan the most:
 Or start from a sentence and let it write the brief, setting anything you already know:
 
 ```text
-python3 -m agents.orchestrator brief --text "5-touch win-back for users inactive 14 days" --product Acme \
+python3 -m engine.pipeline.orchestrator brief --text "5-touch win-back for users inactive 14 days" --product Acme \
   --set postal_address="100 Main St, Springfield, IL 62701" --out briefs/acme.yaml
 ```
 
@@ -112,7 +112,7 @@ audits every brief there.
 ## 4. Read the plan
 
 The plan lands in `out/<your flow>/plan.md`. A worked example for a fictional company is in
-`examples/teammate/ridgeview_winback_14d/plan.md`. Read it top to bottom:
+`examples/brands/ridgeview_saas/runs/winback_14d/plan.md`. Read it top to bottom:
 
 | Section | What it tells you | What to do |
 |---|---|---|
@@ -133,15 +133,15 @@ The plan lands in `out/<your flow>/plan.md`. A worked example for a fictional co
 Every plan is saved as a run. To change it without starting over:
 
 ```text
-python3 -m agents.orchestrator revise --run out/acme_winback_14d --set touches=4
-python3 -m agents.orchestrator revise --run out/acme_winback_14d --set channels=[email,sms] --set holdout_pct=20
-python3 -m agents.orchestrator approve --run out/acme_winback_14d --step t1_email --variant B
-python3 -m agents.orchestrator status --run out/acme_winback_14d
+python3 -m engine.pipeline.orchestrator revise --run out/acme_winback_14d --set touches=4
+python3 -m engine.pipeline.orchestrator revise --run out/acme_winback_14d --set channels=[email,sms] --set holdout_pct=20
+python3 -m engine.pipeline.orchestrator approve --run out/acme_winback_14d --step t1_email --variant B
+python3 -m engine.pipeline.orchestrator status --run out/acme_winback_14d
 ```
 
 A revision keeps the copy of every message whose job did not change, and keeps the variants you
 approved. If a run stops part way (a data export was missing, the API timed out), `resume` picks up
-where it stopped: `python3 -m agents.orchestrator resume --run out/acme_winback_14d --data exports/`.
+where it stopped: `python3 -m engine.pipeline.orchestrator resume --run out/acme_winback_14d --data exports/`.
 
 ### Four things that surprise people
 
@@ -185,7 +185,7 @@ Customer.io, BigQuery, Snowflake and Google Sheets, so Claude can read your real
 
 ## 7. The daily health check
 
-Every morning at 05:00 UTC, `.github/workflows/daily_cohort_audit.yml` runs `scripts/daily.py`. It
+Every morning at 05:00 UTC, `.github/workflows/daily_cohort_audit.yml` runs `engine/workflows/daily.py`. It
 lists anything to fix and ranks today's top 3 builds, checks the cohort behind every flow in `briefs/active/`,
 checks that the events those flows run on are still arriving, sorts your email audience into engagement tiers,
 looks up each sending domain's authentication records, and logs it all to a Google Sheet. The summary opens with
@@ -203,7 +203,7 @@ the priorities:
 
 Each problem gets its own GitHub issue (one per flow, per domain, and for the unengaged share), and
 the next day's result is added to the same issue while it stays open. To run the same check now:
-`python3 scripts/daily.py --data exports/ --domains example.com`.
+`python3 engine/workflows/daily.py --data exports/ --domains example.com`.
 
 **Unengaged people.** Anyone with five or more emails in six months and no click in that time is
 "unengaged". They get `lcm_sunset = true` in your ESP when you sync the tiers (`lcm "build the
@@ -229,7 +229,7 @@ Until step 4, the workflow runs on demo data so you can see what it produces.
 
 The teammate reads four tables: users, orders, events and, for engagement tiers, message events
 (delivered, clicked, bounced, complained, unsubscribed; export them from your ESP). If your events flow through Segment,
-point a Webhooks destination at `scripts/webhook_parser.py` (your engineer can host it in minutes;
+point a Webhooks destination at `adapters/sources/webhooks.py` (your engineer can host it in minutes;
 the file explains how), with a shared secret set and batching turned off so every request is signed
 in full. GA4 events can come in through the same service, or through GA4's
 BigQuery export. Events that do not match your tracking plan are held aside with the reason,

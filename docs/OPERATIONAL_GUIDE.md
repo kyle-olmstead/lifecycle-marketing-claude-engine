@@ -12,8 +12,8 @@ label how each is known.
 
 **Order** (plugin mode does steps 1 and 3 for you):
 
-1. `core/system_prompt.md`: the operating rules.
-2. Your filled `core/context_loader.xml`: one file per brand.
+1. `prompts/core/system_prompt.md`: the operating rules.
+2. Your filled `templates/context/context_loader.xml`: one file per brand.
 3. The module prompt for the job (the router in the system prompt names it).
 4. The evidence for this job: header samples, query results, exports.
 
@@ -73,9 +73,9 @@ cadence the program's phase allows, and the default action in a working program 
 
 1. **Diagnose** with the ladder: measurement, deliverability, list composition, data integrity,
    coverage, then creative and offer last. Stop at the first layer that explains the magnitude.
-2. **Hypothesize** in the format in `modules/05_experimentation_and_analytics/frameworks/test_hypothesis_matrix.md`:
+2. **Hypothesize** in the format in `prompts/jobs/measurement/test_hypothesis_matrix.md`:
    evidence, change, segment, metric, minimum effect, falsifying result.
-3. **Size** with `tools/stats.py`. A test that cannot read inside a quarter is redesigned or dropped.
+3. **Size** with `engine/measurement/stats.py`. A test that cannot read inside a quarter is redesigned or dropped.
 4. **Build** through the module that owns it, with the holdout specified before launch.
 5. **Read** once, at the planned sample, after a sample ratio check.
 6. **Decide** with the rule written before launch. Inconclusive is a result.
@@ -120,8 +120,8 @@ the warehouse (the RFM prompt shows how), or export rows and build request bodie
 limits enforced in code:
 
 ```text
-python3 tools/payloads.py hubspot lmm_rfm_scores.csv --id-column email --properties rfm_segment=lmm_rfm_segment --out out/hubspot
-python3 tools/payloads.py klaviyo lmm_rfm_scores.csv --id-column email --properties rfm_segment=lmm_rfm_segment --out out/klaviyo
+python3 adapters/destinations/payloads.py hubspot lmm_rfm_scores.csv --id-column email --properties rfm_segment=lmm_rfm_segment --out out/hubspot
+python3 adapters/destinations/payloads.py klaviyo lmm_rfm_scores.csv --id-column email --properties rfm_segment=lmm_rfm_segment --out out/klaviyo
 ```
 
 | Destination | Endpoint | Limit |

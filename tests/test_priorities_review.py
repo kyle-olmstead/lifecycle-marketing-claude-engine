@@ -10,13 +10,14 @@ from pathlib import Path
 import pytest
 
 from tests.conftest import ROOT
-from agents import cli, cohort_analyst, priorities, retention, tracking
-from agents.brief import load_brief
-from agents.campaign_architect import outcome_window
-from agents.models import Brief
+from engine.cli import main as cli
+from engine.agents import cohort_analyst, priorities, retention, tracking
+from engine.brief import load_brief
+from engine.agents.campaign_architect import outcome_window
+from engine.models import Brief
 
-FIXTURES = ROOT / "tests" / "fixtures"
-EXAMPLE = ROOT / "briefs" / "examples" / "winback_14d.yaml"
+FIXTURES = ROOT / "examples" / "brands" / "ridgeview_saas" / "data"
+EXAMPLE = ROOT / "examples" / "brands" / "ridgeview_saas" / "briefs" / "winback_14d.yaml"
 
 
 def _copy(tmp: Path, tables=("users", "orders", "track_events", "message_events"), keep=None) -> Path:
@@ -122,7 +123,7 @@ def test_m3_a_supplied_brief_does_not_hide_the_live_flows(tmp_path, monkeypatch,
     root = tmp_path / "repo"
     (root / "briefs" / "active").mkdir(parents=True)
     shutil.copy(EXAMPLE, root / "briefs" / "active" / "winback.yaml")
-    monkeypatch.setattr(priorities, "ROOT", root)
+    monkeypatch.setenv("LCM_WORKSPACE", str(root))
     assert priorities._cli(["--data", str(FIXTURES), "--brief", str(EXAMPLE), "--json", "--out", str(tmp_path / "out"), "--top", "10"]) == 0
     r = json.loads(capsys.readouterr().out)
     keys = {o["key"] for o in r["top"] + r["others"]}

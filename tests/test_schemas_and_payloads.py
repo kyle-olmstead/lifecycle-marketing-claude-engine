@@ -5,9 +5,9 @@ import jsonschema
 import pytest
 
 from tests.conftest import ROOT, fenced
-from tools.payloads import HUBSPOT_MAX_INPUTS, KLAVIYO_MAX_PROFILES, hubspot_batches, klaviyo_jobs
+from adapters.destinations.payloads import HUBSPOT_MAX_INPUTS, KLAVIYO_MAX_PROFILES, hubspot_batches, klaviyo_jobs
 
-EVENTS = json.loads((ROOT / "modules/02_behavioral_triggers_and_flows/schemas/custom_event_definitions.json").read_text())
+EVENTS = json.loads((ROOT / "config/tracking_plan.json").read_text())
 FLOW = json.loads((ROOT / "schemas/flow_spec.schema.json").read_text())
 
 
@@ -27,7 +27,7 @@ def test_every_event_in_the_plan_names_what_it_unlocks():
 
 def _flow_specs():
     specs = [json.loads(p.read_text()) for p in (ROOT / "examples/flows").glob("*.json")]
-    for md in (ROOT / "modules").rglob("*.md"):
+    for md in (ROOT / "prompts").rglob("*.md"):
         specs += [json.loads(b) for b in fenced(md, "json", "flow_spec")]
     return specs
 
@@ -54,7 +54,7 @@ def test_flow_schema_enforces_consent_and_persistent_holdout():
     assert list(v.iter_errors(bad))
 
 
-@pytest.mark.parametrize("path", ["core/context_loader.xml", "examples/context/ridgeview_context.xml"])
+@pytest.mark.parametrize("path", ["templates/context/context_loader.xml", "examples/brands/ridgeview_saas/context.xml"])
 def test_context_files_parse_and_carry_required_fields(path):
     tree = ET.parse(ROOT / path)
     required = {e.tag for e in tree.iter() if e.get("required") == "true"}
@@ -81,7 +81,7 @@ def test_hubspot_batches_and_property_names():
 # ---- regressions from the v2.2 audit (docs/AUDIT.md) ----
 
 def test_leading_zeros_and_long_ids_stay_strings():
-    from tools.payloads import _coerce
+    from adapters.destinations.payloads import _coerce
     assert _coerce("02134") == "02134" and _coerce("1234567890123456") == "1234567890123456"
     assert _coerce("0") == 0 and _coerce("42") == 42 and _coerce("0.5") == 0.5 and _coerce("TRUE") is True
 
@@ -94,7 +94,7 @@ def test_hubspot_values_are_the_source_strings():
 
 
 def test_read_rows_handles_bom_and_newlines_inside_quotes(tmp_path):
-    from tools.payloads import read_rows
+    from adapters.destinations.payloads import read_rows
     p = tmp_path / "rows.csv"
     p.write_bytes('﻿email,note\na@example.com,"line one\nline two"\n'.encode("utf-8"))
     rows = read_rows(p)
@@ -102,7 +102,7 @@ def test_read_rows_handles_bom_and_newlines_inside_quotes(tmp_path):
 
 
 def test_written_request_files_are_the_size_that_was_checked(tmp_path):
-    from tools import payloads
+    from adapters.destinations import payloads
     rows = tmp_path / "rows.csv"
     rows.write_text("email,seg\n" + "".join(f"u{i}@example.com,s{i % 3}\n" for i in range(50)))
     assert payloads._cli(["klaviyo", str(rows), "--properties", "seg", "--out", str(tmp_path / "k")]) == 0
@@ -113,7 +113,7 @@ def test_written_request_files_are_the_size_that_was_checked(tmp_path):
 @pytest.mark.parametrize("platform,schema", [("klaviyo", "klaviyo_profile_bulk_import"), ("hubspot", "hubspot_contacts_batch_upsert"),
                                              ("braze", "braze_users_track"), ("customerio", "customerio_pipelines_batch")])
 def test_attribute_sync_requests_match_the_endpoint_schemas(platform, schema):
-    from tools.payloads import attribute_sync
+    from adapters.destinations.payloads import attribute_sync
     cfg = json.loads((ROOT / "config/esp_payload_schemas.json").read_text())
     sub = {"$schema": cfg["$schema"], "$defs": cfg["$defs"], "$ref": f"#/$defs/{schema}"}
     rows = [{"user_id": f"u{i}", "email": f"u{i}@example.com", "lcm_engagement_tier": "unengaged", "lcm_sunset": True} for i in range(160)]

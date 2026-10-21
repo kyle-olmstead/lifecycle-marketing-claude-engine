@@ -133,7 +133,7 @@ Then, in any conversation: **"set up the lifecycle engine."** Setup looks at whi
 
 ```text
 pip install -r requirements.txt && pip install -e . --no-deps
-lcm briefs/examples/winback_14d.yaml --data tests/fixtures          # the sample company, start to finish
+lcm examples/brands/ridgeview_saas/briefs/winback_14d.yaml --data examples/brands/ridgeview_saas/data          # the sample company, start to finish
 lcm "plan a 5-touch win-back for users inactive 14 days" --product Acme
 lcm "check deliverability for example.com"
 lcm --dry-run "<anything>"                                          # what it would do, and what it still needs
@@ -202,7 +202,7 @@ A team that only reads the morning check still catches the expensive problems ea
 
 ## 9. A worked example
 
-*The company below is made up. The reasoning is exactly what the engine does.* Full output: [`examples/teammate/ridgeview_winback_14d/plan.md`](examples/teammate/ridgeview_winback_14d/plan.md).
+*The company below is made up. The reasoning is exactly what the engine does.* Full output: [`examples/brands/ridgeview_saas/runs/winback_14d/plan.md`](examples/brands/ridgeview_saas/runs/winback_14d/plan.md).
 
 Ridgeview, a reporting tool, wants to win back users who finished onboarding but stopped creating reports. The marketer types one sentence. The engine:
 
@@ -256,12 +256,12 @@ lifecycle-marketing-claude-engine/
 
 | Tool | What it computes |
 |---|---|
-| `tools/deliverability.py` | SPF (lookup counts, loops), DKIM key size, DMARC (including subdomain policy), MTA-STS, TLS-RPT, BIMI, header alignment, one-click unsubscribe, bulk-sender rules, the sending gate, copy-paste DNS fixes |
-| `tools/dns_collect.py` | the live DNS lookup in front of it, with DKIM selectors from each sender's documentation |
-| `tools/warmup.py` | a warming ladder that refuses on RED, holds on AMBER, and never warms with unengaged people |
-| `tools/stats.py` | sample size, minimum detectable effect, holdout feasibility, confidence intervals, sample ratio checks, credited versus true lift |
-| `tools/template_lint.py` | syntax and fallback rules for Braze, Customer.io, Klaviyo, HubL and AMPscript; email checks including text-to-image ratio |
-| `tools/sql_check.py`, `tools/sms.py`, `tools/payloads.py`, `tools/event_payloads.py`, `tools/contracts.py` | SQL parsing per dialect; SMS encoding and segments; ESP request bodies within each vendor's limits; Pydantic input contracts |
+| `engine/deliverability/analyze.py` | SPF (lookup counts, loops), DKIM key size, DMARC (including subdomain policy), MTA-STS, TLS-RPT, BIMI, header alignment, one-click unsubscribe, bulk-sender rules, the sending gate, copy-paste DNS fixes |
+| `engine/deliverability/dns_collect.py` | the live DNS lookup in front of it, with DKIM selectors from each sender's documentation |
+| `engine/deliverability/warmup.py` | a warming ladder that refuses on RED, holds on AMBER, and never warms with unengaged people |
+| `engine/measurement/stats.py` | sample size, minimum detectable effect, holdout feasibility, confidence intervals, sample ratio checks, credited versus true lift |
+| `engine/render/template_lint.py` | syntax and fallback rules for Braze, Customer.io, Klaviyo, HubL and AMPscript; email checks including text-to-image ratio |
+| `engine/sql/check.py`, `engine/render/sms.py`, `adapters/destinations/payloads.py`, `adapters/destinations/event_payloads.py`, `engine/contracts.py` | SQL parsing per dialect; SMS encoding and segments; ESP request bodies within each vendor's limits; Pydantic input contracts |
 
 **What is verified, and what is not**
 

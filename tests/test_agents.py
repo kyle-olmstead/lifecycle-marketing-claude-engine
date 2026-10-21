@@ -8,13 +8,14 @@ import pytest
 import sqlglot
 
 from tests.conftest import ROOT
-from agents import campaign_architect, cohort_analyst, experimentation_agent, guardrails
-from agents.brief import load_brief, parse_text, to_yaml
-from agents.models import Brief, EventMatch, base_form
-from agents.sql_dialects import dialect, holdout_bucket
+from engine.agents import campaign_architect, cohort_analyst, experimentation_agent
+from engine.policy import guardrails
+from engine.brief import load_brief, parse_text, to_yaml
+from engine.models import Brief, EventMatch, base_form
+from engine.sql.dialects import dialect, holdout_bucket
 
-FIX = ROOT / "tests" / "fixtures"
-EXAMPLE = ROOT / "briefs" / "examples" / "winback_14d.yaml"
+FIX = ROOT / "examples" / "brands" / "ridgeview_saas" / "data"
+EXAMPLE = ROOT / "examples" / "brands" / "ridgeview_saas" / "briefs" / "winback_14d.yaml"
 SPEC_SENTENCE = ("Build a 5-touch automated win-back flow for users who completed onboarding but haven't triggered a core "
                  "action in 14 days")
 
@@ -68,7 +69,7 @@ def test_sentence_variants(text, expect):
 
 
 def test_template_loads_and_round_trips(tmp_path):
-    b = load_brief(ROOT / "briefs" / "brief_template.yaml")
+    b = load_brief(ROOT / "templates" / "brief.yaml")
     assert b.core_conversion_event.where == {"feature": "reports"}
     p = tmp_path / "b.yaml"
     p.write_text(to_yaml(b))
@@ -256,7 +257,7 @@ def test_every_generated_query_parses(brief, d):
     sqls = [cohort_analyst.entry_sql(brief, d), cohort_analyst.history_sql(brief, d), *cohort_analyst.daily_job_sql(brief, d).values(),
             *cohort_analyst.audit_sql(brief, d).values()]
     for sql in sqls:
-        ok, msg = __import__("tools.sql_check", fromlist=["parse"]).parse(sql, d)
+        ok, msg = __import__("engine.sql.check", fromlist=["parse"]).parse(sql, d)
         assert ok, msg
 
 
@@ -344,7 +345,7 @@ def _cohort(brief, entrants, baseline):
 
 
 def test_holdout_sizing_uses_the_stats_tool(brief):
-    from tools import stats
+    from engine.measurement import stats
     d = experimentation_agent.design(brief, _cohort(brief, 5000, 0.10))
     f = stats.feasibility(5000, 0.15, 0.10, mde_rel=0.25, outcome_window_days=campaign_architect.outcome_window(brief))
     assert d.read == f["expected_read"] and str(f["required_holdout_n"]) in d.sizing.replace(",", "")
