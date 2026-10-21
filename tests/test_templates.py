@@ -47,7 +47,32 @@ def test_unknown_filters_are_reported():
 def test_modular_email_template_passes_email_checks():
     path = ROOT / "modules/03_copywriting_and_multichannel/templates/modular_email_components.html"
     r = lint(path.read_text(), "customerio", email=True)
-    assert r["ok"] and not r["warnings"] and r["bytes"] < 90 * 1024
+    # the component library shows every image block once, so as a whole it is image-heavy; one email built from it is not
+    assert r["ok"] and r["bytes"] < 90 * 1024
+    assert [w for w in r["warnings"] if not w.startswith("image-heavy")] == []
+    assert r["text_to_image"]["images"] == 5
+
+
+def test_text_to_image_ignores_template_tags_and_hidden_preheaders():
+    from tools.template_lint import text_to_image
+    body = '<div style="display:none">' + "x" * 400 + '</div>{{ customer.first_name }}{% if a %}{% endif %}<img src="a.png" alt="a">'
+    r = text_to_image("<html><body>" + body + "<p>Short.</p></body></html>")
+    assert r["visible_text_chars"] == len("Short.") and r["errors"] and "image-only" in r["errors"][0]
+    ok = text_to_image("<html><body><p>" + "Plenty of live text. " * 30 + '</p><img src="a.png" alt="a"></body></html>')
+    assert not ok["errors"] and not ok["warnings"]
+
+
+def test_braze_attribute_regex_leaves_liquid_after_a_dollar_sign():
+    r = lint("Now ${{ price | default: '9' }} for {{${first_name} | default: 'you'}}", "braze")
+    assert r["ok"], r["errors"]
+    assert not lint("{{${first_name} | default: 'x'}} and ${", "braze")["ok"]
+
+
+def test_hubl_unless_and_ampscript_keyword_variables():
+    assert lint("{% unless contact.firstname %}Hi there{% endunless %}", "hubl")["ok"]
+    assert not lint("{% unless contact.firstname %}Hi there", "hubl")["ok"]
+    r = lint("%%[ VAR @next, @if SET @next = 1 IF @next == 1 THEN SET @if = 2 ENDIF ]%%", "ampscript")
+    assert r["ok"], r["errors"]
 
 
 def test_email_checks_catch_missing_unsubscribe_and_alt():
@@ -67,3 +92,20 @@ def test_sms_encoding_and_segments():
     assert (emoji["encoding"], emoji["units"], emoji["segments"]) == ("UCS-2", 162, 3)
     assert any("opt-out" in c for c in sms("Hello from Northfield")["checks"])
     assert sms("a{b}")["units"] == 6  # each brace is an extension character and costs two septets
+
+
+def test_sms_escape_characters_never_split_across_segments():
+    # 152 plain + one 2-septet euro sign: 154 septets, so two segments either way, but the euro must start segment two
+    assert sms("a" * 152 + "€" + "b" * 10)["segments"] == 2
+    # 306 septets of plain text is exactly two segments; moving one euro onto a boundary forces a third
+    assert sms("a" * 306)["segments"] == 2
+    assert sms("a" * 152 + "€" + "a" * 152)["segments"] == 3
+    # an emoji is a surrogate pair in UCS-2 and cannot straddle a boundary either
+    assert sms("a" * 66 + "😀" + "a" * 66)["segments"] == 3
+
+
+def test_sms_opt_out_needs_an_instruction_not_the_word():
+    from tools.sms import has_opt_out
+    assert not has_opt_out("Acme: stop by our store this weekend")
+    assert has_opt_out("Acme: 20% off. Reply STOP to opt out") and has_opt_out("Text END to 55555 to cancel")
+    assert has_opt_out("STOP to unsubscribe")

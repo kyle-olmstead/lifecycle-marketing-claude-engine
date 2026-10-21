@@ -19,9 +19,7 @@ image-only mail, rather than enforcing a folklore 60/40 split.
 """
 from __future__ import annotations
 
-import html as htmllib
 import re
-from html.parser import HTMLParser
 from typing import Any, Dict, List, Tuple
 
 from tools import sms as sms_tool
@@ -128,60 +126,10 @@ def check_email_fields(fields: Dict[str, Any], offer_policy: str) -> Tuple[List[
     return errors + e, warnings + w
 
 
-class _Visible(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.skip = 0
-        self.hidden_depth: List[bool] = []
-        self.text: List[str] = []
-        self.images = 0
-        self.images_no_alt = 0
-
-    def handle_starttag(self, tag, attrs):  # noqa: ANN001
-        a = dict(attrs)
-        if tag in ("style", "script", "head", "title"):
-            self.skip += 1
-        if tag == "img":
-            self.images += 1
-            if "alt" not in a:
-                self.images_no_alt += 1
-        style = (a.get("style") or "").replace(" ", "").lower()
-        if tag in ("div", "span", "td", "p") and ("display:none" in style or "max-height:0" in style):
-            self.skip += 1
-            self.hidden_depth.append(True)
-        elif tag in ("div", "span", "td", "p"):
-            self.hidden_depth.append(False)
-
-    def handle_endtag(self, tag):  # noqa: ANN001
-        if tag in ("style", "script", "head", "title"):
-            self.skip = max(0, self.skip - 1)
-        if tag in ("div", "span", "td", "p") and self.hidden_depth:
-            if self.hidden_depth.pop():
-                self.skip = max(0, self.skip - 1)
-
-    def handle_data(self, data):  # noqa: ANN001
-        if not self.skip:
-            self.text.append(data)
-
-
 def text_to_image(html_src: str) -> Dict[str, Any]:
-    """Readable text against images. Template tags are stripped first so they do not count as text."""
-    src = re.sub(r"<!--.*?-->", "", html_src, flags=re.S)
-    src = re.sub(r"\{%.*?%\}|\{\{.*?\}\}|%%\[.*?\]%%|%%=.*?=%%|%%\w+%%", " ", src, flags=re.S)
-    p = _Visible()
-    p.feed(src)
-    text = re.sub(r"\s+", " ", htmllib.unescape(" ".join(p.text))).strip()
-    chars = len(text)
-    result: Dict[str, Any] = {"visible_text_chars": chars, "images": p.images, "images_without_alt": p.images_no_alt,
-                              "chars_per_image": None if not p.images else round(chars / p.images), "errors": [], "warnings": []}
-    if p.images and chars < 200:
-        result["errors"].append(f"image-only email: {chars} characters of readable text with {p.images} image(s). Filters cannot read it and "
-                                "recipients with images off see nothing; put the message in live text")
-    elif p.images and chars / p.images < 250:
-        result["warnings"].append(f"image-heavy: about {chars // p.images} characters of text per image; keep the message readable with images off")
-    if p.images_no_alt:
-        result["errors"].append(f"{p.images_no_alt} image(s) without alt text")
-    return result
+    """Readable text against images; implemented in tools/template_lint.py so every linted email gets it."""
+    from tools.template_lint import text_to_image as _tti
+    return _tti(html_src)
 
 
 def check_sms(text: str, brand: str, first_message: bool) -> Tuple[List[str], List[str], Dict[str, Any]]:

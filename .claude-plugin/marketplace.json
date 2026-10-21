@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Marketplace for the LMM Engine plugin (plugin id: lifecycle-engine). Add this repository as a marketplace, then install lifecycle-engine from it.",
-    "version": "2.1.0"
+    "version": "2.2.0"
   },
   "plugins": [
     {
@@ -16,7 +16,7 @@
         "source": "github",
         "repo": "kyle-olmstead/lifecycle-marketing-claude-engine"
       },
-      "version": "2.1.0",
+      "version": "2.2.0",
       "author": {
         "name": "Kyle Olmstead"
       },

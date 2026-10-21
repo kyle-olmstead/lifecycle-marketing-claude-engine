@@ -1,14 +1,16 @@
-"""Log teammate output to a Google Sheet: campaign plans, cohort health, benchmarks and anomalies.
+"""Log teammate output to a Google Sheet: plans, cohort health, benchmarks, anomalies, engagement and deliverability.
 
-The daily workflow (.github/workflows/daily_cohort_audit.yml, 05:00 UTC) calls this after the
-cohort audit; the orchestrator calls it with --sheet after a plan. Four tabs, created if missing,
-each with a fixed header and a key, so re-running a day updates rows in place instead of
-duplicating them:
+The daily job (scripts/daily.py, run at 05:00 UTC by .github/workflows/daily_cohort_audit.yml) calls
+sync() once with everything it produced; the orchestrator calls it with --sheet after a plan. Six
+tabs, created if missing, each with a fixed header and a key, so re-running a day updates rows in
+place instead of duplicating them:
 
-  Campaign Plans   one row per plan run              key: run_id
-  Cohort Health    one row per flow per day          key: as_of + flow
-  Benchmarks       one row per metric per flow/day   key: as_of + flow + metric
-  Anomalies        one row per finding               key: as_of + flow + metric
+  Campaign Plans   one row per plan run                  key: run_id
+  Cohort Health    one row per flow per day              key: as_of + flow
+  Benchmarks       one row per metric per flow per day   key: as_of + flow + metric
+  Anomalies        one row per finding                   key: as_of + flow + metric
+  Engagement       one row per audience per day          key: as_of + audience
+  Deliverability   one row per sending domain per day    key: as_of + domain
 
 Authentication is a Google Cloud service account, never a personal login:
   1. Create a service account, enable the Google Sheets API on its project, and make a JSON key.
@@ -49,6 +51,12 @@ TABS: Dict[str, Dict[str, Any]] = {
     "Benchmarks": {"key": ["as_of", "flow", "metric"], "header": [
         "as_of", "flow", "metric", "value", "median_28d", "modified_z", "status", "data_label"]},
     "Anomalies": {"key": ["as_of", "flow", "metric"], "header": ["as_of", "flow", "metric", "value", "reason", "logged_at"]},
+    "Engagement": {"key": ["as_of", "audience"], "header": [
+        "as_of", "audience", "people", "mailable", "suppressed", "engaged_30d", "engaged_90d", "engaged_180d", "unengaged", "new",
+        "unengaged_share", "gate_band", "logged_at"]},
+    "Deliverability": {"key": ["as_of", "domain"], "header": [
+        "as_of", "domain", "gate", "auth_state", "dmarc_policy", "dmarc_effective_policy", "spf_lookups", "dkim_keys_found",
+        "mta_sts_mode", "critical", "high", "primary_cause", "top_finding", "logged_at"]},
 }
 RETRY_STATUS = {429, 500, 502, 503, 504}
 
@@ -82,6 +90,27 @@ def audit_rows(a: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
     anomalies = [{"as_of": a["as_of"], "flow": a["flow"], "metric": x["metric"], "value": x.get("value"), "reason": x.get("reason", ""),
                   "logged_at": a["generated_at"]} for x in a["anomalies"]]
     return {"Cohort Health": [health], "Benchmarks": bench, "Anomalies": anomalies}
+
+
+def engagement_rows(summary: Dict[str, Any], audience: str = "email subscribers", logged_at: str = "") -> Dict[str, List[Dict[str, Any]]]:
+    t = summary["tiers"]
+    return {"Engagement": [{"as_of": summary["as_of"], "audience": audience, "people": summary["people"], "mailable": summary["mailable"],
+                            **{k: t.get(k, 0) for k in ("suppressed", "engaged_30d", "engaged_90d", "engaged_180d", "unengaged", "new")},
+                            "unengaged_share": summary["unengaged_share"], "gate_band": summary["gate_band"], "logged_at": logged_at}]}
+
+
+def deliverability_rows(r: Dict[str, Any], as_of: str, logged_at: str = "") -> Dict[str, List[Dict[str, Any]]]:
+    """One row from a tools/deliverability.py analysis."""
+    c = r["checked"]
+    sev = [f["severity"] for f in r["findings"]]
+    order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+    top = min(r["findings"], key=lambda f: order.get(f["severity"], 9), default=None)
+    return {"Deliverability": [{
+        "as_of": as_of, "domain": c.get("from_domain"), "gate": r["gate"]["verdict"], "auth_state": next((x["value"] for x in r["gate"].get("signals") or [] if x.get("signal") == "authentication_state"), None),
+        "dmarc_policy": (c.get("dmarc") or {}).get("policy"), "dmarc_effective_policy": (c.get("dmarc") or {}).get("effective_policy"),
+        "spf_lookups": (c.get("spf") or {}).get("lookups_total"), "dkim_keys_found": len(c.get("dkim_keys") or []),
+        "mta_sts_mode": (c.get("mta_sts") or {}).get("mode"), "critical": sev.count("critical"), "high": sev.count("high"),
+        "primary_cause": r.get("primary_cause_class"), "top_finding": f"{top['severity']}: {top['title']}" if top else "", "logged_at": logged_at}]}
 
 
 def _cell(v: Any) -> Any:
@@ -188,12 +217,18 @@ def worksheet(sh: Any, title: str, cols: int) -> Any:
 
 
 def sync(plans: Optional[List[Dict[str, Any]]] = None, audits: Optional[List[Dict[str, Any]]] = None, sheet_id: Optional[str] = None,
-         dry_run: bool = False, out: Optional[Path] = None, spreadsheet: Any = None) -> Dict[str, Any]:
+         dry_run: bool = False, out: Optional[Path] = None, spreadsheet: Any = None,
+         extra: Optional[Dict[str, List[Dict[str, Any]]]] = None) -> Dict[str, Any]:
+    """extra: rows already shaped for a tab (engagement_rows, deliverability_rows)."""
     rows: Dict[str, List[Dict[str, Any]]] = {}
     for p in plans or []:
         _merge(rows, plan_rows(p))
     for a in audits or []:
         _merge(rows, audit_rows(a))
+    _merge(rows, extra or {})
+    unknown = set(rows) - set(TABS)
+    if unknown:
+        raise ValueError(f"no tab named {sorted(unknown)}; tabs are {list(TABS)}")
     sheet_id = sheet_id or os.environ.get("LCM_SHEET_ID")
     has_creds = bool(os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON") or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"))
     if spreadsheet is None and (dry_run or not sheet_id or not has_creds):

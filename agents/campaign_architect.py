@@ -29,7 +29,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from agents import guardrails  # noqa: E402
-from agents.models import PLATFORM_LABEL, Brief, CohortDefinition, FlowPlan, Touch, parse_quiet_hours  # noqa: E402
+from agents.models import PLATFORM_LABEL, Brief, CohortDefinition, FlowPlan, Strategy, Touch, parse_quiet_hours  # noqa: E402
 
 ROLES: Dict[str, Dict[str, str]] = {
     "value_reminder": {"job": "Remind them of the one outcome {product} gave them, tied to what they last did, with one link that lets them {core_do} again. No offer.",
@@ -152,14 +152,19 @@ def outcome_window(brief: Brief) -> int:
     return max(14, last + 7)
 
 
-def design(brief: Brief, cohort: CohortDefinition) -> FlowPlan:
+def design(brief: Brief, cohort: CohortDefinition, strategy: Optional[Strategy] = None) -> FlowPlan:
+    """Compile a Strategy into a flow spec. Without one (older callers), the default strategy is used."""
     pol = guardrails.gate_policy(brief.sending_gate)
     core = brief.core_conversion_event
     qual = brief.qualifying_event
     n = brief.touches
-    roles = roles_for(brief)
-    days = schedule_days(brief)
-    channels = _channels_for(roles, brief)
+    if strategy is None:
+        from agents.strategist import decide
+        strategy = decide(brief, cohort)
+    roles = [t.role for t in strategy.touches]
+    days = [t.day for t in strategy.touches]
+    channels = [t.channel for t in strategy.touches]
+    leak = strategy.leak_step
     hh = f"{brief.send_hour_local:02d}:00"
 
     steps: List[Dict[str, Any]] = []
@@ -183,6 +188,8 @@ def design(brief: Brief, cohort: CohortDefinition) -> FlowPlan:
         gap = day - last_day
         wait = {"type": "until_time_local", "local_time": hh} if i == 1 else {"type": "fixed", "duration": f"P{gap}D"}
         job, goal = _fmt(r["job"], brief), _fmt(r["goal"], brief)
+        if role == "unblock" and leak:
+            job = job.replace("the step where most new users stall (the leak map)", f"{leak}, where most new users stall")
         step_id = f"t{i}_{ch}"
         msg = f"{role.replace('_', ' ')}: {job}"
         if ch == "in_app":

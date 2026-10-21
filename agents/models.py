@@ -188,6 +188,7 @@ class Brief(BaseModel):
     brand_voice: Optional[str] = None
     postal_address: Optional[str] = None
     cta_url: Optional[str] = Field(None, description="where the main button goes: a deep link to the core action, on your own domain")
+    recipient_countries: List[str] = Field(default_factory=list, description="ISO country codes of the audience, when there is no data to measure it")
     offer_policy: str = "no discounts or offers"
     frequency_cap_per_week: int = Field(3, ge=1, le=14)
     send_hour_local: int = Field(10, ge=6, le=20)
@@ -273,6 +274,8 @@ class CohortDefinition(BaseModel):
     monthly_entrants: Estimate
     baseline_conversion_rate: Estimate
     entrants_on_as_of: Optional[int] = None
+    leak: Optional[str] = Field(None, description="onboarding step with the largest drop, when measured")
+    countries: Dict[str, float] = Field(default_factory=dict, description="share of qualified people by users.country, when measured")
     as_of: Optional[str] = None
     trigger_payload_example: Dict[str, Any] = Field(default_factory=dict)
 
@@ -290,6 +293,51 @@ class Touch(BaseModel):
     goal: str
     requires: List[str]
     condition: Optional[str] = None
+
+
+class Decision(BaseModel):
+    """One decision an agent made, and why: the plan's memory of its own reasoning."""
+    model_config = ConfigDict(extra="forbid")
+    stage: str
+    decision: str
+    why: str
+
+
+class PlannedTouch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    index: int
+    day: int
+    role: str
+    channel: Channel
+    why: str
+
+
+class Strategy(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    touches: List[PlannedTouch]
+    channels_requested: List[str]
+    channels_used: List[str]
+    offer: str
+    leak_step: Optional[str] = None
+    decisions: List[Decision] = Field(default_factory=list)
+
+
+class ComplianceFinding(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    rule: str
+    jurisdiction: str
+    status: Literal["pass", "warn", "fail"]
+    detail: str
+    source: Optional[str] = None
+
+
+class ComplianceReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: Literal["pass", "warn", "fail"]
+    jurisdictions: List[str]
+    findings: List[ComplianceFinding]
+    note: str = ("Rules engine, not legal advice: it checks the plan against the rules in config/compliance_rules.json, "
+                 "each with its source. Confirm anything marked warn with counsel.")
 
 
 class FlowPlan(BaseModel):
@@ -383,3 +431,8 @@ class ExecutionPlan(BaseModel):
     copy_plan: List[TouchCopy]
     experiment: ExperimentDesign
     qa: QAReport
+    strategy: Optional[Strategy] = None
+    compliance: Optional[ComplianceReport] = None
+    decisions: List[Decision] = Field(default_factory=list)
+    parent_run_id: Optional[str] = None
+    approvals: Dict[str, str] = Field(default_factory=dict, description="step id to the approved variant id")

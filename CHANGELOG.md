@@ -1,5 +1,54 @@
 # Changelog
 
+## 2.2.0 (2026-10)
+
+**An engine that runs itself.** The audit behind this release, finding by finding: `docs/AUDIT.md`.
+
+- `lcm`: one command for the whole engine, in plain English or a YAML job file
+  (`pip install -e . --no-deps` installs it). Rules pick the job; anything missing is asked for.
+- A stateful pipeline: intake, Analyst, Strategist, Architect, Copywriter, Experiment, QA,
+  Compliance. Every stage is saved with an input hash; `resume` restarts at a failed stage,
+  `revise --set` re-runs only what a change affects and keeps unchanged and approved copy,
+  `approve` marks the variant to ship, `status` shows the run.
+- `agents/strategist.py`: the campaign's shape decided and explained (touch jobs, channels, days,
+  offer stance), dropping channels the data cannot support.
+- `agents/compliance.py` and `config/compliance_rules.json`: CAN-SPAM, TCPA and state texting laws,
+  CASL, PECR, ePrivacy, Germany's double opt-in case law, Australia's Spam Act and the mailbox
+  providers' bulk-sender rules, for the countries in the audience, each rule with its source.
+- `agents/engagement.py`: engagement tiers from message events (clicks, never opens), the unengaged
+  share as a sending-gate signal, and a reversible sunset attribute synced to all four ESPs
+  (`tools/payloads.py attribute_sync`).
+- `tools/dns_collect.py`: live SPF, DKIM, DMARC, MTA-STS, TLS-RPT and BIMI lookups for the analyzer.
+- `tools/contracts.py` and `schemas/*_input.schema.json`: Pydantic contracts for every tool input.
+- Text-to-image ratio in every email lint.
+- `blast-vs-trigger`: what a calendar blast reaches compared with the behavioral trigger.
+- `scripts/daily.py`: the 05:00 UTC job now audits every brief in `briefs/active/`, rebuilds the
+  tiers, checks each sending domain, logs six Sheets tabs and opens one issue per finding.
+- Opt-in real-time forwarding of activation triggers from the webhook parser, with the holdout
+  assignment added.
+- `--set FIELD=VALUE` on `plan` and `brief`.
+- `tests/fixtures/message_events.csv`; GitHub Actions moved to the Node 24 majors.
+
+**Fixes** (each with a regression test; details in `docs/AUDIT.md`)
+
+- Deliverability: Microsoft Authentication-Results without an authserv-id; the receiver's DMARC
+  verdict preferred; subdomains judged by `sp=`; RFC 8058 needs a verified covering signature; SPF
+  include loops, unknown modifiers and redirect with `all`; `v=DMARC1` case; MTA-STS `mode: none`.
+- Payloads: no coercion of leading zeros or long ids; HubSpot values as strings; compact files sized
+  as written; CSV byte-order marks and quoted newlines.
+- Templates: Braze `${` before Liquid; HubL `unless`; AMPscript variables named like keywords.
+- SMS: segments packed the way carriers pack them; the opt-out check wants an instruction.
+- SQL: DuckDB divides integers like PostgreSQL; the LTV query's always-1 share replaced by
+  `repeat_share`.
+- Stats and warm-up: interval labels follow alpha; no 25% suggestion at 25%; `days=0` and zero
+  engaged capacity.
+
+**Changed behavior**
+
+- A plan whose emails have no postal address is BLOCKED (CAN-SPAM), not passed. Customer.io has no
+  address token: add `postal_address` to the brief, or `--set postal_address=...`.
+- The plan's SMS window is 9 a.m. to 8 p.m. recipient local (the strictest state rule).
+
 ## 2.1.0 (2026-10)
 
 **The teammate.** One campaign brief in, a build-ready plan out.

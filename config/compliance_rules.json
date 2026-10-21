@@ -1,0 +1,226 @@
+{
+  "_readme": "Rules the Compliance agent (agents/compliance.py) checks a plan against. Each rule names its jurisdiction, the requirement in plain words, how it is checked (a function in agents/compliance.py), and its source. A rule that applies to one channel says so. This is a rules engine, not legal advice: requirements were read from the sources on the date in checked_on; laws change. Add a rule by appending an object with a check that exists in agents/compliance.py CHECKS.",
+  "checked_on": "2026-10-20",
+  "jurisdictions": {
+    "ALL": "mailbox providers",
+    "US": "United States",
+    "CA": "Canada",
+    "UK": "United Kingdom",
+    "EU": "European Union",
+    "DE": "Germany",
+    "AU": "Australia",
+    "OTHER": "other"
+  },
+  "rules": [
+    {
+      "id": "one-click unsubscribe and complaint rate",
+      "jurisdiction": "ALL",
+      "channel": "email",
+      "check": "confirm",
+      "requirement": "Gmail and Yahoo require bulk senders' marketing mail to carry one-click unsubscribe (RFC 8058) plus a visible unsubscribe link, honored within two days, and to keep user-reported spam under 0.3% (Gmail's target is under 0.1%).",
+      "confirm": "One-click unsubscribe is a header your platform adds: confirm it is on (tools/deliverability.py checks it in real headers).",
+      "source": "https://support.google.com/mail/answer/81126",
+      "sources": [
+        "https://support.google.com/a/answer/14229414",
+        "https://senders.yahooinc.com/best-practices/"
+      ]
+    },
+    {
+      "id": "bulk-sender authentication",
+      "jurisdiction": "ALL",
+      "channel": "email",
+      "check": "confirm",
+      "requirement": "Gmail, Yahoo and Microsoft (Outlook.com, Hotmail.com and Live.com since 5 May 2025) require senders of more than 5,000 messages a day to pass SPF and DKIM and publish DMARC (p=none or stricter) aligned with one of them; Microsoft sends failing mail to junk, then rejects it with 550 5.7.515.",
+      "confirm": "Run lcm \"check deliverability for <your sending domain>\" (tools/dns_collect.py) and resolve anything RED before launch.",
+      "source": "https://support.google.com/mail/answer/81126",
+      "sources": [
+        "https://senders.yahooinc.com/best-practices/",
+        "https://support.microsoft.com/en-us/outlook/fix-ndr-error-550-5-7-515-in-outlook-com"
+      ]
+    },
+    {
+      "id": "suppression of opt-outs, bounces and complaints",
+      "jurisdiction": "ALL",
+      "check": "suppression",
+      "requirement": "Never mail people who unsubscribed, hard bounced or complained.",
+      "source": "https://support.google.com/mail/answer/81126"
+    },
+    {
+      "id": "CAN-SPAM postal address",
+      "jurisdiction": "US",
+      "channel": "email",
+      "check": "postal_address",
+      "requirement": "Commercial email must include the sender's valid physical postal address (a registered PO box or private mailbox counts).",
+      "penalty": "up to $53,088 per violating email",
+      "source": "https://www.ftc.gov/business-guidance/resources/can-spam-act-compliance-guide-business"
+    },
+    {
+      "id": "CAN-SPAM opt-out",
+      "jurisdiction": "US",
+      "channel": "email",
+      "check": "unsubscribe",
+      "honor_within": "10 business days",
+      "requirement": "Commercial email must offer a clear way to opt out that keeps working for at least 30 days after the send, honored within 10 business days.",
+      "source": "https://www.ftc.gov/business-guidance/resources/can-spam-act-compliance-guide-business"
+    },
+    {
+      "id": "CAN-SPAM honest subject and header",
+      "jurisdiction": "US",
+      "channel": "email",
+      "check": "no_deception",
+      "requirement": "Subject lines and header information must not mislead.",
+      "source": "https://www.ftc.gov/business-guidance/resources/can-spam-act-compliance-guide-business"
+    },
+    {
+      "id": "CAN-SPAM ad identification",
+      "jurisdiction": "US",
+      "channel": "email",
+      "check": "confirm",
+      "requirement": "A commercial message must be identified as an advertisement unless the recipient gave prior affirmative consent to receive it.",
+      "confirm": "Confirm every recipient opted in to marketing email, or add a clear advertisement disclosure.",
+      "source": "https://www.ftc.gov/business-guidance/resources/can-spam-act-compliance-guide-business"
+    },
+    {
+      "id": "TCPA texting hours",
+      "jurisdiction": "US",
+      "channel": "sms",
+      "check": "sms_hours",
+      "allowed_hours": [
+        8,
+        21
+      ],
+      "requirement": "Marketing texts only between 8 a.m. and 9 p.m. at the recipient's location.",
+      "source": "https://www.ecfr.gov/current/title-47/chapter-I/subchapter-B/part-64/subpart-L/section-64.1200"
+    },
+    {
+      "id": "TCPA consent and opt-out",
+      "jurisdiction": "US",
+      "channel": "sms",
+      "check": "sms_consent",
+      "requirement": "Marketing texts need the recipient's prior express written consent and an opt-out.",
+      "source": "https://www.ecfr.gov/current/title-47/chapter-I/subchapter-B/part-64/subpart-L/section-64.1200"
+    },
+    {
+      "id": "state texting hours (strictest applied)",
+      "jurisdiction": "US",
+      "channel": "sms",
+      "check": "sms_hours",
+      "allowed_hours": [
+        9,
+        20
+      ],
+      "requirement": "States set narrower windows than the TCPA: Connecticut 9 a.m. to 8 p.m. (texts covered); Oregon 8 a.m. to 8 p.m. (texts covered from 1 January 2026); Florida, Oklahoma and Maryland 8 a.m. to 8 p.m.; Texas 9 a.m. to 9 p.m., noon on Sundays. Recipient state is not known per person, so the plan holds everyone to 9 a.m. to 8 p.m. local time, and from noon on Sundays.",
+      "source": "https://prdext3.cga.ct.gov/2025/pub/chap_743m.htm",
+      "sources": [
+        "https://www.oregonlegislature.gov/bills_laws/lawsstatutes/2025orlaw0580.pdf",
+        "https://flsenate.gov/Laws/Statutes/2025/501.616",
+        "https://mgaleg.maryland.gov/2023RS/chapters_noln/Ch_413_sb0090E.pdf",
+        "https://sll.texas.gov/faqs/how-late-can-telemarketers-call"
+      ],
+      "unconfirmed": "Whether the Florida, Maryland, Oklahoma and Texas hour limits reach texts as well as calls is not settled; they are applied anyway.",
+      "sunday_start": 12
+    },
+    {
+      "id": "state texting frequency (strictest applied)",
+      "jurisdiction": "US",
+      "channel": "sms",
+      "check": "sms_frequency",
+      "max_per_24h": 3,
+      "requirement": "Oregon (texts covered), Florida, Oklahoma and Maryland limit marketing contacts on the same subject to three per 24 hours.",
+      "source": "https://www.oregonlegislature.gov/bills_laws/lawsstatutes/2025orlaw0580.pdf",
+      "sources": [
+        "https://flsenate.gov/Laws/Statutes/2025/501.616",
+        "https://mgaleg.maryland.gov/2023RS/chapters_noln/Ch_413_sb0090E.pdf"
+      ]
+    },
+    {
+      "id": "state texting consent and opt-out records",
+      "jurisdiction": "US",
+      "channel": "sms",
+      "check": "confirm",
+      "requirement": "Florida's Telephone Solicitation Act covers texts and requires a STOP reply to be honored; Washington bars commercial texts to Washington numbers without consent; Virginia requires a STOP or UNSUBSCRIBE reply to be honored for at least 10 years.",
+      "confirm": "Confirm SMS opt-outs are kept for at least 10 years and never re-opted in by a later import.",
+      "source": "https://www.flsenate.gov/laws/statutes/2024/501.059",
+      "sources": [
+        "https://law.lis.virginia.gov/vacode/59.1-514",
+        "https://lawfilesext.leg.wa.gov/Law/RCW/RCW%20%2019%20%20TITLE/RCW%20%2019%20.190%20%20CHAPTER/RCW%20%2019%20.190%20.060.htm"
+      ]
+    },
+    {
+      "id": "CASL consent",
+      "jurisdiction": "CA",
+      "check": "email_consent",
+      "requirement": "Commercial electronic messages need express or implied consent.",
+      "confirm": "Implied consent expires: two years after a purchase, six months after an inquiry or application. Exclude Canadian records whose implied consent has lapsed, or confirm they gave express consent.",
+      "source": "https://ised-isde.canada.ca/site/canada-anti-spam-legislation/en/node/7"
+    },
+    {
+      "id": "CASL identification and unsubscribe",
+      "jurisdiction": "CA",
+      "check": "unsubscribe",
+      "honor_within": "10 business days",
+      "requirement": "Messages must identify the sender, give contact information and a no-cost unsubscribe mechanism, honored within 10 business days.",
+      "source": "https://ised-isde.canada.ca/site/canada-anti-spam-legislation/en/node/7"
+    },
+    {
+      "id": "CASL sender identification",
+      "jurisdiction": "CA",
+      "check": "sender_identified",
+      "requirement": "Every message identifies who sent it and on whose behalf, with a mailing address and a phone number, email or web address that stays valid for 60 days.",
+      "source": "https://ised-isde.canada.ca/site/canada-anti-spam-legislation/en/node/7"
+    },
+    {
+      "id": "PECR consent or soft opt-in",
+      "jurisdiction": "UK",
+      "channel": "email",
+      "check": "email_consent",
+      "requirement": "Marketing email to individuals needs specific consent, or the soft opt-in for people who bought or negotiated to buy a similar product and were offered an opt-out at collection and in every message. The ICO is revising this guidance after the Data (Use and Access) Act.",
+      "confirm": "Confirm each UK record has consent or qualifies for the soft opt-in.",
+      "source": "https://ico.org.uk/for-organisations/direct-marketing-and-privacy-and-electronic-communications/guide-to-pecr/electronic-and-telephone-marketing/electronic-mail-marketing/"
+    },
+    {
+      "id": "ePrivacy consent",
+      "jurisdiction": "EU",
+      "channel": "email",
+      "check": "email_consent",
+      "requirement": "Marketing email needs prior consent, except to existing customers for similar products with an opt-out at collection and in every message (ePrivacy Directive, article 13).",
+      "confirm": "Confirm the lawful basis for each EU record and that consent records can be produced.",
+      "source": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32002L0058"
+    },
+    {
+      "id": "EU unsubscribe in every message",
+      "jurisdiction": "EU",
+      "channel": "email",
+      "check": "unsubscribe",
+      "requirement": "Every marketing message offers a free, easy opt-out.",
+      "source": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32002L0058"
+    },
+    {
+      "id": "double opt-in evidence",
+      "jurisdiction": "DE",
+      "channel": "email",
+      "check": "confirm",
+      "requirement": "UWG section 7 requires prior express consent for marketing email; the Federal Court of Justice (I ZR 164/09) puts the burden of proof on the sender, which in practice means a stored double opt-in confirmation per person.",
+      "confirm": "Confirm German records were collected with double opt-in and that each confirmation is stored.",
+      "source": "https://www.gesetze-im-internet.de/uwg_2004/__7.html",
+      "sources": [
+        "https://www.wipo.int/wipolex/en/text/597213"
+      ]
+    },
+    {
+      "id": "Spam Act consent, identification and unsubscribe",
+      "jurisdiction": "AU",
+      "check": "unsubscribe",
+      "honor_within": "5 working days",
+      "requirement": "Commercial messages need consent, must identify the sender and offer a functional unsubscribe that keeps working for 30 days after the send, honored within 5 working days.",
+      "source": "https://www.acma.gov.au/avoid-sending-spam"
+    },
+    {
+      "id": "Spam Act sender identification",
+      "jurisdiction": "AU",
+      "check": "sender_identified",
+      "requirement": "Every message identifies the business that authorized it.",
+      "source": "https://www.acma.gov.au/avoid-sending-spam"
+    }
+  ]
+}

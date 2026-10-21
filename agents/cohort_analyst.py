@@ -407,7 +407,8 @@ def audit_sql(brief: Brief, dialect_name: str, as_of: Optional[str] = None, look
               f")\n"
               f"SELECT '0 signed_up' AS step, COUNT(*) AS users FROM cohort\n"
               f"UNION ALL\n"
-              f"SELECT CONCAT('1 step ', {D.json_text('t.properties', 'step_index')}) AS step, COUNT(DISTINCT t.user_id) AS users\n"
+              f"SELECT CONCAT('1 step ', COALESCE({D.json_text('t.properties', 'step_index')}, '?'), ' ', "
+              f"COALESCE({D.json_text('t.properties', 'step')}, '')) AS step, COUNT(DISTINCT t.user_id) AS users\n"
               f"FROM track_events t JOIN cohort c ON c.user_id = t.user_id\n"
               f"WHERE t.event_name = 'onboarding_step_completed' GROUP BY 1\n"
               f"UNION ALL\n"
@@ -415,6 +416,95 @@ def audit_sql(brief: Brief, dialect_name: str, as_of: Optional[str] = None, look
               f"FROM track_events t JOIN cohort c ON c.user_id = t.user_id WHERE t.event_name = 'activation_reached'\n"
               f"ORDER BY 1\n")
     return {"daily": daily, "snapshot": snapshot, "funnel": funnel}
+
+
+BLAST_BANDS = ("1 active", "2 at risk", "3 on time", "4 late")
+
+
+def blast_sql(brief: Brief, dialect_name: str, blast_date: str, window_days: Optional[int] = None) -> str:
+    """Everyone a calendar blast to the qualified base reached on blast_date, banded by where they were in their own
+    cycle that day, with how many did the core action in the following window. A behavioral trigger would have
+    reached each person on the day they crossed the threshold instead."""
+    D = dialect(dialect_name)
+    b = D.date_literal(blast_date)
+    n = brief.churn_threshold_days
+    half = max(1, math.ceil(n / 2))
+    w = window_days or _window(brief)
+    on_time = n + 7
+    days = D.days_between(b, "a.anchor_date")
+    return (f"-- dialect: {dialect_name}\n"
+            f"-- A calendar blast on {blast_date} to everyone who {brief.qualifying_event.describe()}: where each recipient was in their own\n"
+            f"-- cycle that day (days since the core action), and how many did it within {w} days after the blast.\n"
+            f"WITH {_ctes(D, brief, b)},\n"
+            f"after_blast AS (\n"
+            f"  SELECT s.user_id FROM ({_source(D, brief.core_conversion_event, 'cb')}) s\n"
+            f"  WHERE {D.to_date('s.event_at')} > {b} AND {D.to_date('s.event_at')} <= {D.add_days(b, w)}\n"
+            f"  GROUP BY s.user_id\n"
+            f")\n"
+            f"SELECT CASE WHEN {days} < {half} THEN '1 active'\n"
+            f"            WHEN {days} < {n} THEN '2 at risk'\n"
+            f"            WHEN {days} <= {on_time} THEN '3 on time'\n"
+            f"            ELSE '4 late' END AS band,\n"
+            f"       COUNT(*) AS recipients,\n"
+            f"       SUM(CASE WHEN ab.user_id IS NOT NULL THEN 1 ELSE 0 END) AS acted_within_window,\n"
+            f"       SUM({days}) AS total_days_since_core\n"
+            f"FROM anchored a\nLEFT JOIN after_blast ab ON ab.user_id = a.user_id\n"
+            f"GROUP BY 1\nORDER BY 1\n")
+
+
+def blast_vs_trigger(brief: Brief, data: str, blast_dates: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Compare calendar blasts with the behavioral trigger, on the brief's own cohort and data."""
+    con = connect(data)
+    as_of, _latest = latest_complete_day(con)
+    w = _window(brief)
+    if not blast_dates:   # the first of each of the last three months that still have a full window after them
+        d = (as_of - timedelta(days=w)).replace(day=1)
+        blast_dates = []
+        while len(blast_dates) < 3:
+            blast_dates.insert(0, d.isoformat())
+            d = (d - timedelta(days=1)).replace(day=1)
+    n = brief.churn_threshold_days
+    out_dates = []
+    for bd in blast_dates:
+        rows = {r["band"]: r for r in _rows(con, blast_sql(brief, "duckdb", bd, w))}
+        total = sum(int(r["recipients"]) for r in rows.values())
+        bands = {}
+        for band in BLAST_BANDS:
+            r = rows.get(band)
+            k = int(r["recipients"]) if r else 0
+            acted = int(r["acted_within_window"]) if r else 0
+            mean_days = (float(r["total_days_since_core"]) / k) if (r and k) else None
+            bands[band.split(" ", 1)[1]] = {"recipients": k, "share": round(k / total, 4) if total else None,
+                                            "acted_within_window": acted, "rate": round(acted / k, 4) if k else None,
+                                            "mean_days_since_core": None if mean_days is None else round(mean_days, 1)}
+        late = bands["late"]
+        out_dates.append({"date": bd, "recipients": total, "bands": bands,
+                          "late_by_days_mean": None if late["mean_days_since_core"] is None else round(late["mean_days_since_core"] - n, 1)})
+    tot = sum(d["recipients"] for d in out_dates)
+    agg = {k: sum(d["bands"][k]["recipients"] for d in out_dates) for k in ("active", "at risk", "on time", "late")}
+    return {"flow": brief.slug, "threshold_days": n, "window_days": w, "as_of": as_of.isoformat(), "blasts": out_dates,
+            "summary": {"recipients": tot, **{f"{k}_share": round(v / tot, 4) if tot else None for k, v in agg.items()}},
+            "reading": ("A blast reaches people wherever they are in their cycle: 'active' were still using the product (the message "
+                        "interrupts them), 'at risk' were early, 'on time' had just crossed the threshold (where the trigger fires), "
+                        "and 'late' crossed it more than a week before the blast. The trigger reaches everyone on time, once. "
+                        "Rates are observational: they compare people in different states, not the effect of the message.")}
+
+
+def render_blast(r: Dict[str, Any]) -> str:
+    L = [f"## Calendar blast vs behavioral trigger: {r['flow']}", "",
+         f"Threshold {r['threshold_days']} days; outcome window {r['window_days']} days; data to {r['as_of']}.", "",
+         "| Blast | Recipients | Active | At risk | On time | Late | Late by (mean days) |", "|---|---:|---:|---:|---:|---:|---:|"]
+    for d in r["blasts"]:
+        b = d["bands"]
+        cell = lambda k: "0" if not b[k]["recipients"] else f"{b[k]['recipients']:,} ({b[k]['share']:.0%})"  # noqa: E731
+        L.append(f"| {d['date']} | {d['recipients']:,} | {cell('active')} | {cell('at risk')} | {cell('on time')} | {cell('late')} | "
+                 f"{'' if d['late_by_days_mean'] is None else d['late_by_days_mean']} |")
+    s = r["summary"]
+    if s["recipients"]:
+        L += ["", f"Across these blasts, {s['on time_share']:.0%} of recipients were where the trigger would have reached them. "
+                  f"{s['active_share']:.0%} were still active and {s['late_share']:.0%} had lapsed more than a week earlier.", ""]
+    L += [r["reading"]]
+    return "\n".join(L) + "\n"
 
 
 def check_sql(sql_by_dialect: Dict[str, str]) -> Dict[str, str]:
@@ -553,6 +643,19 @@ def define(brief: Brief, data: Optional[str] = None, as_of: Optional[str] = None
         except Exception as e:  # noqa: BLE001
             checks["entry duckdb"] = f"failed: {str(e).splitlines()[0]}"
     monthly, baseline = _estimates(brief, con, as_of_date or date.today(), label)
+    leak, countries = None, {}
+    if con is not None:
+        a = as_of_date.isoformat()
+        funnel = _rows(con, audit_sql(brief, "duckdb", a)["funnel"])
+        lk = largest_leak([{"step": str(r["step"]).split(" ", 1)[-1], "users": int(r["users"])} for r in funnel])
+        if lk and lk["drop"] > 0:
+            leak = f"{lk['to'].strip()} ({lk['drop']:.0%} of people who reach {lk['from'].strip()} stop before it)"
+        D = dialect("duckdb")
+        rows = _rows(con, f"WITH {_ctes(D, brief, D.date_literal(a))}\n"
+                          f"SELECT COALESCE(u.country, 'unknown') AS country, COUNT(*) AS n FROM qualified q JOIN users u ON u.user_id = q.user_id "
+                          f"GROUP BY 1 ORDER BY 2 DESC")
+        total = sum(int(r["n"]) for r in rows)
+        countries = {str(r["country"]).upper(): round(int(r["n"]) / total, 4) for r in rows} if total else {}
 
     if brief.flow_type == "winback":
         plain = (f"People who {q.describe()} and then went {n} days without the core action ({c.describe()}). "
@@ -587,13 +690,22 @@ def define(brief: Brief, data: Optional[str] = None, as_of: Optional[str] = None
         platform_pattern=pattern, sql=sql, history_sql=hist, sql_checks=checks,
         job_sql=({d: daily_job_sql(brief, d) for d in ("postgres", "snowflake", "bigquery")} if brief.flow_type == "winback" else {}),
         data_dependencies=_dependencies(brief, con), monthly_entrants=monthly, baseline_conversion_rate=baseline,
-        entrants_on_as_of=entrants_today, as_of=as_of_date.isoformat() if as_of_date else None,
+        entrants_on_as_of=entrants_today, as_of=as_of_date.isoformat() if as_of_date else None, leak=leak, countries=countries,
         trigger_payload_example=example)
 
 
 # ----------------------------------------------------------------------------------------------
 # audit
 # ----------------------------------------------------------------------------------------------
+
+def largest_leak(funnel_rows: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    leak = None
+    for prev, cur in zip(funnel_rows, funnel_rows[1:]):
+        drop = (prev["users"] - cur["users"]) / prev["users"] if prev["users"] else 0
+        if leak is None or drop > leak["drop"]:
+            leak = {"from": prev["step"], "to": cur["step"], "drop": round(drop, 4)}
+    return leak
+
 
 def robust_z(value: float, history: List[float]) -> Optional[float]:
     """Modified z-score (Iglewicz and Hoaglin): 0.6745 (x - median) / MAD. None when MAD is zero."""
@@ -675,11 +787,7 @@ def audit(brief: Brief, data: Optional[str] = None, results: Optional[Path] = No
     top = funnel_rows[0]["users"] if funnel_rows else 0
     for f in funnel_rows:
         f["share_of_signups"] = round(f["users"] / top, 4) if top else None
-    leak = None
-    for prev, cur in zip(funnel_rows, funnel_rows[1:]):
-        drop = (prev["users"] - cur["users"]) / prev["users"] if prev["users"] else 0
-        if leak is None or drop > leak["drop"]:
-            leak = {"from": prev["step"], "to": cur["step"], "drop": round(drop, 4)}
+    leak = largest_leak(funnel_rows)
     return {
         "as_of": as_of_date.isoformat(), "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "data_label": label, "latest_event_date": latest.isoformat() if latest else None, "data_lag_days": lag,
@@ -737,6 +845,11 @@ def _cli(argv: Optional[List[str]] = None) -> int:
     a.add_argument("--as-of")
     a.add_argument("--out", required=True)
     a.add_argument("--fail-on-anomaly", action="store_true")
+    bl = sub.add_parser("blast-vs-trigger", help="compare calendar blasts with the behavioral trigger on your data")
+    bl.add_argument("--brief", required=True)
+    bl.add_argument("--data", required=True)
+    bl.add_argument("--dates", help="comma-separated blast dates (default: the first of each of the last three full months)")
+    bl.add_argument("--out")
     s = sub.add_parser("audit-sql")
     s.add_argument("--brief", required=True)
     s.add_argument("--dialect", required=True, choices=["postgres", "snowflake", "bigquery"])
@@ -745,6 +858,15 @@ def _cli(argv: Optional[List[str]] = None) -> int:
     brief = load_brief(Path(args.brief))
     if args.cmd == "define":
         print(define(brief, args.data, args.as_of).model_dump_json(indent=2))
+        return 0
+    if args.cmd == "blast-vs-trigger":
+        r = blast_vs_trigger(brief, args.data, args.dates.split(",") if args.dates else None)
+        if args.out:
+            out = Path(args.out)
+            out.mkdir(parents=True, exist_ok=True)
+            (out / "blast_vs_trigger.json").write_text(json.dumps(r, indent=2), encoding="utf-8")
+            (out / "blast_vs_trigger.md").write_text(render_blast(r), encoding="utf-8")
+        print(render_blast(r))
         return 0
     if args.cmd == "audit-sql":
         out = Path(args.out)

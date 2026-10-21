@@ -118,9 +118,11 @@ cumulative AS (
   SELECT
     ob.cohort_quarter, ob.user_id, ob.period,
     SUM(COALESCE(r.revenue, 0)) OVER (PARTITION BY ob.user_id ORDER BY ob.period
-                                      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS cumulative_revenue
+                                      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS cumulative_revenue,
+    COALESCE(r0.revenue, 0)                                       AS period0_revenue   -- the first order's period
   FROM observed ob
   LEFT JOIN revenue_by_period r ON r.user_id = ob.user_id AND r.period = ob.period
+  LEFT JOIN revenue_by_period r0 ON r0.user_id = ob.user_id AND r0.period = 0
 )
 
 SELECT
@@ -128,7 +130,8 @@ SELECT
   cu.period                                                                  AS period_30d,
   COUNT(*)                                                                   AS customers_observed,
   ROUND(AVG(cu.cumulative_revenue), 2)                                       AS cumulative_ltv_per_customer,
-  ROUND(AVG(CASE WHEN cu.cumulative_revenue > 0 THEN 1.0 ELSE 0 END), 3)     AS share_with_revenue,
+  -- every customer has revenue in period 0 (that is the first order), so the readable share is revenue after it
+  ROUND(AVG(CASE WHEN cu.cumulative_revenue > cu.period0_revenue THEN 1.0 ELSE 0 END), 3) AS repeat_share,
   CASE WHEN COUNT(*) >= MAX(p.min_customers) THEN 'readable' ELSE 'too small to read' END AS read
 FROM cumulative cu
 CROSS JOIN params p
@@ -183,9 +186,11 @@ cumulative AS (
   SELECT
     ob.cohort_quarter, ob.user_id, ob.period,
     SUM(COALESCE(r.revenue, 0)) OVER (PARTITION BY ob.user_id ORDER BY ob.period
-                                      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS cumulative_revenue
+                                      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS cumulative_revenue,
+    COALESCE(r0.revenue, 0)                                       AS period0_revenue   -- the first order's period
   FROM observed ob
   LEFT JOIN revenue_by_period r ON r.user_id = ob.user_id AND r.period = ob.period
+  LEFT JOIN revenue_by_period r0 ON r0.user_id = ob.user_id AND r0.period = 0
 )
 
 SELECT
@@ -193,7 +198,7 @@ SELECT
   cu.period                                                        AS period_30d,
   COUNT(*)                                                         AS customers_observed,
   ROUND(AVG(cu.cumulative_revenue), 2)                             AS cumulative_ltv_per_customer,
-  ROUND(AVG(IFF(cu.cumulative_revenue > 0, 1.0, 0)), 3)            AS share_with_revenue,
+  ROUND(AVG(IFF(cu.cumulative_revenue > cu.period0_revenue, 1.0, 0)), 3) AS repeat_share,
   IFF(COUNT(*) >= MAX(p.min_customers), 'readable', 'too small to read') AS read
 FROM cumulative cu
 CROSS JOIN params p
@@ -248,9 +253,11 @@ cumulative AS (
   SELECT
     ob.cohort_quarter, ob.user_id, ob.period,
     SUM(IFNULL(r.revenue, 0)) OVER (PARTITION BY ob.user_id ORDER BY ob.period
-                                    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS cumulative_revenue
+                                    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS cumulative_revenue,
+    IFNULL(r0.revenue, 0)                                       AS period0_revenue   -- the first order's period
   FROM observed AS ob
   LEFT JOIN revenue_by_period AS r ON r.user_id = ob.user_id AND r.period = ob.period
+  LEFT JOIN revenue_by_period AS r0 ON r0.user_id = ob.user_id AND r0.period = 0
 )
 
 SELECT
@@ -258,7 +265,7 @@ SELECT
   cu.period                                                     AS period_30d,
   COUNT(*)                                                      AS customers_observed,
   ROUND(AVG(cu.cumulative_revenue), 2)                          AS cumulative_ltv_per_customer,
-  ROUND(AVG(IF(cu.cumulative_revenue > 0, 1.0, 0)), 3)          AS share_with_revenue,
+  ROUND(AVG(IF(cu.cumulative_revenue > cu.period0_revenue, 1.0, 0)), 3) AS repeat_share,
   IF(COUNT(*) >= ANY_VALUE(p.min_customers), 'readable', 'too small to read') AS read
 FROM cumulative AS cu
 CROSS JOIN params AS p

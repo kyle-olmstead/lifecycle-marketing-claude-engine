@@ -4,4 +4,4 @@ Every tool runs as a script (python3 tools/<name>.py ...) and as a module (pytho
 with no network access and no API keys.
 """
 
-__version__ = "2.1.0"
+__version__ = "2.2.0"

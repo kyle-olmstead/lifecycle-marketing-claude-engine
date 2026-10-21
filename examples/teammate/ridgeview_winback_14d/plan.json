@@ -1,7 +1,7 @@
 {
-  "run_id": "5ed4d993c35f",
-  "generated_at": "2026-10-20T23:37:08+00:00",
-  "engine_version": "2.1.0",
+  "run_id": "0d48435bc899",
+  "generated_at": "2026-10-21T00:39:30+00:00",
+  "engine_version": "2.2.0",
   "brief": {
     "product_name": "Ridgeview",
     "flow_type": "winback",
@@ -40,6 +40,7 @@
     "brand_voice": "plain, specific, second person, no exclamation marks; operations vocabulary (reports, data sources, teammates)",
     "postal_address": "100 Example Way, Suite 400, Springfield, OR 97477",
     "cta_url": "https://app.ridgeview.example/reports/new",
+    "recipient_countries": [],
     "offer_policy": "no discounts or offers",
     "frequency_cap_per_week": 3,
     "send_hour_local": 10,
@@ -208,6 +209,14 @@
       "basis": "22 of 126 matured threshold crossings came back within 30 days with no flow"
     },
     "entrants_on_as_of": 3,
+    "leak": "step 2 invited_teammate (33% of people who reach step 1 connected_data_source stop before it)",
+    "countries": {
+      "US": 0.4367,
+      "AU": 0.1582,
+      "CA": 0.1519,
+      "DE": 0.1266,
+      "GB": 0.1266
+    },
     "as_of": "2026-10-18",
     "trigger_payload_example": {
       "method": "POST",
@@ -946,7 +955,7 @@
       {
         "name": "cohort SQL",
         "status": "pass",
-        "detail": "entry and history queries parse in postgres, snowflake and bigquery; entry query ran on the data"
+        "detail": "every generated query parses in postgres, snowflake and bigquery; entry query ran on the data"
       },
       {
         "name": "simulation: flow spec matches schemas/flow_spec.schema.json",
@@ -1072,7 +1081,268 @@
         "name": "holdout read",
         "status": "warn",
         "detail": "directional only: not inside 12 months at this volume (it would take about 187 months): keep the holdout, report against a pre/post baseline, and label every result directional"
+      },
+      {
+        "name": "compliance: one-click unsubscribe and complaint rate",
+        "status": "warn",
+        "detail": "mailbox providers: Gmail and Yahoo require bulk senders' marketing mail to carry one-click unsubscribe (RFC 8058) plus a visible unsubscribe link, honored within two days, and to keep user-reported spam under 0.3% (Gmail's target is under 0.1%). One-click unsubscribe is a header your platform adds: confirm it is on (tools/deliverability.py checks it in real headers)."
+      },
+      {
+        "name": "compliance: bulk-sender authentication",
+        "status": "warn",
+        "detail": "mailbox providers: Gmail, Yahoo and Microsoft (Outlook.com, Hotmail.com and Live.com since 5 May 2025) require senders of more than 5,000 messages a day to pass SPF and DKIM and publish DMARC (p=none or stricter) aligned with one of them; Microsoft sends failing mail to junk, then rejects it with 550 5.7.515. Run lcm \"check deliverability for <your sending domain>\" (tools/dns_collect.py) and resolve anything RED before launch."
+      },
+      {
+        "name": "compliance: CAN-SPAM ad identification",
+        "status": "warn",
+        "detail": "United States: A commercial message must be identified as an advertisement unless the recipient gave prior affirmative consent to receive it. Confirm every recipient opted in to marketing email, or add a clear advertisement disclosure."
+      },
+      {
+        "name": "compliance: CASL consent",
+        "status": "warn",
+        "detail": "Canada: Commercial electronic messages need express or implied consent. Every email requires a consent record; 86% of records carry a consent timestamp. Implied consent expires: two years after a purchase, six months after an inquiry or application. Exclude Canadian records whose implied consent has lapsed, or confirm they gave express consent."
+      },
+      {
+        "name": "compliance: PECR consent or soft opt-in",
+        "status": "warn",
+        "detail": "United Kingdom: Marketing email to individuals needs specific consent, or the soft opt-in for people who bought or negotiated to buy a similar product and were offered an opt-out at collection and in every message. The ICO is revising this guidance after the Data (Use and Access) Act. Every email requires a consent record; 86% of records carry a consent timestamp. Confirm each UK record has consent or qualifies for the soft opt-in."
+      },
+      {
+        "name": "compliance: ePrivacy consent",
+        "status": "warn",
+        "detail": "European Union: Marketing email needs prior consent, except to existing customers for similar products with an opt-out at collection and in every message (ePrivacy Directive, article 13). Every email requires a consent record; 86% of records carry a consent timestamp. Confirm the lawful basis for each EU record and that consent records can be produced."
+      },
+      {
+        "name": "compliance: double opt-in evidence",
+        "status": "warn",
+        "detail": "Germany: UWG section 7 requires prior express consent for marketing email; the Federal Court of Justice (I ZR 164/09) puts the burden of proof on the sender, which in practice means a stored double opt-in confirmation per person. Confirm German records were collected with double opt-in and that each confirmation is stored."
+      },
+      {
+        "name": "compliance",
+        "status": "warn",
+        "detail": "16 rule(s) checked for Australia, Canada, Germany, European Union, United Kingdom, United States"
       }
     ]
-  }
+  },
+  "strategy": {
+    "touches": [
+      {
+        "index": 1,
+        "day": 0,
+        "role": "value_reminder",
+        "channel": "email",
+        "why": "opens on what they already got from the product: the cheapest reason to come back; email carries the long-form message, the unsubscribe and the fallback for every other channel"
+      },
+      {
+        "index": 2,
+        "day": 3,
+        "role": "friction_removal",
+        "channel": "email",
+        "why": "the most common reason people stop is a specific obstacle; naming and removing it beats a generic nudge; email carries the long-form message, the unsubscribe and the fallback for every other channel"
+      },
+      {
+        "index": 3,
+        "day": 7,
+        "role": "whats_new",
+        "channel": "in_app",
+        "why": "a lapsed user's picture of the product is out of date; one concrete change updates it; in-app waits for the next session, so it only reaches people already back, and expires after three days"
+      },
+      {
+        "index": 4,
+        "day": 12,
+        "role": "social_proof",
+        "channel": "email",
+        "why": "a routine copied from a similar team lowers the effort of deciding what to do; email carries the long-form message, the unsubscribe and the fallback for every other channel"
+      },
+      {
+        "index": 5,
+        "day": 18,
+        "role": "repermission",
+        "channel": "email",
+        "why": "ends honestly: asks whether to keep mailing, which protects the sender reputation every other flow depends on; email carries the long-form message, the unsubscribe and the fallback for every other channel"
+      }
+    ],
+    "channels_requested": [
+      "email",
+      "in_app"
+    ],
+    "channels_used": [
+      "email",
+      "in_app"
+    ],
+    "offer": "no offer anywhere in the flow (offer policy)",
+    "leak_step": null,
+    "decisions": [
+      {
+        "stage": "strategist",
+        "decision": "end with re-permission and a sunset",
+        "why": "people who ignore a whole win-back flow are the ones who complain; asking and then stopping protects the sender"
+      },
+      {
+        "stage": "strategist",
+        "decision": "offer stance",
+        "why": "no offer anywhere in the flow (offer policy)"
+      }
+    ]
+  },
+  "compliance": {
+    "status": "warn",
+    "jurisdictions": [
+      "Australia",
+      "Canada",
+      "Germany",
+      "European Union",
+      "United Kingdom",
+      "United States"
+    ],
+    "findings": [
+      {
+        "rule": "one-click unsubscribe and complaint rate",
+        "jurisdiction": "mailbox providers",
+        "status": "warn",
+        "detail": "Gmail and Yahoo require bulk senders' marketing mail to carry one-click unsubscribe (RFC 8058) plus a visible unsubscribe link, honored within two days, and to keep user-reported spam under 0.3% (Gmail's target is under 0.1%). One-click unsubscribe is a header your platform adds: confirm it is on (tools/deliverability.py checks it in real headers).",
+        "source": "https://support.google.com/mail/answer/81126"
+      },
+      {
+        "rule": "bulk-sender authentication",
+        "jurisdiction": "mailbox providers",
+        "status": "warn",
+        "detail": "Gmail, Yahoo and Microsoft (Outlook.com, Hotmail.com and Live.com since 5 May 2025) require senders of more than 5,000 messages a day to pass SPF and DKIM and publish DMARC (p=none or stricter) aligned with one of them; Microsoft sends failing mail to junk, then rejects it with 550 5.7.515. Run lcm \"check deliverability for <your sending domain>\" (tools/dns_collect.py) and resolve anything RED before launch.",
+        "source": "https://support.google.com/mail/answer/81126"
+      },
+      {
+        "rule": "suppression of opt-outs, bounces and complaints",
+        "jurisdiction": "mailbox providers",
+        "status": "pass",
+        "detail": "Never mail people who unsubscribed, hard bounced or complained. Unsubscribes, hard bounces and spam complaints are suppressed in every step.",
+        "source": "https://support.google.com/mail/answer/81126"
+      },
+      {
+        "rule": "CAN-SPAM postal address",
+        "jurisdiction": "United States",
+        "status": "pass",
+        "detail": "Commercial email must include the sender's valid physical postal address (a registered PO box or private mailbox counts). A postal address or the platform's address token is in all 8 emails.",
+        "source": "https://www.ftc.gov/business-guidance/resources/can-spam-act-compliance-guide-business"
+      },
+      {
+        "rule": "CAN-SPAM opt-out",
+        "jurisdiction": "United States",
+        "status": "pass",
+        "detail": "Commercial email must offer a clear way to opt out that keeps working for at least 30 days after the send, honored within 10 business days. Every email carries the platform's unsubscribe link. Honoring requests within 10 business days is a process requirement on your platform: confirm it.",
+        "source": "https://www.ftc.gov/business-guidance/resources/can-spam-act-compliance-guide-business"
+      },
+      {
+        "rule": "CAN-SPAM honest subject and header",
+        "jurisdiction": "United States",
+        "status": "pass",
+        "detail": "Subject lines and header information must not mislead. No subject implies a prior conversation; the guardrails also block fake urgency and offers outside policy.",
+        "source": "https://www.ftc.gov/business-guidance/resources/can-spam-act-compliance-guide-business"
+      },
+      {
+        "rule": "CAN-SPAM ad identification",
+        "jurisdiction": "United States",
+        "status": "warn",
+        "detail": "A commercial message must be identified as an advertisement unless the recipient gave prior affirmative consent to receive it. Confirm every recipient opted in to marketing email, or add a clear advertisement disclosure.",
+        "source": "https://www.ftc.gov/business-guidance/resources/can-spam-act-compliance-guide-business"
+      },
+      {
+        "rule": "CASL consent",
+        "jurisdiction": "Canada",
+        "status": "warn",
+        "detail": "Commercial electronic messages need express or implied consent. Every email requires a consent record; 86% of records carry a consent timestamp. Implied consent expires: two years after a purchase, six months after an inquiry or application. Exclude Canadian records whose implied consent has lapsed, or confirm they gave express consent.",
+        "source": "https://ised-isde.canada.ca/site/canada-anti-spam-legislation/en/node/7"
+      },
+      {
+        "rule": "CASL identification and unsubscribe",
+        "jurisdiction": "Canada",
+        "status": "pass",
+        "detail": "Messages must identify the sender, give contact information and a no-cost unsubscribe mechanism, honored within 10 business days. Every email carries the platform's unsubscribe link. Honoring requests within 10 business days is a process requirement on your platform: confirm it.",
+        "source": "https://ised-isde.canada.ca/site/canada-anti-spam-legislation/en/node/7"
+      },
+      {
+        "rule": "CASL sender identification",
+        "jurisdiction": "Canada",
+        "status": "pass",
+        "detail": "Every message identifies who sent it and on whose behalf, with a mailing address and a phone number, email or web address that stays valid for 60 days. Every email footer names the sender and every SMS starts with the brand name.",
+        "source": "https://ised-isde.canada.ca/site/canada-anti-spam-legislation/en/node/7"
+      },
+      {
+        "rule": "PECR consent or soft opt-in",
+        "jurisdiction": "United Kingdom",
+        "status": "warn",
+        "detail": "Marketing email to individuals needs specific consent, or the soft opt-in for people who bought or negotiated to buy a similar product and were offered an opt-out at collection and in every message. The ICO is revising this guidance after the Data (Use and Access) Act. Every email requires a consent record; 86% of records carry a consent timestamp. Confirm each UK record has consent or qualifies for the soft opt-in.",
+        "source": "https://ico.org.uk/for-organisations/direct-marketing-and-privacy-and-electronic-communications/guide-to-pecr/electronic-and-telephone-marketing/electronic-mail-marketing/"
+      },
+      {
+        "rule": "ePrivacy consent",
+        "jurisdiction": "European Union",
+        "status": "warn",
+        "detail": "Marketing email needs prior consent, except to existing customers for similar products with an opt-out at collection and in every message (ePrivacy Directive, article 13). Every email requires a consent record; 86% of records carry a consent timestamp. Confirm the lawful basis for each EU record and that consent records can be produced.",
+        "source": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32002L0058"
+      },
+      {
+        "rule": "EU unsubscribe in every message",
+        "jurisdiction": "European Union",
+        "status": "pass",
+        "detail": "Every marketing message offers a free, easy opt-out. Every email carries the platform's unsubscribe link.",
+        "source": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32002L0058"
+      },
+      {
+        "rule": "double opt-in evidence",
+        "jurisdiction": "Germany",
+        "status": "warn",
+        "detail": "UWG section 7 requires prior express consent for marketing email; the Federal Court of Justice (I ZR 164/09) puts the burden of proof on the sender, which in practice means a stored double opt-in confirmation per person. Confirm German records were collected with double opt-in and that each confirmation is stored.",
+        "source": "https://www.gesetze-im-internet.de/uwg_2004/__7.html"
+      },
+      {
+        "rule": "Spam Act consent, identification and unsubscribe",
+        "jurisdiction": "Australia",
+        "status": "pass",
+        "detail": "Commercial messages need consent, must identify the sender and offer a functional unsubscribe that keeps working for 30 days after the send, honored within 5 working days. Every email carries the platform's unsubscribe link. Honoring requests within 5 working days is a process requirement on your platform: confirm it.",
+        "source": "https://www.acma.gov.au/avoid-sending-spam"
+      },
+      {
+        "rule": "Spam Act sender identification",
+        "jurisdiction": "Australia",
+        "status": "pass",
+        "detail": "Every message identifies the business that authorized it. Every email footer names the sender and every SMS starts with the brand name.",
+        "source": "https://www.acma.gov.au/avoid-sending-spam"
+      }
+    ],
+    "note": "Rules engine, not legal advice: it checks the plan against the rules in config/compliance_rules.json, each with its source. Confirm anything marked warn with counsel."
+  },
+  "decisions": [
+    {
+      "stage": "intake",
+      "decision": "sending gate GREEN",
+      "why": "GREEN gate: normal sending within the frequency cap"
+    },
+    {
+      "stage": "analyst",
+      "decision": "entry rule",
+      "why": "People who completed onboarding and then went 14 days without the core action (created a report). They enter on day 14, once per lapse, and leave the moment they do the core action again."
+    },
+    {
+      "stage": "strategist",
+      "decision": "end with re-permission and a sunset",
+      "why": "people who ignore a whole win-back flow are the ones who complain; asking and then stopping protects the sender"
+    },
+    {
+      "stage": "strategist",
+      "decision": "offer stance",
+      "why": "no offer anywhere in the flow (offer policy)"
+    },
+    {
+      "stage": "experiment",
+      "decision": "15% persistent holdout, read: directional only",
+      "why": "not inside 12 months at this volume (it would take about 187 months): keep the holdout, report against a pre/post baseline, and label every result directional"
+    },
+    {
+      "stage": "compliance",
+      "decision": "compliance warn",
+      "why": "jurisdictions in the audience: Australia, Canada, Germany, European Union, United Kingdom, United States"
+    }
+  ],
+  "parent_run_id": null,
+  "approvals": {}
 }

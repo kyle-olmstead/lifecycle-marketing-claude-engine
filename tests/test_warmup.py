@@ -36,3 +36,10 @@ def test_target_above_engaged_capacity_is_reported_not_padded():
 def test_invalid_gate_rejected():
     with pytest.raises(ValueError):
         plan(1000, TIERS, "YELLOW")
+
+
+def test_zero_days_is_rejected_and_zero_engaged_capacity_schedules_nothing():
+    with pytest.raises(ValueError):
+        plan(40000, TIERS, "GREEN", days=0)
+    p = plan(40000, {"engaged_30d": 0, "engaged_90d": 0, "engaged_180d": 0, "unengaged": 9000}, "GREEN")
+    assert p["schedule"] == [] and p["goal_daily_volume"] == 0 and "Nothing is scheduled" in p["summary"]

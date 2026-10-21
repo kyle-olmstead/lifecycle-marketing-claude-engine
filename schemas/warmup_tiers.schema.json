@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kyle-olmstead/lifecycle-marketing-claude-engine/schemas/warmup_tiers.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "engaged_30d": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Engaged 30D",
+      "type": "integer"
+    },
+    "engaged_90d": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Engaged 90D",
+      "type": "integer"
+    },
+    "engaged_180d": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Engaged 180D",
+      "type": "integer"
+    },
+    "unengaged": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Unengaged",
+      "type": "integer"
+    }
+  },
+  "title": "WarmupTiers",
+  "type": "object"
+}

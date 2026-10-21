@@ -1,0 +1,181 @@
+"""v2.2 agents: the stateful pipeline (persist, fail, resume, revise, approve), the Strategist and the Compliance agent."""
+import json
+from pathlib import Path
+
+import pytest
+
+from tests.conftest import ROOT
+from agents import cohort_analyst, compliance, orchestrator, stages, strategist
+from agents.brief import load_brief, parse_text
+from agents.pipeline import STAGES, PipelineError, Run, approve, revise
+
+EXAMPLE = ROOT / "briefs" / "examples" / "winback_14d.yaml"
+FIXTURES = str(ROOT / "tests" / "fixtures")
+
+
+@pytest.fixture()
+def brief():
+    return load_brief(EXAMPLE)
+
+
+@pytest.fixture(scope="module")
+def cohort():
+    return cohort_analyst.define(load_brief(EXAMPLE), FIXTURES)
+
+
+# ----------------------------------------------------------------------------------------------
+# pipeline state
+# ----------------------------------------------------------------------------------------------
+
+def test_a_run_persists_every_stage_and_reloads_to_the_same_plan(tmp_path, brief):
+    run = Run.new(brief, tmp_path, data=FIXTURES, copy_mode="offline")
+    plan = run.execute()
+    d = run.dir
+    assert (d / "state.json").exists() and (d.parent / "latest").read_text().strip() == run.state.run_id
+    assert sorted(p.stem for p in (d / "stages").glob("*.json")) == sorted(STAGES)
+    again = Run.load(d).plan()
+    assert again.model_dump(exclude={"generated_at"}) == plan.model_dump(exclude={"generated_at"})
+    assert {"analyst", "strategist", "compliance"} <= {d.stage for d in plan.decisions}
+
+
+def test_a_failed_stage_stops_the_run_and_resume_starts_there(tmp_path, brief):
+    run = Run.new(brief, tmp_path, data=str(tmp_path / "missing"), copy_mode="offline", sleep=lambda s: None)
+    with pytest.raises(PipelineError) as err:
+        run.execute()
+    assert err.value.stage == "analyst"
+    st = Run.load(run.dir).state
+    assert st.status == "failed" and st.failed_stage == "analyst" and st.stages["analyst"].attempts == 1   # a bad path is not retried
+    assert st.stages["intake"].status == "ok" and all(st.stages[s].status == "skipped" for s in STAGES[2:])
+    resumed = Run.load(run.dir, sleep=lambda s: None)
+    resumed.state.data = FIXTURES
+    plan = resumed.execute()
+    assert resumed.state.status == "complete" and resumed.state.stages["intake"].status == "reused"
+    assert plan.qa.status == "READY WITH ASSUMPTIONS"
+
+
+def test_transient_errors_are_retried(tmp_path, brief, monkeypatch):
+    calls = {"n": 0}
+    real = stages.FUNCS["analyst"]
+
+    def flaky(run):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise TimeoutError("warehouse timed out")
+        return real(run)
+
+    monkeypatch.setitem(stages.FUNCS, "analyst", flaky)
+    slept = []
+    run = Run.new(brief, tmp_path, data=FIXTURES, copy_mode="offline", sleep=slept.append)
+    run.execute()
+    assert run.state.stages["analyst"].attempts == 2 and slept == [0.5]
+
+
+def test_revise_keeps_unchanged_copy_and_approvals(tmp_path, brief):
+    run = Run.new(brief, tmp_path, data=FIXTURES, copy_mode="offline")
+    plan = run.execute()
+    first = plan.copy_plan[0]
+    approve(run.dir, first.step_id, first.variants[1].variant_id)
+    new, p2 = revise(run.dir, {"holdout_pct": 20}, tmp_path)
+    assert p2.parent_run_id == run.state.run_id and new.state.changes_from_parent == {"holdout_pct": 20}
+    assert all("reused from run" in (c.note or "") for c in p2.copy_plan if c.variants)
+    assert p2.approvals == {first.step_id: first.variants[1].variant_id}
+    assert p2.flow.flow_spec["holdout"]["percent"] == 20
+    md = orchestrator.render_plan(p2)
+    assert "Revision of run" in md and "(approved)" in md
+
+
+def test_revise_and_approve_refuse_what_does_not_exist(tmp_path, brief):
+    run = Run.new(brief, tmp_path, data=FIXTURES, copy_mode="offline")
+    run.execute()
+    with pytest.raises(ValueError, match="not brief fields"):
+        revise(run.dir, {"touchez": 3}, tmp_path)
+    with pytest.raises(ValueError, match="no step"):
+        approve(run.dir, "t9_email", "A")
+    with pytest.raises(ValueError, match="no variant"):
+        approve(run.dir, "t1_email", "Z")
+
+
+def test_plan_cli_sets_brief_fields(tmp_path):
+    rc = orchestrator._cli(["plan", "--text", "5-touch win-back after 14 days inactive", "--product", "Acme", "--copy-mode", "offline",
+                            "--set", "postal_address=1 Main St, Springfield, IL 62701", "--out", str(tmp_path)])
+    assert rc == 0
+    plan = json.loads(next(tmp_path.glob("*/plan.json")).read_text())
+    assert plan["brief"]["postal_address"] == "1 Main St, Springfield, IL 62701"
+
+
+# ----------------------------------------------------------------------------------------------
+# Strategist
+# ----------------------------------------------------------------------------------------------
+
+def _with_dep(cohort, name, **update):
+    deps = [d.model_copy(update=update) if d.name == name else d for d in cohort.data_dependencies]
+    return cohort.model_copy(update={"data_dependencies": deps})
+
+
+def test_strategist_drops_sms_when_almost_nobody_consented(brief):
+    b = brief.model_copy(update={"channels": ["email", "sms"]})
+    cohort = cohort_analyst.define(b, FIXTURES)
+    assert any(d.name == "sms_consent" for d in cohort.data_dependencies)
+    s = strategist.decide(b, _with_dep(cohort, "sms_consent", status="ok", fill_rate=0.01))
+    assert "sms" not in s.channels_used and any(d.decision == "drop sms" and "1.0%" in d.why for d in s.decisions)
+    kept = strategist.decide(b, _with_dep(cohort, "sms_consent", status="ok", fill_rate=0.40))
+    assert "sms" in kept.channels_used
+
+
+def test_strategist_explains_every_touch_and_the_offer(brief, cohort):
+    s = strategist.decide(brief, cohort)
+    assert len(s.touches) == brief.touches and all(t.why for t in s.touches)
+    assert s.touches[0].channel == "email" and s.touches[-1].channel == "email"
+    assert any(d.decision == "offer stance" for d in s.decisions)
+    assert any("re-permission" in d.decision for d in s.decisions)
+
+
+def test_strategist_spreads_touches_to_the_weekly_cap(brief, cohort):
+    s = strategist.decide(brief.model_copy(update={"frequency_cap_per_week": 1}), cohort)
+    days = [t.day for t in s.touches]
+    assert all(b - a >= 7 for a, b in zip(days, days[1:]))
+    assert any(d.decision.startswith("touch days") for d in s.decisions)
+
+
+def test_activation_unblock_touch_aims_at_the_largest_leak():
+    b = parse_text("3-touch activation flow for people who signed up but have not created a report within 7 days", "Acme")
+    c = cohort_analyst.define(b, FIXTURES)
+    s = strategist.decide(b, c)
+    if c.leak:
+        assert s.leak_step == c.leak and any(d.decision.startswith("aim the unblock touch") for d in s.decisions)
+
+
+# ----------------------------------------------------------------------------------------------
+# Compliance
+# ----------------------------------------------------------------------------------------------
+
+def test_jurisdictions_follow_the_audience(brief, cohort):
+    c = cohort.model_copy(update={"countries": {"US": 0.6, "CA": 0.2, "DE": 0.15, "BR": 0.05}})
+    juris, note = compliance.jurisdictions(brief, c)
+    assert juris == ["CA", "DE", "EU", "OTHER", "US"] and note is None
+    unknown, note = compliance.jurisdictions(brief, cohort.model_copy(update={"countries": {}}))
+    assert unknown == ["US"] and "assumed United States" in note
+
+
+def test_every_rule_has_a_check_and_a_source():
+    rules = compliance.load_rules()["rules"]
+    assert all(r["check"] in compliance.CHECKS and r["source"].startswith("https://") for r in rules)
+    assert len({r["id"] for r in rules}) == len(rules)
+
+
+@pytest.mark.parametrize("hour,status", [(21, "fail"), (8, "fail"), (10, "warn"), (13, "pass")])
+def test_sms_send_hour_is_held_to_the_strictest_state_window(brief, hour, status):
+    b = brief.model_copy(update={"channels": ["email", "sms"], "send_hour_local": hour, "quiet_hours": "22:00-07:00"})
+    plan = orchestrator.run(b, copy_mode="offline")
+    states = [f for f in plan.compliance.findings if f.rule == "state texting hours (strictest applied)"]
+    if not any(t.channel == "sms" for t in plan.flow.touches):
+        pytest.skip("SMS not placed in this flow")
+    assert states and states[0].status == status, states
+
+
+def test_uncovered_countries_are_named(brief, cohort):
+    c = cohort.model_copy(update={"countries": {"US": 0.9, "BR": 0.1}})
+    plan = orchestrator.run(brief, copy_mode="offline")
+    report = compliance.review(brief, c, plan.flow, plan.copy_plan)
+    other = [f for f in report.findings if f.rule == "uncovered jurisdictions"]
+    assert other and "BR" in other[0].detail and report.status in ("warn", "fail")

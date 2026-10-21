@@ -24,7 +24,6 @@ import argparse
 import json
 import os
 import sys
-import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -32,96 +31,22 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from agents import __version__, campaign_architect, cohort_analyst, copywriter, experimentation_agent, guardrails  # noqa: E402
+from agents import copywriter, guardrails  # noqa: E402
 from agents.brief import load_brief, parse_text, to_yaml  # noqa: E402
-from agents.models import PLATFORM_LABEL, Assumption, Brief, Check, ExecutionPlan, QAReport  # noqa: E402
-from scripts import campaign_simulator  # noqa: E402
-
-READ_STATUS = {"causal": "pass", "causal, slow": "warn", "directional only": "warn", "not readable": "warn"}
-
+from agents.models import PLATFORM_LABEL, Brief, ExecutionPlan, QAReport  # noqa: E402
+from agents.pipeline import PipelineError, Run, approve, revise  # noqa: E402
 
 def qa(brief: Brief, pol: Dict[str, Any], cohort, flow, copy_plan, exp, data_given: bool) -> QAReport:
-    checks: List[Check] = []
-    checks.append(Check(name="sending gate", status="fail" if not pol["sending_allowed"] else ("pass" if pol["gate"] == "GREEN" else "warn"),
-                        detail=pol["note"]))
-    core_names = {brief.qualifying_event.event, brief.core_conversion_event.event}
-    for d in cohort.data_dependencies:
-        base = d.name.split(" ")[0]
-        if d.status == "blocked":
-            critical = base in core_names or d.name in ("email", "email_consent")
-            checks.append(Check(name=f"data: {d.name}", status="fail" if critical else "warn", detail=d.note or "blocked"))
-    if not data_given:
-        checks.append(Check(name="data dependencies", status="warn",
-                            detail="not verified against data: run with --data (a folder of users, orders and track_events exports) to check events, fill rates and volume"))
-    elif not any(c.name.startswith("data:") for c in checks):
-        checks.append(Check(name="data dependencies", status="pass", detail="every event and attribute the flow needs is present"))
-    bad_sql = {k: v for k, v in cohort.sql_checks.items() if not (v == "parses" or v.startswith("ran"))}
-    checks.append(Check(name="cohort SQL", status="fail" if bad_sql else "pass",
-                        detail="; ".join(f"{k}: {v}" for k, v in bad_sql.items()) if bad_sql else
-                        "entry and history queries parse in postgres, snowflake and bigquery" + ("; entry query ran on the data" if data_given else "")))
-    sim = campaign_simulator.simulate(flow.flow_spec, flow.simulation)
-    for c in sim["checks"]:
-        if c["name"] == "journey length":
-            checks.append(Check(name="simulation: journey length", status="pass", detail=c["detail"]))
-            continue
-        checks.append(Check(name=f"simulation: {c['name']}", status=c["status"], detail=c["detail"]))
-    if cohort.trigger_payload_example:
-        name, errs = campaign_simulator.validate_request(cohort.trigger_payload_example)
-        checks.append(Check(name=f"trigger payload ({name})", status="fail" if errs else "pass", detail="; ".join(errs) if errs else "valid against config/esp_payload_schemas.json"))
-    for c in copy_plan:
-        if c.mode == "handoff":
-            checks.append(Check(name=f"copy: {c.step_id}", status="warn", detail="awaiting drafts (copy_briefs.md)"))
-            continue
-        passing = [v for v in c.variants if v.ok]
-        if not passing:
-            errs = "; ".join(e for v in c.variants for e in v.errors[:3]) or (c.note or "no variants")
-            checks.append(Check(name=f"copy: {c.step_id}", status="fail", detail=errs))
-            continue
-        warns = sorted({w for v in passing for w in v.warnings})
-        detail = f"{len(passing)} variant(s) pass lint and guardrails ({c.mode})" + (f"; {c.note}" if c.note else "")
-        checks.append(Check(name=f"copy: {c.step_id}", status="warn" if warns else "pass", detail=detail + ("; " + "; ".join(warns[:4]) if warns else "")))
-    checks.append(Check(name="holdout read", status=READ_STATUS[exp.read], detail=f"{exp.read}: {exp.read_after}"))
-    return QAReport.from_checks(checks, len(brief.assumptions))
-
-
-def _with_window(brief: Brief) -> Brief:
-    """Fix the outcome window before any agent uses it, and list it for confirmation when it was not stated."""
-    if brief.outcome_window_days:
-        return brief
-    days = campaign_architect.schedule_days(brief)
-    w = campaign_architect.outcome_window(brief)
-    a = Assumption(field="outcome_window_days", value=w,
-                   why=f"not stated; set to {w} days so the whole flow (last touch on day {max(days)}) plus a week is inside it")
-    return brief.model_copy(update={"outcome_window_days": w, "assumptions": brief.assumptions + [a]})
-
-
-def _with_estimates(brief: Brief, cohort) -> Brief:
-    """Replace 'unknown' assumptions with what the data estimated, still listed for the marketer to confirm."""
-    notes = {"monthly_entrants": cohort.monthly_entrants, "baseline_conversion_rate": cohort.baseline_conversion_rate}
-    out = []
-    for a in brief.assumptions:
-        est = notes.get(a.field)
-        if est is not None and est.value is not None and est.label != "SUPPLIED":
-            shown = f"{est.value:,.0f} a month" if a.field == "monthly_entrants" else f"{est.value:.1%}"
-            out.append(a.model_copy(update={"value": est.value, "why": f"estimated from the data ({est.label}): {shown}, {est.basis}"}))
-        else:
-            out.append(a)
-    return brief.model_copy(update={"assumptions": out})
+    """Kept for callers of 2.1; the QA stage lives in agents/stages.py."""
+    from agents.stages import qa_report
+    return qa_report(brief, pol, cohort, flow, copy_plan, exp, data_given)
 
 
 def run(brief: Brief, data: Optional[str] = None, as_of: Optional[str] = None, copy_mode: str = "auto",
-        drafts: Optional[Dict[str, Any]] = None, client: Any = None) -> ExecutionPlan:
-    brief = _with_window(brief)
-    pol = guardrails.gate_policy(brief.sending_gate)
-    cohort = cohort_analyst.define(brief, data, as_of)
-    brief = _with_estimates(brief, cohort)
-    flow = campaign_architect.design(brief, cohort)
-    copy_plan = copywriter.write(brief, flow, copy_mode, drafts, client)
-    exp = experimentation_agent.design(brief, cohort)
-    flow.flow_spec = experimentation_agent.attach(flow.flow_spec, exp)
-    report = qa(brief, pol, cohort, flow, copy_plan, exp, data is not None)
-    return ExecutionPlan(run_id=uuid.uuid4().hex[:12], engine_version=__version__, brief=brief, gate_policy=pol, cohort=cohort,
-                         flow=flow, copy_plan=copy_plan, experiment=exp, qa=report)
+        drafts: Optional[Dict[str, Any]] = None, client: Any = None, root: Optional[Path] = None) -> ExecutionPlan:
+    """Run every stage. With root, the run is saved under root/<flow>/runs/<run_id>/ and can be resumed or revised."""
+    r = Run.new(brief, root, data=data, as_of=as_of, copy_mode=copy_mode, drafts=drafts, client=client)
+    return r.execute()
 
 
 # ----------------------------------------------------------------------------------------------
@@ -140,6 +65,8 @@ def render_plan(p: ExecutionPlan) -> str:
     span = max((t.day for t in sends), default=0)
     L: List[str] = [f"# {spec['flow']}", "",
                     f"**Status: {p.qa.status}** | {PLATFORM_LABEL[b.platform]} | generated {p.generated_at} | run {p.run_id} | LMM Engine {p.engine_version}", ""]
+    if p.parent_run_id:
+        L += [f"Revision of run {p.parent_run_id}.", ""]
     L += ["## In one paragraph", "",
           f"{c.plain_english} The flow sends up to {len(sends)} message(s) over {span} days "
           f"({', '.join(sorted({t.channel.replace('_', '-') for t in sends}))}), starts with a {e.holdout_pct:g}% holdout that receives nothing, "
@@ -153,6 +80,9 @@ def render_plan(p: ExecutionPlan) -> str:
     confirm += [f"- **{k.name}**: {k.detail}" for k in p.qa.checks if k.status != "pass"]
     if confirm:
         L += ["## Confirm before you build", ""] + confirm + [""]
+    if p.decisions:
+        L += ["## Why the plan looks like this", "", "| Agent | Decision | Why |", "|---|---|---|"]
+        L += [f"| {d.stage} | {d.decision} | {d.why.replace('|', '/')} |" for d in p.decisions] + [""]
     L += ["## Who enters", "", "| | |", "|---|---|",
           f"| Entry | {'; '.join(c.entry_rules)} |", f"| Never enters | {'; '.join(c.exclusions)} |", f"| Exit | {c.exit_rule} |",
           f"| Trigger | {c.trigger_event}: {c.platform_pattern} |",
@@ -176,6 +106,9 @@ def render_plan(p: ExecutionPlan) -> str:
     L += ["## The flow", "", "```mermaid", f.mermaid, "```", "", "| Day | Step | Channel | Job | Only if |", "|---:|---|---|---|---|"]
     L += [f"| {t.day} | {t.step_id} | {t.channel.replace('_', '-')} | {t.job} | {t.condition or ''} |" for t in f.touches]
     L += ["", f"Every step: {'; '.join(x['condition'] for x in spec['ongoing_filters'])}. Frequency: {spec['frequency']['cap']}; {spec['frequency']['quiet_hours']}.", ""]
+    if p.strategy:
+        L += ["| Touch | Why this job and channel |", "|---|---|"]
+        L += [f"| {t.index}. day {t.day}, {t.role.replace('_', ' ')}, {t.channel.replace('_', '-')} | {t.why} |" for t in p.strategy.touches] + [""]
     L += [f"## Build it in {PLATFORM_LABEL[b.platform]}", ""] + [f"{i}. {s}" for i, s in enumerate(f.build_steps, 1)] + [""]
     L += ["## The copy", ""]
     for tc in p.copy_plan:
@@ -186,6 +119,7 @@ def render_plan(p: ExecutionPlan) -> str:
             L += ["", "Brief:", "", "```text", tc.copy_brief, "```", ""]
             continue
         L += ["", "| Variant | Copy | Framework | Hypothesis |", "|---|---|---|---|"]
+        approved = p.approvals.get(tc.step_id)
         for v in tc.variants:
             if tc.channel == "email":
                 copy_txt = f"**{v.fields.get('subject')}** / {v.fields.get('preheader')}".replace("{first_name}", "[first name]")
@@ -196,7 +130,8 @@ def render_plan(p: ExecutionPlan) -> str:
             else:
                 copy_txt = f"**{v.fields.get('headline')}** / {v.fields.get('body')} [{v.fields.get('cta_label')}]"
             copy_txt = copy_txt.replace("{product_name}", b.product_name).replace("{first_name}", "[first name]").replace("|", "/")
-            L.append(f"| {v.variant_id} | {copy_txt} | {v.framework} | {v.hypothesis} |")
+            label = f"{v.variant_id} (approved)" if approved == v.variant_id else v.variant_id
+            L.append(f"| {label} | {copy_txt} | {v.framework} | {v.hypothesis} |")
         files = sorted({k for v in tc.variants for k in v.rendered})
         L += ["", "Files: " + ", ".join(f"`copy/{x}`" for x in files), ""]
     L += ["## Measurement", "", "| | |", "|---|---|", f"| Holdout | {e.holdout_pct:g}%, {e.unit} level, persistent: {e.assignment_rule} |",
@@ -220,6 +155,11 @@ def render_plan(p: ExecutionPlan) -> str:
     L += [f"- {r}" for r in guardrails.RE_ENGAGEMENT_RULES]
     L += ["- Every email carries the platform's unsubscribe token and a postal address; every SMS carries opt-out language; "
           "every template is linted in its dialect; image-only email is blocked.", ""]
+    if p.compliance:
+        cp = p.compliance
+        L += ["## Compliance", "", f"**{cp.status.upper()}** for {', '.join(cp.jurisdictions)}. {cp.note}", "",
+              "| Rule | Jurisdiction | Result | Detail | Source |", "|---|---|---|---|---|"]
+        L += [f"| {x.rule} | {x.jurisdiction} | {x.status.upper()} | {x.detail.replace('|', '/')} | {x.source or ''} |" for x in cp.findings] + [""]
     L += ["## QA", "", "| Check | Result | Detail |", "|---|---|---|"]
     L += [f"| {k.name} | {k.status.upper()} | {k.detail.replace('|', '/')} |" for k in p.qa.checks]
     L += ["", "## Files", "", "- `flow_spec.json`: the flow, valid against `schemas/flow_spec.schema.json`",
@@ -259,6 +199,34 @@ def write_outputs(p: ExecutionPlan, out_root: Path) -> Path:
     return out
 
 
+def _report(plan: ExecutionPlan, out: Path, run_dir: Optional[Path]) -> None:
+    print(f"{plan.qa.status}: {plan.flow.flow_spec['flow']}")
+    for k in plan.qa.checks:
+        if k.status != "pass":
+            print(f"  {k.status.upper():4}  {k.name}: {k.detail[:160]}")
+    print(f"plan: {out / 'plan.md'}")
+    if run_dir:
+        print(f"run:  {run_dir}  (revise with: python3 -m agents.orchestrator revise --run {run_dir} --set touches=4)")
+
+
+def _value(v: str) -> Any:
+    import yaml
+    parsed = yaml.safe_load(v)
+    return parsed
+
+
+def _latest(path: Path) -> Path:
+    """A run directory, or a flow folder (its newest run), or a runs folder."""
+    path = Path(path)
+    if (path / "state.json").exists():
+        return path
+    for runs in (path / "runs", path):
+        latest = runs / "latest"
+        if latest.exists():
+            return runs / latest.read_text(encoding="utf-8").strip()
+    raise FileNotFoundError(f"{path}: not a run directory (no state.json) and no runs/latest")
+
+
 def _cli(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(description="LMM Engine teammate: one brief in, a build-ready plan out")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -267,6 +235,8 @@ def _cli(argv: Optional[List[str]] = None) -> int:
     src.add_argument("--brief", help="a filled briefs/brief_template.yaml")
     src.add_argument("--text", help="the brief in one sentence")
     pl.add_argument("--product", help="product name, with --text")
+    pl.add_argument("--set", action="append", default=[], metavar="FIELD=VALUE",
+                    help="set a brief field, e.g. postal_address=\"1 Main St, Springfield, IL 62701\" or holdout_pct=20")
     pl.add_argument("--data", help="folder or URL prefix with users, orders, track_events exports (.csv or .parquet)")
     pl.add_argument("--as-of", help="evaluate the cohort on this date (default: the latest complete day in the data)")
     pl.add_argument("--copy-mode", default="auto", choices=["auto", "claude", "handoff", "offline"])
@@ -276,11 +246,37 @@ def _cli(argv: Optional[List[str]] = None) -> int:
     br = sub.add_parser("brief", help="turn a sentence into an editable YAML brief")
     br.add_argument("--text", required=True)
     br.add_argument("--product")
+    br.add_argument("--set", action="append", default=[], metavar="FIELD=VALUE")
     br.add_argument("--out")
+    rs = sub.add_parser("resume", help="continue a run that failed part way, from the failed stage")
+    rs.add_argument("--run", required=True, help="a run directory, or a flow folder for its newest run")
+    rs.add_argument("--data", help="replace the data location (when that was the cause of the failure)")
+    rs.add_argument("--out", default="out")
+    rv = sub.add_parser("revise", help="start a new run from an old one with brief fields changed; unchanged copy is kept")
+    rv.add_argument("--run", required=True)
+    rv.add_argument("--set", action="append", default=[], metavar="FIELD=VALUE", help="e.g. touches=4, channels=[email,sms], holdout_pct=20")
+    rv.add_argument("--out", default="out")
+    apv = sub.add_parser("approve", help="mark a copy variant as approved; revisions keep it while its touch is unchanged")
+    apv.add_argument("--run", required=True)
+    apv.add_argument("--step", required=True)
+    apv.add_argument("--variant", required=True)
+    apv.add_argument("--out", default="out")
+    st = sub.add_parser("status", help="show a run's stages")
+    st.add_argument("--run", required=True)
     a = ap.parse_args(argv)
+
+    def sets(items: List[str]) -> Dict[str, Any]:
+        out = {}
+        for item in items:
+            k, eq, v = item.partition("=")
+            if not eq:
+                raise ValueError(f"--set takes FIELD=VALUE (got {item!r})")
+            out[k.strip()] = _value(v)
+        return out
+
     try:
         if a.cmd == "brief":
-            y = to_yaml(parse_text(a.text, a.product))
+            y = to_yaml(parse_text(a.text, a.product, sets(a.set) or None))
             if a.out:
                 Path(a.out).parent.mkdir(parents=True, exist_ok=True)
                 Path(a.out).write_text(y, encoding="utf-8")
@@ -288,18 +284,51 @@ def _cli(argv: Optional[List[str]] = None) -> int:
             else:
                 print(y)
             return 0
-        brief = load_brief(Path(a.brief)) if a.brief else parse_text(a.text, a.product)
+        if a.cmd == "status":
+            r = Run.load(_latest(Path(a.run)))
+            print(f"run {r.state.run_id}: {r.state.status}" + (f" (failed at {r.state.failed_stage})" if r.state.failed_stage else "")
+                  + (f", revision of {r.state.parent_run_id}" if r.state.parent_run_id else ""))
+            for rec in r.state.stages.values():
+                print(f"  {rec.name:11} {rec.status:8} {rec.seconds:6.2f}s attempts {rec.attempts}" + (f"  {rec.error}" if rec.error else ""))
+            if r.state.approvals:
+                print("  approved: " + ", ".join(f"{k}={v}" for k, v in r.state.approvals.items()))
+            return 0
+        if a.cmd == "approve":
+            run_dir = _latest(Path(a.run))
+            approve(run_dir, a.step, a.variant)
+            r = Run.load(run_dir)
+            write_outputs(r.plan(), Path(a.out))
+            print(f"approved {a.step} variant {a.variant} in run {r.state.run_id}")
+            return 0
+        if a.cmd == "resume":
+            r = Run.load(_latest(Path(a.run)))
+            if a.data:
+                r.state.data = a.data
+            plan = r.execute()
+            _report(plan, write_outputs(plan, Path(a.out)), r.dir)
+            return 3 if plan.qa.status == "BLOCKED" else 0
+        if a.cmd == "revise":
+            r, plan = revise(_latest(Path(a.run)), sets(a.set), Path(a.out))
+            _report(plan, write_outputs(plan, Path(a.out)), r.dir)
+            return 3 if plan.qa.status == "BLOCKED" else 0
+        changes = sets(a.set)
+        if a.brief:
+            brief = load_brief(Path(a.brief))
+            if changes:
+                brief = Brief.model_validate({**brief.model_dump(), **changes})
+        else:
+            brief = parse_text(a.text, a.product, changes or None)
         drafts = json.loads(Path(a.drafts).read_text(encoding="utf-8")) if a.drafts else None
-        plan = run(brief, a.data, a.as_of, a.copy_mode, drafts)
+        r = Run.new(brief, Path(a.out), data=a.data, as_of=a.as_of, copy_mode=a.copy_mode, drafts=drafts)
+        plan = r.execute()
+    except PipelineError as e:
+        print(f"BLOCKED: {e}", file=sys.stderr)
+        return 4
     except (ValueError, FileNotFoundError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
     out = write_outputs(plan, Path(a.out))
-    print(f"{plan.qa.status}: {plan.flow.flow_spec['flow']}")
-    for k in plan.qa.checks:
-        if k.status != "pass":
-            print(f"  {k.status.upper():4}  {k.name}: {k.detail[:160]}")
-    print(f"plan: {out / 'plan.md'}")
+    _report(plan, out, r.dir)
     if a.sheet:
         from scripts import sheets_sync
         print(sheets_sync.sync(plans=[plan.model_dump(mode='json')], dry_run=not os.environ.get("LCM_SHEET_ID")))

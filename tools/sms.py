@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import re
 import sys
 from typing import Any, Dict, List, Optional
@@ -24,7 +23,31 @@ GSM7_BASIC = set(
 )
 GSM7_EXTENSION = set("^{}\\[~]|€\f")  # each costs two septets
 REPLACEMENTS = {chr(0x2018): "'", chr(0x2019): "'", chr(0x201C): '"', chr(0x201D): '"', chr(0x2013): "-", chr(0x2014): "-", chr(0x2026): "...", chr(0x00A0): " "}
-OPT_OUT = re.compile(r"\b(STOP|UNSUBSCRIBE|END|QUIT|CANCEL|OPTOUT|OPT OUT|REVOKE)\b", re.I)
+KEYWORDS = r"(STOP|STOPALL|UNSUBSCRIBE|END|QUIT|CANCEL|OPTOUT|REVOKE)"
+# An opt-out instruction, not any use of the word: "Reply STOP", "Text END to 12345", "STOP to opt out", or the
+# keyword written in capitals. "Stop by our store" is not an opt-out instruction.
+OPT_OUT = re.compile(r"\b(?:reply|replying|text|txt|send|msg)\s+(?:with\s+)?['\"]?" + KEYWORDS + r"\b"
+                     r"|\b" + KEYWORDS + r"\b['\"]?\s+(?:to|2)\s+(?:opt|unsub|end|stop|cancel|quit)"
+                     r"|(?-i:\b(?:STOP|UNSUBSCRIBE|OPTOUT)\b)", re.I)
+
+
+def has_opt_out(text: str) -> bool:
+    return bool(OPT_OUT.search(text or ""))
+
+
+def _segments(text: str, gsm: bool) -> int:
+    """Segments as carriers pack them: a GSM-7 escape pair (2 septets) or a UTF-16 surrogate pair (2 units)
+    is never split across segments, so a segment that cannot take the whole character closes early."""
+    sizes = [2 if ch in GSM7_EXTENSION else 1 for ch in text] if gsm else [len(ch.encode("utf-16-le")) // 2 for ch in text]
+    single, multi = (160, 153) if gsm else (70, 67)
+    if sum(sizes) <= single:
+        return 1
+    count, used = 1, 0
+    for n in sizes:
+        if used + n > multi:
+            count, used = count + 1, 0
+        used += n
+    return count
 
 
 def analyze(text: str, brand: Optional[str] = None, first_message: bool = False) -> Dict[str, Any]:
@@ -35,7 +58,7 @@ def analyze(text: str, brand: Optional[str] = None, first_message: bool = False)
     else:
         units = len(text.encode("utf-16-le")) // 2
         single, multi, encoding = 70, 67, "UCS-2"
-    segments = 1 if units <= single else math.ceil(units / multi)
+    segments = _segments(text, encoding == "GSM-7")
     out: Dict[str, Any] = {
         "encoding": encoding, "units": units, "segments": segments,
         "limit_single": single, "limit_per_segment_concatenated": multi,

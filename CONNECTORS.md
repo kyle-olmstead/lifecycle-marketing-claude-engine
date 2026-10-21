@@ -53,6 +53,30 @@ plan. Run `lifecycle-setup` for the truth about your workspace.*
 - Segment and GA4 have no connector: send their events to `scripts/webhook_parser.py`, which writes
   the canonical `track_events` rows the cohort queries read, or use GA4's BigQuery export.
 
+## What the engine builds for each ESP (2.2)
+
+Nothing below is sent by the engine on its own. The tools build complete requests, with
+`${PLACEHOLDER}` names where credentials go, and you (or a job you run) send them.
+
+| Request | Klaviyo | HubSpot | Braze | Customer.io |
+|---|---|---|---|---|
+| Trigger event (`tools/event_payloads.py`) | `POST /api/events`, revision 2026-10-15 | `POST /events/2026-09/send/batch`, 500 per request | `POST /users/track`, 75 objects per request | Pipelines `POST /v1/track` |
+| Person attributes (`tools/payloads.py attribute_sync`, the engagement tier and sunset flag) | `POST /api/profile-bulk-import-jobs`, 10,000 profiles and 5 MB per job | `POST /crm/objects/2026-09/contacts/batch/upsert`, 100 per request, values as strings | `POST /users/track` `attributes`, 75 per request, `_update_existing_only: true` | Pipelines `POST /v1/batch` of `identify` calls, packed to 500 KB (the limit is 1 MB) |
+
+HubSpot's changelog lists the 2026-09 date-versioned APIs as released on 8 September 2026, while its
+versioning page still called 2026-03 the latest when this was checked; if a 2026-09 path is refused,
+use 2026-03. Every endpoint, limit and source link is in `config/esp_payload_schemas.json`.
+
+**Real-time triggers.** With `LCM_FORWARD=1`, the webhook parser forwards each activation brief's
+qualifying event to its ESP as it arrives, with the holdout assignment added. Credentials come from
+the environment: `KLAVIYO_PRIVATE_KEY`; `HUBSPOT_PRIVATE_APP_TOKEN` and `HUBSPOT_HUB_ID`;
+`BRAZE_REST_API_KEY` and `BRAZE_INSTANCE`; `CUSTOMERIO_PIPELINES_API_KEY_BASE64` and, for EU
+workspaces, `CUSTOMERIO_EU=1`. Salesforce Marketing Cloud entry is a Journey Builder API Event, which
+the parser does not send.
+
+**Live DNS.** `tools/dns_collect.py` (and `lcm "check deliverability for <domain>"`) reads your
+sending domain's records with the system resolver. No connector is needed; the lookups are public.
+
 ## Safety
 
 - Read before ask: with a connector, the engine pulls before it asks you, and labels what it read.

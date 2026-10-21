@@ -21,7 +21,8 @@ the platform, and this linter checks each dialect with a real parser where one e
 
 Errors are syntax that will fail to render or will be rejected. Warnings are rules from the
 copywriter method: every personalization token carries an explicit fallback; every marketing
-email carries an unsubscribe link and a postal address.
+email carries an unsubscribe link and a postal address. Email checks also measure readable text
+against images: mostly-image mail is a filtering and accessibility risk, and image-only mail fails.
 
     python3 tools/template_lint.py --dialect braze path/to/email.html
     python3 tools/template_lint.py --dialect klaviyo --email - < email.html
@@ -32,6 +33,7 @@ import argparse
 import json
 import re
 import sys
+from html import unescape as html_unescape
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -115,14 +117,19 @@ def _strip_platform_tags(src: str, dialect: str, r: LintResult) -> str:
     return src
 
 
+# ${name}: a Braze attribute. Names may hold spaces (custom attributes) but never { } or %, so a literal dollar sign before
+# Liquid (${{ price }} or ${% if %}) is left for the Liquid parser instead of being swallowed as an attribute.
+BRAZE_ATTR = re.compile(r"\$\{([^{}%\n]*)\}")
+
+
 def _braze_attrs(src: str, r: LintResult) -> str:
-    for m in re.finditer(r"\$\{([^}]*)\}", src):
+    for m in BRAZE_ATTR.finditer(src):
         if not m.group(1).strip():
             r["errors"].append("empty Braze attribute ${}")
-    if re.search(r"\$\{[^}]*$", src, re.M):
+    if re.search(r"\$\{[^{}%\n]*$", src, re.M):
         r["errors"].append("unterminated Braze attribute: '${' without '}'")
     src = re.sub(r"\$\{(" + "|".join(BRAZE_SYSTEM_ATTRS) + r")\}", "__braze_sys__", src)
-    return re.sub(r"\$\{[^}]*\}", "__braze_attr__", src)
+    return BRAZE_ATTR.sub("__braze_attr__", src)
 
 
 def _fallback_warnings_liquid(src: str, r: LintResult, default_pattern: str = r"\|\s*default\b") -> None:
@@ -278,8 +285,11 @@ def lint_hubl(src: str) -> LintResult:
             return jinja2.nodes.Output([], lineno=tok.lineno)
 
     env = jinja2.Environment(extensions=[HubLTags])
+    # HubL has unless/endunless; Jinja does not, so check them as the if-not they mean
+    probe = re.sub(r"\{%(-?)\s*unless\s+(.*?)\s*(-?)%\}", r"{%\1 if not (\2) \3%}", src, flags=re.S)
+    probe = re.sub(r"\{%(-?)\s*endunless\s*(-?)%\}", r"{%\1 endif \2%}", probe)
     try:
-        env.parse(src)
+        env.parse(probe)
     except jinja2.TemplateSyntaxError as e:
         r["errors"].append(f"HubL syntax (line {e.lineno}): {e.message}")
         return r
@@ -310,7 +320,8 @@ def lint_ampscript(src: str) -> LintResult:
     code = "\n".join(blocks)
     no_strings = _ampscript_strip_strings(code, r)
     stack: List[str] = []
-    for tok in re.findall(r"\b(IF|ELSEIF|ELSE|ENDIF|FOR|NEXT)\b", no_strings, re.I):
+    # keywords, never variables: @next and @if are legal variable names
+    for tok in re.findall(r"(?<![@\w])(IF|ELSEIF|ELSE|ENDIF|FOR|NEXT)\b", no_strings, re.I):
         t = tok.upper()
         if t in ("IF", "FOR"):
             stack.append(t)
@@ -325,12 +336,12 @@ def lint_ampscript(src: str) -> LintResult:
                 r["errors"].append("NEXT without a matching FOR")
     for open_ in stack:
         r["errors"].append(f"{open_} block never closed ({'ENDIF' if open_ == 'IF' else 'NEXT'} missing)")
-    for m in re.finditer(r"\bSET\s+([^\s=]+)\s*=", no_strings, re.I):
+    for m in re.finditer(r"(?<![@\w])SET\s+([^\s=]+)\s*=", no_strings, re.I):
         if not m.group(1).startswith("@"):
             r["errors"].append(f"SET target {m.group(1)!r} must be a variable starting with @")
     if no_strings.count("(") != no_strings.count(")"):
         r["errors"].append("unbalanced parentheses in AMPscript code")
-    declared = {v.lower() for v in re.findall(r"\bVAR\s+((?:@\w+\s*,?\s*)+)", no_strings, re.I) for v in re.findall(r"@\w+", v)}
+    declared = {v.lower() for v in re.findall(r"(?<![@\w])VAR\s+((?:@\w+\s*,?\s*)+)", no_strings, re.I) for v in re.findall(r"@\w+", v)}
     used = {v.lower() for v in re.findall(r"@\w+", no_strings + "\n".join(inline))}
     guarded = {v.lower() for v in re.findall(r"(?:Empty|IsNull)\s*\(\s*(@\w+)", no_strings + "\n".join(inline), re.I)}
     for m in re.finditer(r"(?:v|Output)\s*\(\s*(@\w+)\s*\)", "\n".join(inline) + "\n" + no_strings, re.I):
@@ -404,6 +415,62 @@ class _Html(HTMLParser):
             self.mismatched.append(f"/{tag}")
 
 
+class _Visible(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.skip = 0
+        self.hidden_depth: List[bool] = []
+        self.text: List[str] = []
+        self.images = 0
+        self.images_no_alt = 0
+
+    def handle_starttag(self, tag, attrs):  # noqa: ANN001
+        a = dict(attrs)
+        if tag in ("style", "script", "head", "title"):
+            self.skip += 1
+        if tag == "img":
+            self.images += 1
+            if "alt" not in a:
+                self.images_no_alt += 1
+        style = (a.get("style") or "").replace(" ", "").lower()
+        if tag in ("div", "span", "td", "p") and ("display:none" in style or "max-height:0" in style):
+            self.skip += 1
+            self.hidden_depth.append(True)
+        elif tag in ("div", "span", "td", "p"):
+            self.hidden_depth.append(False)
+
+    def handle_endtag(self, tag):  # noqa: ANN001
+        if tag in ("style", "script", "head", "title"):
+            self.skip = max(0, self.skip - 1)
+        if tag in ("div", "span", "td", "p") and self.hidden_depth:
+            if self.hidden_depth.pop():
+                self.skip = max(0, self.skip - 1)
+
+    def handle_data(self, data):  # noqa: ANN001
+        if not self.skip:
+            self.text.append(data)
+
+
+def text_to_image(html_src: str) -> Dict[str, Any]:
+    """Readable text against images. Template tags are stripped first so they do not count as text."""
+    src = re.sub(r"<!--.*?-->", "", html_src, flags=re.S)
+    src = re.sub(r"\{%.*?%\}|\{\{.*?\}\}|%%\[.*?\]%%|%%=.*?=%%|%%\w+%%", " ", src, flags=re.S)
+    p = _Visible()
+    p.feed(src)
+    text = re.sub(r"\s+", " ", html_unescape(" ".join(p.text))).strip()
+    chars = len(text)
+    result: Dict[str, Any] = {"visible_text_chars": chars, "images": p.images, "images_without_alt": p.images_no_alt,
+                              "chars_per_image": None if not p.images else round(chars / p.images), "errors": [], "warnings": []}
+    if p.images and chars < 200:
+        result["errors"].append(f"image-only email: {chars} characters of readable text with {p.images} image(s). Filters cannot read it and "
+                                "recipients with images off see nothing; put the message in live text")
+    elif p.images and chars / p.images < 250:
+        result["warnings"].append(f"image-heavy: about {chars // p.images} characters of text per image; keep the message readable with images off")
+    if p.images_no_alt:
+        result["errors"].append(f"{p.images_no_alt} image(s) without alt text")
+    return result
+
+
 def email_checks(src: str, dialect: str, r: LintResult) -> None:
     size = len(src.encode("utf-8"))
     r["bytes"] = size
@@ -427,6 +494,10 @@ def email_checks(src: str, dialect: str, r: LintResult) -> None:
     addr = ADDRESS_TOKENS.get(dialect)
     if addr and not re.search(addr, src, re.I) and not re.search(r"\d+\s+\w+.*\b(St|Street|Ave|Avenue|Rd|Road|Blvd|Suite|Way|Dr|Drive)\b", src):
         r["warnings"].append("no postal address found (token or literal): CAN-SPAM requires a physical address")
+    tti = text_to_image(src)
+    r["text_to_image"] = {k: tti[k] for k in ("visible_text_chars", "images", "chars_per_image")}
+    r["errors"] += [e for e in tti["errors"] if "without alt" not in e]       # alt text is reported above
+    r["warnings"] += tti["warnings"]
     for href in h.links:
         if SHORTENERS.match(href):
             r["warnings"].append(f"public link shortener {href[:40]}: a deliverability liability; link to your own domain")

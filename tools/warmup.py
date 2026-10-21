@@ -51,6 +51,8 @@ def plan(target: int, tiers: Dict[str, int], gate: str, days: int = 30, max_per_
     gate = gate.upper()
     if gate not in ("GREEN", "AMBER", "RED"):
         raise ValueError("gate must be GREEN, AMBER or RED")
+    if days < 1:
+        raise ValueError("days must be at least 1")
     cap = {t: int(tiers.get(t, 0) * max_per_week / 7) for t in TIER_ORDER}
     cumulative, run = {}, 0
     for t in TIER_ORDER:
@@ -75,6 +77,11 @@ def plan(target: int, tiers: Dict[str, int], gate: str, days: int = 30, max_per_
                             "Re-run the gate weekly; a ladder starts only after it reads GREEN.")}
 
     goal = min(target, engaged_capacity)
+    if goal <= 0:
+        return {**base, "goal_daily_volume": 0, "unwarmable_gap": max(0, target), "start_volume": 0, "schedule": [],
+                "summary": (f"No engaged audience to warm with: the engaged tiers support {engaged_capacity:,} sends a day at "
+                            f"{max_per_week:g} per person a week. Nothing is scheduled. Build engaged volume first (new opt-ins, "
+                            "transactional mail on its own subdomain), then plan the ladder.")}
     if start is None:
         start = min(cap["engaged_30d"], 500) if new_infrastructure else cap["engaged_30d"]
     start = max(1, min(start, goal))
@@ -139,7 +146,16 @@ def _cli(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--markdown", action="store_true")
     a = ap.parse_args(argv)
     mix = {k: float(v) for k, v in (kv.split("=") for kv in a.provider_mix.split(",") if kv)} if a.provider_mix else {}
-    p = plan(a.target, json.loads(a.tiers), a.gate, a.days, a.max_per_week, a.start, a.current, not a.existing_reputation, mix)
+    try:
+        from tools.contracts import InputError, validate_tiers
+    except ImportError:  # run as a script from tools/
+        from contracts import InputError, validate_tiers  # type: ignore
+    try:
+        tiers = validate_tiers(json.loads(a.tiers))
+    except (InputError, ValueError) as e:
+        print(f"error: --tiers: {e}", file=sys.stderr)
+        return 2
+    p = plan(a.target, tiers, a.gate, a.days, a.max_per_week, a.start, a.current, not a.existing_reputation, mix)
     print(render_markdown(p) if a.markdown else json.dumps(p, indent=2))
     return 0
 

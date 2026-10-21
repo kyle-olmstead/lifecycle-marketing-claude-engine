@@ -65,3 +65,16 @@ def test_ltv_censoring_never_counts_unobserved_periods(duck):
 
 def test_parse_rejects_wrong_dialect_syntax():
     assert not sql_check.parse("SELECT FROM WHERE", "postgres")[0]
+
+
+def test_duckdb_divides_integers_like_postgres(duck):
+    assert duck.execute("SELECT 7 / 2").fetchone()[0] == 3
+
+
+def test_ltv_repeat_share_is_not_trivially_one(duck):
+    cols, rows = sql_check.run(_first(LTV, "postgres"), duck)
+    share = [r[cols.index("repeat_share")] for r in rows]
+    assert "share_with_revenue" not in cols
+    assert min(share) < 1 and all(0 <= float(s) <= 1 for s in share)
+    period0 = [float(r[cols.index("repeat_share")]) for r in rows if r[cols.index("period_30d")] == 0]
+    assert period0 and all(s == 0 for s in period0)   # nobody has revenue after their first order in the first order's period

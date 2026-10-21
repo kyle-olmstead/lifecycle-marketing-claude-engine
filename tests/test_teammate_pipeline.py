@@ -23,7 +23,7 @@ def plan():
     return orchestrator.run(load_brief(EXAMPLE), str(ROOT / "tests/fixtures"), copy_mode="offline")
 
 
-def _all_checks_pass_except_known(p, allowed=("copy:", "holdout read")):
+def _all_checks_pass_except_known(p, allowed=("copy:", "holdout read", "compliance")):
     bad = [c for c in p.qa.checks if c.status == "fail" or (c.status == "warn" and not c.name.startswith(allowed))]
     assert not bad, [(c.name, c.detail) for c in bad]
 
@@ -126,10 +126,21 @@ def test_red_gate_blocks_and_amber_limits_to_engaged():
     assert any("90 days" in f["condition"] for f in amber.flow.flow_spec["entry_filters"])
 
 
+SPEC_SENTENCE = ("Build a 5-touch automated win-back flow for users who completed onboarding but haven't "
+                 "triggered a core action in 14 days")
+
+
+def test_the_spec_sentence_is_blocked_until_a_postal_address_is_given():
+    """Customer.io has no address token, so a sentence-only brief has no address: CAN-SPAM makes that a stop, not a warning."""
+    p = orchestrator.run(parse_text(SPEC_SENTENCE, "Acme"), copy_mode="offline")
+    assert p.qa.status == "BLOCKED"
+    fails = [f for f in p.compliance.findings if f.status == "fail"]
+    assert [f.rule for f in fails] == ["CAN-SPAM postal address"] and "postal_address" in fails[0].detail
+
+
 def test_the_spec_sentence_plans_end_to_end_without_data():
-    p = orchestrator.run(parse_text("Build a 5-touch automated win-back flow for users who completed onboarding but haven't "
-                                    "triggered a core action in 14 days", "Acme"), copy_mode="offline")
-    assert p.qa.status == "READY WITH ASSUMPTIONS"
+    p = orchestrator.run(parse_text(SPEC_SENTENCE, "Acme", {"postal_address": "1 Main St, Springfield, IL 62701"}), copy_mode="offline")
+    assert p.qa.status == "READY WITH ASSUMPTIONS", [(c.name, c.detail) for c in p.qa.checks if c.status == "fail"]
     assert p.experiment.read == "not readable" and p.experiment.sensitivity
     md = orchestrator.render_plan(p)
     assert "## Confirm before you build" in md and "core_conversion_event" in md

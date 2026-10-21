@@ -30,6 +30,18 @@ the endpoint refuses traffic unless LCM_ALLOW_UNSIGNED=1 (local testing only). R
 events older than 72 hours are refused, and event ids already written in the last 3 days are
 dropped as duplicates, including across restarts (the sink re-reads its recent files at start).
 
+Real-time trigger forwarding (off by default). An activation flow starts on an event the ESP must see
+as it happens, carrying the holdout assignment (agents/campaign_architect.py build step 1). With
+LCM_FORWARD=1, every accepted event that matches the qualifying event of an activation brief in
+briefs/active/ (or LCM_BRIEFS_DIR) is sent on to that brief's platform, once per brief, with flow,
+holdout_bucket and in_holdout added, computed with the same formula as the warehouse
+(agents/sql_dialects.py). Requests are built by tools/event_payloads.py; credentials come from the
+environment (KLAVIYO_PRIVATE_KEY, HUBSPOT_PRIVATE_APP_TOKEN plus HUBSPOT_HUB_ID, BRAZE_REST_API_KEY
+plus BRAZE_INSTANCE, CUSTOMERIO_PIPELINES_API_KEY_BASE64 plus CUSTOMERIO_EU=1 for EU workspaces). A
+request with a missing credential is not sent. Failed requests are written to
+<LCM_EVENTS_DIR>/forward_failed/<date>.ndjson to replay; win-back flows never forward here, since
+an absence is computed by the daily warehouse job.
+
     uvicorn scripts.webhook_parser:app --port 8080                       # serve
     python3 scripts/webhook_parser.py parse --source segment payload.json --to-csv out/events   # offline
 """
@@ -56,9 +68,9 @@ if str(ROOT) not in sys.path:
 import jsonschema  # noqa: E402
 
 try:  # the HTTP app needs FastAPI; the offline parser does not
-    from fastapi import FastAPI, HTTPException, Request
+    from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 except ImportError:  # pragma: no cover
-    FastAPI = HTTPException = Request = None  # type: ignore[assignment,misc]
+    BackgroundTasks = FastAPI = HTTPException = Request = None  # type: ignore[assignment,misc]
 
 PLAN_PATH = ROOT / "modules" / "02_behavioral_triggers_and_flows" / "schemas" / "custom_event_definitions.json"
 PLAN = json.loads(PLAN_PATH.read_text(encoding="utf-8"))
@@ -310,7 +322,9 @@ class Sink:
             for r in rows:
                 fh.write(json.dumps(r, ensure_ascii=False, default=str) + "\n")
 
-    def put(self, events: List[Dict[str, Any]], users: List[Dict[str, Any]], rejected: List[Dict[str, Any]]) -> Dict[str, int]:
+    def put(self, events: List[Dict[str, Any]], users: List[Dict[str, Any]], rejected: List[Dict[str, Any]],
+            fresh_out: Optional[List[Dict[str, Any]]] = None) -> Dict[str, int]:
+        """Write what is new. fresh_out, when given, receives the events accepted by this call (not duplicates)."""
         with self.lock:
             fresh = []
             dupes = 0
@@ -330,6 +344,8 @@ class Sink:
                 fresh_users.append(u)
             self._write("track_events", fresh)
             self._write("users", fresh_users)
+            if fresh_out is not None:
+                fresh_out.extend(fresh)
             users = fresh_users
             stamp = datetime.now(timezone.utc).isoformat()
             self._write("quarantine", [{**r, "quarantined_at": stamp} for r in rejected])
@@ -353,15 +369,128 @@ def to_csv(events: List[Dict[str, Any]], folder: Path) -> Path:
 
 
 # ----------------------------------------------------------------------------------------------
+# real-time trigger forwarding (opt-in)
+# ----------------------------------------------------------------------------------------------
+
+PLACEHOLDER = re.compile(r"\$\{([A-Z0-9_]+)\}")
+
+
+def _text(v: Any) -> str:
+    return ("true" if v else "false") if isinstance(v, bool) else str(v)
+
+
+class Forwarder:
+    """Sends qualifying events for activation briefs on to the ESP, with the holdout assignment added."""
+
+    def __init__(self, briefs: List[Any], root: Path, env: Optional[Dict[str, str]] = None, transport: Any = None, timeout: float = 5.0) -> None:
+        self.briefs = [b for b in briefs if b.flow_type == "activation"]
+        self.root = Path(root)
+        self.env = dict(os.environ if env is None else env)
+        self.transport = transport
+        self.timeout = timeout
+
+    @classmethod
+    def from_env(cls, root: Path, env: Optional[Dict[str, str]] = None, transport: Any = None) -> Optional["Forwarder"]:
+        env = dict(os.environ if env is None else env)
+        if env.get("LCM_FORWARD") != "1":
+            return None
+        from agents.brief import load_brief
+        folder = Path(env.get("LCM_BRIEFS_DIR") or ROOT / "briefs" / "active")
+        briefs = [load_brief(p) for p in sorted(folder.glob("*.yaml"))]
+        return cls(briefs, root, env, transport)
+
+    @staticmethod
+    def matches(brief: Any, e: Dict[str, Any]) -> bool:
+        q = brief.qualifying_event
+        props = e.get("properties") or {}
+        return bool(e.get("user_id")) and e["event_name"] == q.event and all(_text(props.get(k)) == _text(v) for k, v in q.where.items())
+
+    def requests(self, events: List[Dict[str, Any]]) -> List[Tuple[Any, Dict[str, Any], Optional[str]]]:
+        """(brief, request, reason it cannot be sent or None) for every event and matching brief."""
+        from agents.sql_dialects import holdout_bucket
+        from tools import event_payloads
+        out = []
+        for e in events:
+            for b in self.briefs:
+                if not self.matches(b, e):
+                    continue
+                bucket = holdout_bucket(str(e["user_id"]), b.slug)
+                props = {k: v for k, v in (e.get("properties") or {}).items() if k not in event_payloads.BRAZE_RESERVED}
+                props.update(flow=b.slug, holdout_bucket=bucket, in_holdout=bucket < b.holdout_pct)
+                ev = {"user_id": e["user_id"], "email": props.pop("email", None), "event": e["event_name"], "properties": props,
+                      "occurred_at": e["event_at"], "event_id": f"{e['event_id']}:{b.slug}"}
+                reason = None
+                if b.platform == "sfmc":
+                    out.append((b, {}, "Salesforce Marketing Cloud entry is a Journey Builder API Event; forward it from your own integration"))
+                    continue
+                if b.platform == "hubspot" and not ev["email"]:
+                    reason = "HubSpot custom events need the contact's email on the event"
+                req = event_payloads.build(b.platform, ev, hub_id=self.env.get("HUBSPOT_HUB_ID", "0"),
+                                           braze_instance=self.env.get("BRAZE_INSTANCE", "iad-01"), eu=self.env.get("CUSTOMERIO_EU") == "1")
+                missing = sorted({m for v in req["headers"].values() for m in PLACEHOLDER.findall(v) if not self.env.get(m)})
+                if b.platform == "hubspot" and not self.env.get("HUBSPOT_HUB_ID"):
+                    missing.append("HUBSPOT_HUB_ID")
+                if missing and not reason:
+                    reason = "missing credential: " + ", ".join(missing)
+                out.append((b, req, reason))
+        return out
+
+    def forward(self, events: List[Dict[str, Any]]) -> Dict[str, int]:
+        import httpx
+        result = {"forwarded": 0, "not_sent": 0, "failed": 0}
+        failed: List[Dict[str, Any]] = []
+        todo = self.requests(events)
+        if not todo:
+            return result
+        with httpx.Client(timeout=self.timeout, transport=self.transport) as client:
+            for b, req, reason in todo:
+                if reason:
+                    result["not_sent"] += 1
+                    failed.append({"flow": b.slug, "reason": reason, "request": req})
+                    continue
+                headers = {k: PLACEHOLDER.sub(lambda m: self.env[m.group(1)], v) for k, v in req["headers"].items()}
+                try:
+                    resp = client.request(req["method"], req["url"], headers=headers, json=req["body"])
+                    ok = 200 <= resp.status_code < 300
+                    detail = f"HTTP {resp.status_code}: {resp.text[:200]}"
+                except httpx.HTTPError as e:
+                    ok, detail = False, f"{type(e).__name__}: {e}"
+                if ok:
+                    result["forwarded"] += 1
+                else:
+                    result["failed"] += 1
+                    failed.append({"flow": b.slug, "reason": detail, "request": req})   # headers still hold ${PLACEHOLDER}s, never secrets
+        if failed:
+            day = datetime.now(timezone.utc).date().isoformat()
+            path = self.root / "forward_failed" / f"{day}.ndjson"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as fh:
+                for f in failed:
+                    fh.write(json.dumps({**f, "at": datetime.now(timezone.utc).isoformat()}, default=str) + "\n")
+        return result
+
+
+# ----------------------------------------------------------------------------------------------
 # HTTP app
 # ----------------------------------------------------------------------------------------------
 
 def create_app(events_dir: Optional[Path] = None):
     if FastAPI is None:
         raise RuntimeError("the HTTP app needs FastAPI: pip install -r requirements.txt")
-    app = FastAPI(title="LMM Engine event ingest", version="2.1.0")
-    sink = Sink(Path(events_dir or os.environ.get("LCM_EVENTS_DIR", "out/events")))
+    from agents import __version__
+    app = FastAPI(title="LMM Engine event ingest", version=__version__)
+    root = Path(events_dir or os.environ.get("LCM_EVENTS_DIR", "out/events"))
+    sink = Sink(root)
     allow_unsigned = os.environ.get("LCM_ALLOW_UNSIGNED") == "1"
+    forwarder = Forwarder.from_env(root)
+
+    def _accept(parsed: Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]], background: BackgroundTasks) -> Dict[str, Any]:
+        fresh: List[Dict[str, Any]] = []
+        result: Dict[str, Any] = sink.put(*parsed, fresh_out=fresh)
+        if forwarder is not None and fresh:
+            background.add_task(forwarder.forward, fresh)   # after the response: the CDP is never kept waiting on the ESP
+            result["forwarding"] = len([1 for e in fresh for b in forwarder.briefs if forwarder.matches(b, e)])
+        return result
 
     async def _body(request: Request) -> Tuple[bytes, Any]:
         raw = await request.body()
@@ -374,10 +503,11 @@ def create_app(events_dir: Optional[Path] = None):
 
     @app.get("/healthz")
     def healthz() -> Dict[str, Any]:
-        return {"ok": True, "tracking_plan_events": sorted(PLAN_EVENTS)}
+        return {"ok": True, "tracking_plan_events": sorted(PLAN_EVENTS),
+                "forwarding": None if forwarder is None else [f"{b.slug} ({b.platform}): {b.qualifying_event.event}" for b in forwarder.briefs]}
 
     @app.post("/webhooks/segment")
-    async def segment(request: Request) -> Dict[str, Any]:
+    async def segment(request: Request, background: BackgroundTasks) -> Dict[str, Any]:
         raw, doc = await _body(request)
         secret = os.environ.get("SEGMENT_SHARED_SECRET")
         if secret:
@@ -385,10 +515,10 @@ def create_app(events_dir: Optional[Path] = None):
                 raise HTTPException(401, "X-Signature does not match the shared secret")
         elif not allow_unsigned:
             raise HTTPException(503, "SEGMENT_SHARED_SECRET is not set; refusing unsigned events (LCM_ALLOW_UNSIGNED=1 for local tests)")
-        return sink.put(*from_segment(doc, max_age=HTTP_MAX_AGE))
+        return _accept(from_segment(doc, max_age=HTTP_MAX_AGE), background)
 
     @app.post("/webhooks/ga4")
-    async def ga4(request: Request) -> Dict[str, Any]:
+    async def ga4(request: Request, background: BackgroundTasks) -> Dict[str, Any]:
         raw, doc = await _body(request)
         token = os.environ.get("LCM_GA4_TOKEN")
         if token:
@@ -396,7 +526,7 @@ def create_app(events_dir: Optional[Path] = None):
                 raise HTTPException(401, "X-LCM-Token does not match")
         elif not allow_unsigned:
             raise HTTPException(503, "LCM_GA4_TOKEN is not set; refusing unauthenticated events (LCM_ALLOW_UNSIGNED=1 for local tests)")
-        return sink.put(*from_ga4(doc, max_age=HTTP_MAX_AGE))
+        return _accept(from_ga4(doc, max_age=HTTP_MAX_AGE), background)
 
     return app
 

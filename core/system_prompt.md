@@ -253,7 +253,9 @@ are proceeding on (the evidence), and do not reconcile silently.
 | test sizing, MDE, or whether a test can read | `modules/05_experimentation_and_analytics/prompts/ab_power_calculator.md` |
 | what a flow actually drove (holdout readout, attributed vs incremental) | `modules/05_experimentation_and_analytics/prompts/holdout_incrementality_analyzer.md` |
 | a test backlog or hypothesis review | `modules/05_experimentation_and_analytics/frameworks/test_hypothesis_matrix.md` |
-| a whole campaign from one brief (cohort, flow, copy and holdout together), or the daily cohort health check | the teammate: `agents/orchestrator.py` and `agents/cohort_analyst.py` (skill `lifecycle-teammate`); it runs the modules above as code and checks the result |
+| a whole campaign from one brief (cohort, flow, copy and holdout together), or a change, approval or resume of one | the teammate: `agents/orchestrator.py` (plan, revise, approve, resume, status; skill `lifecycle-teammate`); it runs the modules above as code, checks the result and reviews it against `config/compliance_rules.json` |
+| the daily health check, engagement tiers or a sunset list, a calendar blast compared with a trigger, or a live check of a sending domain's records | `scripts/daily.py`, `agents/engagement.py`, `agents/cohort_analyst.py blast-vs-trigger`, `tools/dns_collect.py` (skill `lifecycle-teammate`) |
+| anything above, from a sentence, when you can run code | `agents/cli.py` (`lcm`): it routes the request to one of the rows above and asks for what is missing |
 </module_router>
 
 <tools>
@@ -268,7 +270,13 @@ python3 tools/sql_check.py query.sql [--run]                          # parse in
 python3 tools/stats.py size|mde|feasible|readout|incrementality ...  # sizing and readout
 python3 tools/sms.py "text"                                           # SMS encoding and segments
 python3 tools/payloads.py klaviyo|hubspot rows.csv ...                # API request bodies within vendor limits
+python3 tools/dns_collect.py example.com --analyze --markdown          # live DNS pull, then the deliverability analysis
+python3 agents/engagement.py --data exports/ --out out/engagement     # engagement tiers; the unengaged share for the gate
+python3 agents/cli.py "<request>"                                     # any of the above, routed from a sentence
 ```
+
+Tool inputs are validated by `tools/contracts.py`; when one is refused, the message names the field
+that is wrong. Fix the input; never work around the contract.
 
 When the user's platforms are connected (HubSpot, Klaviyo, Braze, Customer.io, BigQuery,
 Snowflake, Mixpanel, Amplitude and others; see `CONNECTORS.md`), read from them before asking, and

@@ -118,3 +118,76 @@ def test_gate_never_green_on_unverified_or_unknown():
     assert D.sending_gate({**base, "domain_reputation_bounces_90d": 1})["verdict"] == "AMBER"
     assert D.sending_gate({**base, "domain_reputation_bounces_90d": 3, "domain_reputation_bounces_trend": "rising"})["verdict"] == "RED"
     assert D.sending_gate({**base, "complaint_rate": 0.004})["verdict"] == "RED"
+
+
+# ---- regressions from the v2.2 audit (docs/AUDIT.md) ----
+
+def test_microsoft_authentication_results_without_authserv_id_are_read():
+    raw = ("From: News <news@example.com>\nTo: a@outlook.com\nSubject: hi\n"
+           "Authentication-Results: spf=pass (sender IP is 192.0.2.1) smtp.mailfrom=example.com; dkim=pass (signature was verified) "
+           "header.d=example.com;dmarc=pass action=none header.from=example.com;compauth=pass reason=100\n\nbody\n")
+    h = D.parse_headers(raw)
+    ar = h["authentication_results"][0]
+    assert ar["authserv_id"] is None
+    assert {r["method"]: r["result"] for r in ar["results"]}["spf"] == "pass"
+    al = D.evaluate_alignment(h, D.parse_dmarc("v=DMARC1; p=reject; rua=mailto:d@example.com"))
+    assert al["dmarc_reported"] == "pass"
+
+
+def test_auth_state_prefers_the_receivers_dmarc_verdict():
+    dm = D.parse_dmarc("v=DMARC1; p=reject; rua=mailto:d@example.com")
+    al = {"dmarc_reported": "pass", "dmarc_computed": "fail"}
+    assert D._auth_state(dm, al, "LIVE PULL 2026-10-20", True, True) == "verified"
+    assert D._auth_state(dm, {"dmarc_reported": None, "dmarc_computed": "fail"}, "LIVE PULL 2026-10-20", True, True) == "failing"
+
+
+def test_subdomain_sender_is_judged_by_sp_not_p():
+    org = D.parse_dmarc("v=DMARC1; p=reject; sp=none; rua=mailto:d@example.com")
+    eff = D.for_subdomain(org)
+    assert eff.policy == "none" and not eff.enforcing and org.enforcing
+    step = D.next_dmarc_step(org, "example.com", aligned_pass_observed=True, subdomain=True)
+    assert step["value"] == "v=DMARC1; p=reject; sp=quarantine; rua=mailto:d@example.com"
+    # without sp the parent's p applies, so a subdomain sender at p=reject has nothing to step
+    assert D.next_dmarc_step(D.parse_dmarc("v=DMARC1; p=reject; rua=mailto:d@example.com"), "example.com", True, subdomain=True) is None
+    doc = {"from_domain": "news.example.com", "observed_at": "2026-10-20",
+           "dns": {"example.com": {"dmarc": "v=DMARC1; p=reject; sp=none; rua=mailto:d@example.com", "bimi": "v=BIMI1; l=https://example.com/l.svg; a=https://example.com/v.pem"}}}
+    r = D.analyze(doc)
+    assert r["checked"]["dmarc"]["effective_policy"] == "none"
+    assert any("sp=none" in f["detail"] and f["severity"] == "high" for f in r["findings"])
+    assert not r["checked"]["bimi"]["eligible"]
+
+
+def test_one_click_unsubscribe_needs_a_passing_covering_signature():
+    base = ("From: News <news@example.com>\nList-Unsubscribe: <https://example.com/u/1>\n"
+            "List-Unsubscribe-Post: List-Unsubscribe=One-Click\n"
+            "DKIM-Signature: v=1; a=rsa-sha256; d=example.com; s=s1; h=from:list-unsubscribe:list-unsubscribe-post; bh=x; b=y\n")
+    failed = D.parse_headers("Authentication-Results: mx.google.com; dkim=fail header.d=example.com\n" + base + "\nbody\n")
+    assert D.one_click_unsubscribe(failed)["rfc8058_compliant"] is False
+    passed = D.parse_headers("Authentication-Results: mx.google.com; dkim=pass header.d=example.com\n" + base + "\nbody\n")
+    assert D.one_click_unsubscribe(passed)["rfc8058_compliant"] is True
+    unknown = D.parse_headers(base + "\nbody\n")
+    assert D.one_click_unsubscribe(unknown)["rfc8058_compliant"] is None
+
+
+def test_spf_include_loop_is_a_permerror_and_modifiers_are_ignored():
+    r = D.parse_spf("v=spf1 include:a.example.net -all", {"a.example.net": "v=spf1 include:b.example.net -all",
+                                                          "b.example.net": "v=spf1 include:a.example.net -all"})
+    assert any(sev == "critical" and "loops" in msg for sev, msg in r.issues)
+    clean = D.parse_spf("v=spf1 ip4:192.0.2.0/24 ra=postmaster rp=10 -all")
+    assert not [m for sev, m in clean.issues if sev in ("critical", "high")]
+    assert any(sev == "high" for sev, _ in D.parse_spf("v=spf1 ipv4:192.0.2.1 -all").issues)
+
+
+def test_spf_redirect_is_ignored_when_all_is_present():
+    r = D.parse_spf("v=spf1 ip4:192.0.2.0/24 redirect=_spf.example.net -all")
+    assert r.lookups_direct == 0 and any("ignored" in m for _, m in r.issues)
+
+
+def test_dmarc_version_tag_is_case_sensitive():
+    assert D.parse_dmarc("v=DMARC1; p=none; rua=mailto:d@example.com").valid
+    assert not D.parse_dmarc("v=dmarc1; p=none; rua=mailto:d@example.com").valid
+
+
+def test_mta_sts_mode_none_skips_mx_coverage():
+    r = D.parse_mta_sts("v=STSv1; id=1", "version: STSv1\nmode: none\nmx: *.mail.example.com\nmax_age: 86400\n", ["mx.other.example.net"])
+    assert not [m for _, m in r["issues"] if "mx.other.example.net" in m]

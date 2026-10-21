@@ -26,7 +26,7 @@ import email
 import json
 import re
 import sys
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from email import policy as email_policy
 from email.utils import getaddresses
 from pathlib import Path
@@ -145,11 +145,17 @@ def _spf_direct(record: str) -> Tuple[List[str], List[str], Optional[str], Optio
                 issues.append(("medium", "the ptr mechanism is deprecated (RFC 7208 section 5.5) and slow; remove it"))
         elif name == "redirect":
             redirect = t.split("=", 1)[1] if "=" in t else ""
-            lookups.append(term)
         elif name in ("ip4", "ip6", "exp"):
             pass
+        elif re.match(r"^[a-z][a-z0-9_.-]*=", t, re.I):
+            pass   # an unrecognized modifier (ra=, rp=, ...): RFC 7208 section 6 says receivers MUST ignore it
         else:
-            issues.append(("high", f"unknown SPF term '{term}' makes the record a permerror at strict receivers"))
+            issues.append(("high", f"unknown SPF mechanism '{term}' makes the record a permerror at strict receivers"))
+    if redirect is not None and all_q is not None:
+        issues.append(("info", f"redirect={redirect} is ignored because the record has an 'all' mechanism (RFC 7208 section 6.1)"))
+        redirect = None
+    elif redirect is not None:
+        lookups.append(f"redirect={redirect}")
     return lookups, includes, redirect, all_q, issues
 
 
@@ -179,6 +185,9 @@ def parse_spf(record: str, resolved: Optional[Dict[str, str]] = None) -> SPFResu
         return total
 
     total = count(record, 0, ()) if valid else None
+    looped = valid and total is None and not unresolved
+    if looped:
+        issues.append(("critical", "the include or redirect chain loops back on itself: every receiver returns permerror and SPF fails"))
     if not valid:
         issues.append(("critical", "record does not start with 'v=spf1'; receivers ignore it"))
     else:
@@ -228,8 +237,8 @@ def parse_dmarc(record: str) -> DMARCResult:
     record = " ".join(record.split())
     tags = _tags(record)
     issues: List[Tuple[str, str]] = []
-    first = record.split(";", 1)[0].replace(" ", "").lower()
-    valid = first == "v=dmarc1"
+    first = record.split(";", 1)[0].replace(" ", "")
+    valid = first == "v=DMARC1"   # RFC 7489 section 6.3: the value MUST match precisely
     if not valid:
         issues.append(("critical", "the record must begin with 'v=DMARC1'; receivers ignore it otherwise"))
     p = tags.get("p", "").lower() or None
@@ -275,15 +284,33 @@ def parse_dmarc(record: str) -> DMARCResult:
     return DMARCResult(record, valid, tags, p, sp, np_, adkim, aspf, testing, pct, enforcing, rua, issues)
 
 
-def next_dmarc_step(current: DMARCResult, domain: str, aligned_pass_observed: bool = False) -> Optional[Dict[str, Any]]:
+def for_subdomain(d: DMARCResult) -> DMARCResult:
+    """The organizational record as it applies to mail from a subdomain without its own record: sp= when present, else p=
+    (RFC 7489 section 6.3, RFC 9989 section 4.7). The returned copy carries the policy that actually applies."""
+    if d.subdomain_policy not in DMARC_POLICIES:
+        return d
+    sp = d.subdomain_policy
+    return replace(d, policy=sp, enforcing=sp in ("quarantine", "reject") and not d.testing and (d.pct is None or d.pct == 100),
+                   issues=list(d.issues))
+
+
+def next_dmarc_step(current: DMARCResult, domain: str, aligned_pass_observed: bool = False,
+                    subdomain: bool = False) -> Optional[Dict[str, Any]]:
     """The next record on the path none (with reports) -> quarantine (t=y) -> quarantine -> reject.
 
     Enforcement is never recommended blind. From p=none the next step is quarantine only when the record
     already has a rua= reporting address AND an aligned SPF or DKIM pass was observed for this mail;
     otherwise the step is p=none with reporting, because quarantining before every legitimate sender
     aligns sends your own mail to spam. Returns None when the record is already where it should be.
+
+    subdomain=True: the mail comes from a subdomain covered by this (organizational) record. When the record
+    has sp=, sp is what applies, so sp is the tag stepped and p is left alone; t=y is not added, since it
+    would soften the parent domain's policy too.
     """
-    keep = {k: v for k, v in current.tags.items() if k in ("rua", "ruf", "adkim", "aspf", "fo", "sp", "np")}
+    step_sp = subdomain and current.subdomain_policy in DMARC_POLICIES
+    if step_sp:
+        current = for_subdomain(current)
+    keep = {k: v for k, v in current.tags.items() if k in ("rua", "ruf", "adkim", "aspf", "fo", "sp", "np", "t")}
     if "rua" not in keep:
         keep["rua"] = f"mailto:dmarc-reports@{domain}"
     ready = bool(current.rua) and aligned_pass_observed
@@ -307,7 +334,11 @@ def next_dmarc_step(current: DMARCResult, domain: str, aligned_pass_observed: bo
         nxt, note = {"p": "reject"}, "Drop the testing phase (t=y or pct below 100) once reports stay clean for two more weeks."
     else:
         return None
-    ordered = {"v": "DMARC1", **nxt, **{k: keep[k] for k in ("sp", "np", "adkim", "aspf", "rua", "ruf", "fo") if k in keep}}
+    if step_sp:
+        nxt = {"p": current.tags.get("p", "none").lower(), "sp": nxt["p"], **({"t": keep["t"]} if "t" in keep else {})}
+        note = "Mail from this subdomain gets sp=, not p=. " + note.replace("p=none", "sp=none")
+    keep.pop("t", None)
+    ordered = {"v": "DMARC1", **nxt, **{k: keep[k] for k in ("sp", "np", "adkim", "aspf", "rua", "ruf", "fo") if k in keep and k not in nxt}}
     value = "; ".join(f"{k}={v}" for k, v in ordered.items())
     if value.replace(" ", "").lower() == current.record.replace(" ", "").rstrip(";").lower():
         return None
@@ -436,7 +467,7 @@ def parse_mta_sts(txt: Optional[str], policy_text: Optional[str], mx_hosts: Opti
                 issues.append(("low", "max_age under one day gives little protection against downgrade attacks"))
         except ValueError:
             issues.append(("high", "max_age is missing or not an integer"))
-        for host in mx_hosts or []:
+        for host in (mx_hosts or []) if mode in ("enforce", "testing") else []:
             if not any(_mx_match(p, host) for p in out["mx_patterns"]):
                 issues.append(("critical" if mode == "enforce" else "high", f"MX host {host} is not covered by any mx: pattern; enforce mode will reject delivery to it"))
     return out
@@ -461,13 +492,16 @@ def parse_tlsrpt(txt: Optional[str]) -> Dict[str, Any]:
     return {"present": True, "rua": tags.get("rua"), "issues": issues}
 
 
-def bimi_eligibility(bimi_txt: Optional[str], dmarc: Optional[DMARCResult]) -> Dict[str, Any]:
+def bimi_eligibility(bimi_txt: Optional[str], dmarc: Optional[DMARCResult], effective: Optional[DMARCResult] = None) -> Dict[str, Any]:
+    """dmarc is the organizational domain's record; effective is the policy that applies to the From domain (for_subdomain)."""
     out: Dict[str, Any] = {"present": bool(bimi_txt), "eligible": False, "reasons": []}
     if dmarc is None or not dmarc.valid:
         out["reasons"].append("no valid DMARC record")
         return out
     if dmarc.policy not in ("quarantine", "reject"):
         out["reasons"].append("DMARC policy must be quarantine or reject")
+    if effective is not None and effective is not dmarc and effective.policy not in ("quarantine", "reject"):
+        out["reasons"].append(f"the policy applying to the sending subdomain (sp={effective.policy}) must be quarantine or reject")
     if dmarc.pct is not None and dmarc.pct != 100:
         out["reasons"].append("pct must be absent or 100")
     if dmarc.testing:
@@ -505,8 +539,10 @@ def _strip_comments(v: str) -> str:
 def parse_authentication_results(value: str) -> Dict[str, Any]:
     v = _strip_comments(_norm(value))
     parts = [p.strip() for p in v.split(";") if p.strip()]
-    out: Dict[str, Any] = {"authserv_id": parts[0].split()[0] if parts else None, "results": []}
-    for p in parts[1:]:
+    # Microsoft's headers omit the authserv-id and start with the first result (spf=pass ...): parse from the start then
+    has_id = bool(parts) and not re.match(r"^[a-z0-9-]+\s*=\s*[a-z]+\b", parts[0], re.I)
+    out: Dict[str, Any] = {"authserv_id": parts[0].split()[0] if has_id else None, "results": []}
+    for p in (parts[1:] if has_id else parts):
         m = re.match(r"([a-z0-9-]+)\s*=\s*([a-z]+)(.*)", p, re.I)
         if not m:
             continue
@@ -604,9 +640,23 @@ def one_click_unsubscribe(h: Dict[str, Any]) -> Dict[str, Any]:
     has_https = bool(re.search(r"<https://[^>]+>", lu, re.I))
     has_mailto = bool(re.search(r"<mailto:[^>]+>", lu, re.I))
     post_ok = lup.replace(" ", "").lower() == "list-unsubscribe=one-click"
-    covered = any("list-unsubscribe" in s["h"] and "list-unsubscribe-post" in s["h"] for s in h.get("dkim_signatures", []))
+    covering = [s for s in h.get("dkim_signatures", []) if "list-unsubscribe" in s["h"] and "list-unsubscribe-post" in s["h"]]
+    # RFC 8058 section 4: both headers must be in the h= tag of a VALID DKIM signature; validity comes from the receiver's verdict
+    ar = h["authentication_results"][0] if h.get("authentication_results") else None
+    verdicts = {}
+    for r in (ar or {}).get("results", []):
+        if r["method"] == "dkim":
+            d = (r["props"].get("header.d") or _domain_of(r["props"].get("header.i", "")) or "").lower()
+            verdicts[d] = verdicts.get(d) == "pass" or r["result"] == "pass"
+    if not covering:
+        valid: Optional[bool] = False
+    elif not verdicts:
+        valid = None   # signatures cover both headers, but no receiver verdict says whether they verify
+    else:
+        valid = any(verdicts.get((s.get("d") or "").lower()) for s in covering)
+    compliant = (has_https and post_ok and valid) if valid is not None else (None if (has_https and post_ok) else False)
     return {"list_unsubscribe": bool(lu), "https_uri": has_https, "mailto_uri": has_mailto, "post_header_ok": post_ok,
-            "dkim_covers_both": covered, "rfc8058_compliant": has_https and post_ok and covered}
+            "dkim_covers_both": bool(covering), "covering_signature_verified": valid, "rfc8058_compliant": compliant}
 
 
 # ----------------------------------------------------------------------------------------------
@@ -760,12 +810,20 @@ def analyze(doc: Dict[str, Any]) -> Dict[str, Any]:
                                 "UNKNOWN" if not dns else label, f"dig +short TXT _dmarc.{org}",
                                 dns_fix(f"_dmarc.{org}", f"v=DMARC1; p=none; rua=mailto:dmarc-reports@{org}",
                                         note=f"Start at p=none to collect reports. The mailbox dmarc-reports@{org} must exist, or use your DMARC report processor's address.")))
+    effective = dmarc
     if dmarc:
+        sub = dmarc_host != from_domain
+        effective = for_subdomain(dmarc) if sub else dmarc
+        if sub and effective.policy != dmarc.policy:
+            dmarc.issues.append(("high" if effective.policy == "none" else "info",
+                                 f"mail from {from_domain} is covered by the organizational record's sp={effective.policy}, not p={dmarc.policy}"
+                                 + (": this subdomain is not protected while the parent enforces" if effective.policy == "none" else "")))
         observed = bool(hdr) and evaluate_alignment(hdr, dmarc)["dmarc_computed"] == "pass"
-        nxt = next_dmarc_step(dmarc, dmarc_host, aligned_pass_observed=observed)
+        nxt = next_dmarc_step(dmarc, dmarc_host, aligned_pass_observed=observed, subdomain=sub)
         findings += _issues_to_findings("dmarc", dmarc.issues, "identity", label, f"dig +short TXT _dmarc.{dmarc_host}", nxt)
         checked["dmarc"] = {"host": f"_dmarc.{dmarc_host}", **{k: v for k, v in asdict(dmarc).items() if k != "issues"},
-                            "applies_as": "own record" if dmarc_host == from_domain else "organizational domain record (sp applies)"}
+                            "applies_as": "own record" if dmarc_host == from_domain else "organizational domain record (sp applies)",
+                            "effective_policy": effective.policy, "effective_enforcing": effective.enforcing}
         if nxt:
             checked["dmarc_next_step"] = nxt
 
@@ -834,10 +892,18 @@ def analyze(doc: Dict[str, Any]) -> Dict[str, Any]:
                                     "or ARC difference; read the receiver's verdict as the fact.", "SUPPLIED"))
         unsub = one_click_unsubscribe(hdr)
         checked["one_click_unsubscribe"] = unsub
-        if doc.get("message_class", "marketing") == "marketing" and not unsub["rfc8058_compliant"]:
+        if doc.get("message_class", "marketing") == "marketing" and unsub["rfc8058_compliant"] is None:
+            findings.append(Finding("unsub.rfc8058_unverified", "medium", "content_infrastructure",
+                                    "One-click unsubscribe headers are signed, but nothing shows the signature verifies",
+                                    "A DKIM signature covers List-Unsubscribe and List-Unsubscribe-Post, but the headers carry no receiver "
+                                    "dkim= verdict for its d= domain. RFC 8058 needs a valid signature; check a copy received at Gmail.",
+                                    "SUPPLIED", "Show original in Gmail: the dkim= result for the signing domain"))
+        elif doc.get("message_class", "marketing") == "marketing" and not unsub["rfc8058_compliant"]:
             missing = [n for n, ok in (("List-Unsubscribe with an https URI", unsub["https_uri"]),
                                        ("List-Unsubscribe-Post: List-Unsubscribe=One-Click", unsub["post_header_ok"]),
-                                       ("DKIM h= covering both headers", unsub["dkim_covers_both"])) if not ok]
+                                       ("DKIM h= covering both headers", unsub["dkim_covers_both"]),
+                                       ("a passing DKIM signature covering them", unsub["covering_signature_verified"] or not unsub["dkim_covers_both"]))
+                       if not ok]
             findings.append(Finding("unsub.rfc8058", "high", "content_infrastructure", "One-click unsubscribe is not RFC 8058 compliant",
                                     "Missing: " + "; ".join(missing) + ". Gmail and Yahoo require one-click unsubscribe on marketing mail from bulk senders.",
                                     "SUPPLIED"))
@@ -859,7 +925,7 @@ def analyze(doc: Dict[str, Any]) -> Dict[str, Any]:
                                             dns_fix(f"_smtp._tls.{org}", f"v=TLSRPTv1; rua=mailto:tls-reports@{org}",
                                                     note=f"The mailbox tls-reports@{org} must exist.") if not tls["present"] else None)
         checked["tls_rpt"] = {k: v for k, v in tls.items() if k != "issues"}
-        bimi = bimi_eligibility(od.get("bimi"), dmarc)
+        bimi = bimi_eligibility(od.get("bimi"), dmarc, effective)
         checked["bimi"] = bimi
         if od.get("bimi") and not bimi["eligible"]:
             findings.append(Finding("bimi.ineligible", "low", "content_infrastructure", "BIMI record published but not eligible",
@@ -901,11 +967,12 @@ def analyze(doc: Dict[str, Any]) -> Dict[str, Any]:
 def _auth_state(dmarc: Optional[DMARCResult], al: Optional[Dict[str, Any]], label: str, has_dns: bool, has_hdr: bool) -> str:
     if not has_dns and not has_hdr:
         return "unknown"
-    if al and al["dmarc_computed"] == "fail":
+    verdict = (al.get("dmarc_reported") if al and al.get("dmarc_reported") in ("pass", "fail") else None) or (al or {}).get("dmarc_computed")
+    if al and verdict == "fail":
         return "failing"
     if dmarc is None and has_dns:
         return "failing"
-    if al and al["dmarc_computed"] == "pass" and dmarc and dmarc.valid and label.startswith("LIVE PULL"):
+    if al and verdict == "pass" and dmarc and dmarc.valid and label.startswith("LIVE PULL"):
         return "verified"
     return "partial"
 
@@ -956,6 +1023,15 @@ def _cli(argv: Optional[List[str]] = None) -> int:
         doc = json.loads(Path(args.input).read_text(encoding="utf-8"))
         if isinstance(doc.get("headers"), dict) and doc["headers"].get("path"):
             doc["headers"]["path"] = str((Path(args.input).parent / doc["headers"]["path"]).resolve())
+        try:
+            from tools.contracts import InputError, validate_deliverability
+        except ImportError:  # run as a script from tools/
+            from contracts import InputError, validate_deliverability  # type: ignore
+        try:
+            doc = validate_deliverability(doc)
+        except InputError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
         r = analyze(doc)
         print(render_markdown(r) if args.markdown else json.dumps(r, indent=2))
     elif args.cmd == "spf":

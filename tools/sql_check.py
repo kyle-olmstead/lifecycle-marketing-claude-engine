@@ -34,11 +34,15 @@ TABLE_DDL = {
     "orders": "order_id VARCHAR, user_id VARCHAR, order_at TIMESTAMP, status VARCHAR, gross_amount DECIMAL(18,2), "
               "discount_amount DECIMAL(18,2), net_amount DECIMAL(18,2), currency VARCHAR",
     "track_events": "event_id VARCHAR, user_id VARCHAR, anonymous_id VARCHAR, event_name VARCHAR, event_at TIMESTAMP, properties JSON",
+    # email engagement exported from the ESP (2.2): delivered, opened (machine_open marks privacy-proxy opens), clicked,
+    # bounced (hard), complained, unsubscribed
+    "message_events": "event_id VARCHAR, user_id VARCHAR, channel VARCHAR, event_name VARCHAR, event_at TIMESTAMP, message_id VARCHAR, "
+                      "campaign VARCHAR, machine_open BOOLEAN",
     # the teammate's ledger of flow entries already pushed (2.1); empty unless a fixture file exists
     "lcm_flow_entries": "flow VARCHAR, user_id VARCHAR, anchor_date DATE, holdout_bucket INTEGER, in_holdout BOOLEAN, status VARCHAR, "
                         "queued_at TIMESTAMP, pushed_at TIMESTAMP",
 }
-OPTIONAL_TABLES = ("lcm_flow_entries",)
+OPTIONAL_TABLES = ("lcm_flow_entries", "message_events")
 
 
 def declared_dialect(sql: str) -> Optional[str]:
@@ -61,6 +65,9 @@ def parse(sql: str, dialect: str) -> Tuple[bool, str]:
 def connect(fixtures: Path = FIXTURES):
     import duckdb
     con = duckdb.connect()
+    # the reference SQL is PostgreSQL, where integer / integer truncates; DuckDB's default returns a float, which would
+    # let an integer-division bug pass here and fail in the warehouse
+    con.execute("SET integer_division = true")
     for table, cols in TABLE_DDL.items():
         path = fixtures / f"{table}.csv"
         con.execute(f"CREATE TABLE {table} ({cols})")

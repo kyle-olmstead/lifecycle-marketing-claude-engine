@@ -89,3 +89,16 @@ def test_pre_post_is_labeled_directional():
     doc = json.loads((ROOT / "examples/stats/winback_readout.json").read_text())
     doc["design"] = "pre_post"
     assert S.incrementality(doc)["read"] == "directional"
+
+
+def test_interval_label_follows_alpha():
+    doc = {"flow": "f", "period": "q", "alpha": 0.10, "treatment": {"n": 4000, "conversions": 480}, "holdout": {"n": 1000, "conversions": 100}}
+    text = S.render_incrementality(S.incrementality(doc))
+    assert "90% CI" in text and "95% CI" not in text
+
+
+def test_no_larger_holdout_suggested_when_already_at_25_percent():
+    at_15 = S.feasibility(entries_per_month=1500, holdout_share=0.15, p_control=0.10, mde_rel=0.20)
+    at_25 = S.feasibility(entries_per_month=1500, holdout_share=0.25, p_control=0.10, mde_rel=0.20)
+    assert at_15["expected_read"] == "causal, slow" and "a 25% holdout would read" in at_15["recommended_design"]
+    assert at_25["expected_read"] == "causal, slow" and "a 25% holdout would read" not in at_25["recommended_design"]

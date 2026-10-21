@@ -2,28 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/kyle-olmstead/lifecycle-marketing-claude-engine/config/esp_payload_schemas.json",
   "title": "LMM Engine ESP trigger-event request bodies",
-  "description": "Request bodies for pushing one custom event per flow entrant into an ESP, as tools/event_payloads.py builds them and scripts/campaign_simulator.py --payloads checks them. One $defs entry per endpoint; x-endpoint records the method, URL, authentication, limits and the documentation each was read from on 2026-10-20. Limits a JSON Schema cannot express (bytes per payload, objects summed across arrays) are stated in x-endpoint and enforced by tools/event_payloads.py. Vendors change versions and limits; re-check before a production sync.",
+  "description": "Request bodies the engine builds for ESPs: one custom event per flow entrant (tools/event_payloads.py, checked by scripts/campaign_simulator.py --payloads) and person-attribute updates (tools/payloads.py attribute_sync, used by agents/engagement.py). One $defs entry per endpoint; x-endpoint records the method, URL, authentication, limits and the documentation each was read from",
   "type": "object",
-  "oneOf": [
-    {
-      "$ref": "#/$defs/klaviyo_create_event"
-    },
-    {
-      "$ref": "#/$defs/hubspot_send_events"
-    },
-    {
-      "$ref": "#/$defs/hubspot_send_events_batch"
-    },
-    {
-      "$ref": "#/$defs/braze_users_track"
-    },
-    {
-      "$ref": "#/$defs/customerio_pipelines_track"
-    },
-    {
-      "$ref": "#/$defs/customerio_track_v1"
-    }
-  ],
   "$defs": {
     "klaviyo_create_event": {
       "x-endpoint": {
@@ -401,7 +381,58 @@
         },
         "attributes": {
           "type": "array",
-          "maxItems": 75
+          "maxItems": 75,
+          "items": {
+            "type": "object",
+            "properties": {
+              "external_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "user_alias": {
+                "type": "object"
+              },
+              "braze_id": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              },
+              "phone": {
+                "type": "string"
+              },
+              "_update_existing_only": {
+                "type": "boolean"
+              }
+            },
+            "anyOf": [
+              {
+                "required": [
+                  "external_id"
+                ]
+              },
+              {
+                "required": [
+                  "user_alias"
+                ]
+              },
+              {
+                "required": [
+                  "braze_id"
+                ]
+              },
+              {
+                "required": [
+                  "email"
+                ]
+              },
+              {
+                "required": [
+                  "phone"
+                ]
+              }
+            ]
+          }
         },
         "purchases": {
           "type": "array",
@@ -417,11 +448,12 @@
           "Authorization": "Basic base64(<pipelines API key>:)"
         },
         "recommended": "Customer.io recommends the Pipelines API over the Track API v1",
-        "limits": "32 KB per call, 500 KB per batch",
+        "limits": "64 KB per call and 1 MB per batch; the engine packs to 32 KB and 500 KB, leaving room for the envelope the API adds",
         "idempotency": "messageId",
         "docs": [
           "https://docs.customer.io/integrations/api/cdp/",
-          "https://docs.customer.io/integrations/data-in/connections/http-api.md"
+          "https://docs.customer.io/integrations/data-in/connections/http-api.md",
+          "https://docs.customer.io/integrations/api/track-vs-cdp-api/"
         ],
         "checked": "2026-10-20"
       },
@@ -510,6 +542,263 @@
           "const": "event"
         }
       }
+    },
+    "klaviyo_profile_bulk_import": {
+      "x-endpoint": {
+        "method": "POST",
+        "url": "https://a.klaviyo.com/api/profile-bulk-import-jobs",
+        "headers": {
+          "Authorization": "Klaviyo-API-Key <private key with profiles:write>",
+          "revision": "2026-10-15"
+        },
+        "limits": "10,000 profiles and 5 MB per job, 100 KB per profile; null values do not clear a property through this endpoint",
+        "docs": [
+          "https://developers.klaviyo.com/en/reference/bulk_import_profiles"
+        ],
+        "checked": "2026-10-20"
+      },
+      "type": "object",
+      "required": [
+        "data"
+      ],
+      "properties": {
+        "data": {
+          "type": "object",
+          "required": [
+            "type",
+            "attributes"
+          ],
+          "properties": {
+            "type": {
+              "const": "profile-bulk-import-job"
+            },
+            "attributes": {
+              "type": "object",
+              "required": [
+                "profiles"
+              ],
+              "properties": {
+                "profiles": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 10000,
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "attributes"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "profile"
+                          },
+                          "attributes": {
+                            "type": "object",
+                            "anyOf": [
+                              {
+                                "required": [
+                                  "email"
+                                ]
+                              },
+                              {
+                                "required": [
+                                  "phone_number"
+                                ]
+                              },
+                              {
+                                "required": [
+                                  "external_id"
+                                ]
+                              }
+                            ],
+                            "properties": {
+                              "email": {
+                                "type": "string"
+                              },
+                              "phone_number": {
+                                "type": "string"
+                              },
+                              "external_id": {
+                                "type": "string"
+                              },
+                              "properties": {
+                                "type": "object"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "relationships": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    "hubspot_contacts_batch_upsert": {
+      "x-endpoint": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/objects/2026-09/contacts/batch/upsert",
+        "headers": {
+          "Authorization": "Bearer <private app token with crm.objects.contacts.write>"
+        },
+        "limits": "100 inputs per request; property internal names must exist on the contact object; values are strings",
+        "docs": [
+          "https://developers.hubspot.com/docs/api-reference/crm-contacts-v3/batch/post-crm-v3-objects-contacts-batch-upsert"
+        ],
+        "checked": "2026-10-20"
+      },
+      "type": "object",
+      "required": [
+        "inputs"
+      ],
+      "properties": {
+        "inputs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "properties"
+            ],
+            "properties": {
+              "idProperty": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "properties": {
+                "type": "object",
+                "propertyNames": {
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "customerio_pipelines_batch": {
+      "x-endpoint": {
+        "method": "POST",
+        "url": "https://cdp.customer.io/v1/batch (EU: https://cdp-eu.customer.io/v1/batch)",
+        "headers": {
+          "Authorization": "Basic base64(<pipelines API key>:)"
+        },
+        "limits": "64 KB per call and 1 MB per batch; the engine packs to 32 KB and 500 KB, leaving room for the envelope the API adds",
+        "docs": [
+          "https://docs.customer.io/integrations/api/cdp/",
+          "https://docs.customer.io/integrations/data-in/connections/http-api.md",
+          "https://docs.customer.io/integrations/api/track-vs-cdp-api/"
+        ],
+        "checked": "2026-10-20"
+      },
+      "type": "object",
+      "required": [
+        "batch"
+      ],
+      "properties": {
+        "batch": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "enum": [
+                  "identify",
+                  "track",
+                  "page",
+                  "screen",
+                  "group",
+                  "alias"
+                ]
+              },
+              "userId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "anonymousId": {
+                "type": "string"
+              },
+              "traits": {
+                "type": "object"
+              },
+              "event": {
+                "type": "string"
+              },
+              "properties": {
+                "type": "object"
+              },
+              "messageId": {
+                "type": "string"
+              }
+            },
+            "anyOf": [
+              {
+                "required": [
+                  "userId"
+                ]
+              },
+              {
+                "required": [
+                  "anonymousId"
+                ]
+              }
+            ]
+          }
+        }
+      }
     }
-  }
+  },
+  "anyOf": [
+    {
+      "$ref": "#/$defs/klaviyo_create_event"
+    },
+    {
+      "$ref": "#/$defs/hubspot_send_events"
+    },
+    {
+      "$ref": "#/$defs/hubspot_send_events_batch"
+    },
+    {
+      "$ref": "#/$defs/braze_users_track"
+    },
+    {
+      "$ref": "#/$defs/customerio_pipelines_track"
+    },
+    {
+      "$ref": "#/$defs/customerio_track_v1"
+    },
+    {
+      "$ref": "#/$defs/klaviyo_profile_bulk_import"
+    },
+    {
+      "$ref": "#/$defs/hubspot_contacts_batch_upsert"
+    },
+    {
+      "$ref": "#/$defs/customerio_pipelines_batch"
+    }
+  ]
 }

@@ -16,4 +16,4 @@ anything that must never be guessed (dates, splits, consent, sizing, syntax). On
 calls the Claude API, and only when ANTHROPIC_API_KEY is set; everything else runs offline.
 """
 
-__version__ = "2.1.0"
+__version__ = "2.2.0"

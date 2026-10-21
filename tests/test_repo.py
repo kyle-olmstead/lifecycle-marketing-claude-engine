@@ -1,4 +1,6 @@
 import filecmp
+import json
+import re
 import shutil
 import subprocess
 import sys
@@ -37,6 +39,11 @@ TEAMMATE_TREE = [
     "scripts/sheets_sync.py", "scripts/webhook_parser.py", "scripts/campaign_simulator.py", "scripts/mcp_server.py",
     "docs/quickstart_for_marketers.md", "docs/architectural_overview.md",
     "briefs/brief_template.yaml", "skills/lifecycle-teammate/SKILL.md", "tools/event_payloads.py",
+    # v2.2
+    "agents/pipeline.py", "agents/stages.py", "agents/strategist.py", "agents/compliance.py", "agents/engagement.py", "agents/cli.py",
+    "tools/dns_collect.py", "tools/contracts.py", "scripts/daily.py", "config/compliance_rules.json", "pyproject.toml",
+    "schemas/deliverability_input.schema.json", "schemas/readout_input.schema.json", "schemas/warmup_tiers.schema.json",
+    "tests/fixtures/message_events.csv", "docs/AUDIT.md", "briefs/active/README.md",
 ]
 
 
@@ -65,7 +72,7 @@ def test_repository_examples_pass_their_own_rules():
 def test_fixtures_are_deterministic(tmp_path):
     shutil.copy(ROOT / "tests/fixtures/make_fixtures.py", tmp_path / "make_fixtures.py")
     subprocess.run([sys.executable, str(tmp_path / "make_fixtures.py")], check=True, capture_output=True)
-    for name in ("users.csv", "orders.csv", "track_events.csv"):
+    for name in ("users.csv", "orders.csv", "track_events.csv", "message_events.csv"):
         assert filecmp.cmp(tmp_path / name, ROOT / "tests/fixtures" / name, shallow=False), name
 
 
@@ -74,5 +81,26 @@ def test_cli_entry_points_run():
                  ["tools/warmup.py", "--target", "1000", "--tiers", '{"engaged_30d": 5000}', "--gate", "GREEN"],
                  ["tools/stats.py", "size", "--baseline", "0.1", "--mde-abs", "0.02"],
                  ["tools/sql_check.py", "modules/04_data_schemas_and_sql/queries/rolling_d30_retention.sql", "--run"]):
+        r = subprocess.run([sys.executable, *args], cwd=ROOT, capture_output=True, text=True)
+        assert r.returncode == 0, (args, r.stderr[-500:])
+
+
+def test_versions_agree():
+    from agents import __version__ as a
+    from tools import __version__ as t
+    plugin = json.loads((ROOT / ".claude-plugin/plugin.json").read_text())["version"]
+    market = json.loads((ROOT / ".claude-plugin/marketplace.json").read_text())
+    pyproject = re.search(r'^version = "([^"]+)"', (ROOT / "pyproject.toml").read_text(), re.M).group(1)
+    versions = {a, t, plugin, pyproject, market["metadata"]["version"] if "metadata" in market else a, *[p["version"] for p in market["plugins"]]}
+    assert versions == {"2.2.0"}, versions
+    assert "## 2.2.0" in (ROOT / "CHANGELOG.md").read_text()
+
+
+def test_new_cli_entry_points_run(tmp_path):
+    for args in (["scripts/daily.py", "--no-sheet", "--out", str(tmp_path / "daily")],
+                 ["-m", "agents.cli", "--dry-run", "check deliverability for example.com"],
+                 ["-m", "agents.engagement", "--sql-only", "--dialect", "snowflake", "--out", str(tmp_path / "eng")],
+                 ["tools/dns_collect.py", "--help"],
+                 ["tools/contracts.py"]):
         r = subprocess.run([sys.executable, *args], cwd=ROOT, capture_output=True, text=True)
         assert r.returncode == 0, (args, r.stderr[-500:])

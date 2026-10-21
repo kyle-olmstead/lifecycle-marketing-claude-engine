@@ -118,9 +118,9 @@ def feasibility(entries_per_month: float, holdout_share: float, p_control: float
     elif months <= 3:
         design, read = f"persistent randomized holdout at {holdout_share:.0%}", "causal"
     elif months <= horizon_months:
-        alt_months = months_for(0.25)[3]
-        design = (f"persistent randomized holdout at {holdout_share:.0%} reads in about {months:.1f} months; a 25% holdout would read in about "
-                  f"{alt_months:.1f} months at the cost of withholding more audience")
+        design = f"persistent randomized holdout at {holdout_share:.0%} reads in about {months:.1f} months"
+        if holdout_share < 0.25:   # only suggest a larger holdout when there is a larger one to suggest
+            design += (f"; a 25% holdout would read in about {months_for(0.25)[3]:.1f} months at the cost of withholding more audience")
         read = "causal, slow"
     else:
         design = ("the holdout will not reach a readable sample inside the horizon. Use a pre/post baseline, label it directional, and "
@@ -284,13 +284,14 @@ def render_incrementality(x: Dict[str, Any]) -> str:
     def money(v: Optional[float]) -> str:
         return "not computed" if v is None else f"${v:,.0f}"
     r = x["conversion_readout"]
-    verdict = ("; not distinguishable from zero at 95%" if x["read"] == "causal, inconclusive" else
+    level = f"{1 - r.get('alpha', 0.05):.0%}"   # the interval level follows the readout's alpha, not a fixed 95%
+    verdict = (f"; not distinguishable from zero at {level}" if x["read"] == "causal, inconclusive" else
                "; directional only" if x["read"] == "directional" else "")
-    conv = (f"{r['rate_treatment']:.2%} vs {r['rate_holdout']:.2%}; difference {r['diff_abs'] * 100:+.2f} pts, 95% CI "
+    conv = (f"{r['rate_treatment']:.2%} vs {r['rate_holdout']:.2%}; difference {r['diff_abs'] * 100:+.2f} pts, {level} CI "
             f"{r['diff_ci'][0] * 100:+.2f} to {r['diff_ci'][1] * 100:+.2f} pts{verdict}") if "rate_treatment" in r else "not readable at this sample"
     if x.get("incremental_revenue_ci"):
         lo, hi = x["incremental_revenue_ci"]
-        rev_note = f"(95% CI {money(lo)} to {money(hi)}, from per-entrant revenue SDs)"
+        rev_note = f"({level} CI {money(lo)} to {money(hi)}, from per-entrant revenue SDs)"
     elif x["incremental_revenue"] is not None:
         rev_note = "(point estimate: revenue per entrant, treatment minus holdout, times treatment entrants; supply revenue_sd per arm for an interval)"
     else:
@@ -360,7 +361,16 @@ def _cli(argv: Optional[List[str]] = None) -> int:
     elif a.cmd == "readout":
         print(json.dumps(readout(a.xt, a.nt, a.xc, a.nc, expected_holdout=a.expected_holdout), indent=2))
     elif a.cmd == "incrementality":
-        x = incrementality(json.loads(Path(a.input).read_text(encoding="utf-8")))
+        try:
+            from tools.contracts import InputError, validate_readout
+        except ImportError:  # run as a script from tools/
+            from contracts import InputError, validate_readout  # type: ignore
+        try:
+            doc = validate_readout(json.loads(Path(a.input).read_text(encoding="utf-8")))
+        except InputError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        x = incrementality(doc)
         print(render_incrementality(x) if a.markdown else json.dumps(x, indent=2))
     return 0
 

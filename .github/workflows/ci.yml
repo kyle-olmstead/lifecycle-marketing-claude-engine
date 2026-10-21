@@ -4,8 +4,8 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
@@ -23,10 +23,25 @@ jobs:
           python -m agents.orchestrator plan --brief briefs/examples/winback_14d.yaml --data tests/fixtures --copy-mode offline --out out
           python scripts/campaign_simulator.py out/ridgeview_winback_14d/flow_spec.json
           for f in examples/flows/*.json; do python scripts/campaign_simulator.py "$f" > /dev/null; done
-      - name: Daily audit runs in demo mode
+      - name: Daily job runs in demo mode with no step errors
         run: |
-          python -m agents.cohort_analyst audit --brief briefs/examples/winback_14d.yaml --data tests/fixtures --out out/audit > /dev/null
-          python scripts/sheets_sync.py --audit out/audit/audit.json --dry-run --out out/sheets > /dev/null
+          python scripts/daily.py --dry-run --strict --out out/daily > /dev/null
+          python -c "import json; s = json.load(open('out/daily/status.json')); assert s['flows'] and not s['errors'], s"
+      - name: The plain-English front door routes and runs
+        run: |
+          pip install -e . --no-deps > /dev/null
+          lcm --dry-run "check deliverability for example.com"
+          lcm "how many people do we need to detect a 20% lift on a 10% baseline with a 15% holdout"
+          lcm "build the engagement tiers and the sunset list" --data tests/fixtures --platform braze --out out > /dev/null
+          lcm "compare our monthly newsletter with the win-back trigger" --brief briefs/examples/winback_14d.yaml --data tests/fixtures --out out > /dev/null
+      - name: A saved run can be revised and inspected
+        run: |
+          python -m agents.orchestrator revise --run out/ridgeview_winback_14d --set touches=4 --out out > /dev/null
+          python -m agents.orchestrator status --run out/ridgeview_winback_14d
+      - name: Schemas in schemas/ match the Pydantic contracts
+        run: |
+          python tools/contracts.py --write-schemas > /dev/null
+          git diff --exit-code schemas/
 
   postgres:
     # Runs the PostgreSQL-dialect cohort queries on a real PostgreSQL and compares them with DuckDB.
@@ -42,8 +57,8 @@ jobs:
     env:
       LCM_PG: "host=localhost port=5432 user=postgres password=postgres dbname=postgres"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt

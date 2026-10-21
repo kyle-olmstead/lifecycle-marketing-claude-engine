@@ -1,25 +1,27 @@
-# Daily cohort health check at 05:00 UTC.
+# Daily lifecycle health check at 05:00 UTC.
 #
-# Runs the Cohort Analyst's audit for one brief, posts the result to the run summary, logs it to a
-# Google Sheet, and opens (or updates) an issue when it finds an anomaly. Configure it in the
-# repository's Settings, Secrets and variables, Actions. With nothing configured it runs on the demo
-# fixtures, so the workflow stays green and shows what the output looks like.
+# Runs scripts/daily.py: a cohort audit for every brief in briefs/active/, engagement tiers from the
+# ESP's message events, and a live DNS check of each sending domain. The summary goes to the run
+# page, every result to a Google Sheet, and each finding to its own GitHub issue (one per flow with
+# an anomaly, per RED domain, and for a RED unengaged share), commented on again while it stays open.
+# Configure it in the repository's Settings, Secrets and variables, Actions. With nothing configured
+# it runs on the demo fixtures, so the workflow stays green and shows what the output looks like.
 #
 # Variables (vars.*)
-#   LCM_BRIEF                       brief to audit (default briefs/examples/winback_14d.yaml)
-#   LCM_BQ_PROJECT, LCM_BQ_DATASET  BigQuery mode: the audit SQL runs in your warehouse; the dataset
-#                                   holds users, orders and track_events (or views with those names)
+#   LCM_BQ_PROJECT, LCM_BQ_DATASET  BigQuery mode: the audit and tier SQL run in your warehouse; the dataset
+#                                   holds users, orders, track_events and message_events (or views with those names)
 #   GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT
 #                                   keyless auth to Google Cloud for BigQuery mode (Workload Identity Federation)
-#   LCM_DATA_URL                    file mode instead: an https URL prefix serving users, orders and
-#                                   track_events as .parquet or .csv (for example signed exports)
+#   LCM_DATA_URL                    file mode instead: an https URL prefix serving the tables as .parquet or .csv
+#   LCM_DOMAINS                     comma-separated sending domains to check (for example example.com,em.example.com)
 #   LCM_SHEET_ID                    the Google Sheet to log to
-#   LCM_FAIL_ON_ANOMALY             'true' to fail the run when an anomaly is found
+#   LCM_FAIL_ON_ANOMALY             'true' to fail the run when any flow has an anomaly
 # Secrets (secrets.*)
 #   GOOGLE_SERVICE_ACCOUNT_JSON     service-account key with Editor access to the sheet
 #
 # Scheduled workflows in a public repository pause after 60 days without repository activity;
-# GitHub emails the owner, and one click re-enables them.
+# GitHub emails the owner, and one click re-enables them. GitHub may start a scheduled run some
+# minutes late at busy times; the audit judges the latest complete day, so a late start changes nothing.
 
 name: daily cohort audit
 
@@ -28,8 +30,8 @@ on:
     - cron: "0 5 * * *"
   workflow_dispatch:
     inputs:
-      brief:
-        description: "Brief to audit"
+      domains:
+        description: "Sending domains to check (comma-separated; default vars.LCM_DOMAINS)"
         required: false
         default: ""
 
@@ -45,17 +47,17 @@ concurrency:
 jobs:
   audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
-      LCM_BRIEF: ${{ inputs.brief || vars.LCM_BRIEF || 'briefs/examples/winback_14d.yaml' }}
       LCM_BQ_PROJECT: ${{ vars.LCM_BQ_PROJECT }}
       LCM_BQ_DATASET: ${{ vars.LCM_BQ_DATASET }}
       LCM_DATA_URL: ${{ vars.LCM_DATA_URL }}
+      LCM_DOMAINS: ${{ inputs.domains || vars.LCM_DOMAINS }}
       LCM_SHEET_ID: ${{ vars.LCM_SHEET_ID }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -70,71 +72,59 @@ jobs:
 
       - name: Authenticate to Google Cloud
         if: env.LCM_MODE == 'bigquery'
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
       - name: Set up the bq command line
         if: env.LCM_MODE == 'bigquery'
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
 
-      - name: Run the audit queries in BigQuery
-        if: env.LCM_MODE == 'bigquery'
-        run: |
-          python -m agents.cohort_analyst audit-sql --brief "$LCM_BRIEF" --dialect bigquery --out out/audit_sql
-          mkdir -p out/audit_results
-          # the queries start with '-- dialect:' comment lines, which bq would read as flags: they are stripped
-          for q in daily snapshot funnel; do
-            bq query --project_id="$LCM_BQ_PROJECT" --dataset_id="$LCM_BQ_PROJECT:$LCM_BQ_DATASET" \
-              --use_legacy_sql=false --format=json --max_rows=100000 "$(grep -v '^--' out/audit_sql/$q.sql)" > "out/audit_results/$q.json"
-          done
-
-      - name: Audit cohort health
-        run: |
-          case "$LCM_MODE" in
-            bigquery) SRC=(--from-results out/audit_results) ;;
-            url)      SRC=(--data "$LCM_DATA_URL") ;;
-            *)        SRC=(--data tests/fixtures) ;;
-          esac
-          python -m agents.cohort_analyst audit --brief "$LCM_BRIEF" "${SRC[@]}" --out out/audit
-          {
-            echo "Data source: $LCM_MODE"
-            echo
-            cat out/audit/audit.md
-          } >> "$GITHUB_STEP_SUMMARY"
-          echo "LCM_STATUS=$(python -c 'import json; print(json.load(open("out/audit/audit.json"))["status"])')" >> "$GITHUB_ENV"
-
-      - name: Log to Google Sheets
+      - name: Run the daily health check
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-        run: python scripts/sheets_sync.py --audit out/audit/audit.json --out out/sheets
+        run: |
+          python scripts/daily.py --mode "$LCM_MODE" --out out/daily
+          cat out/daily/summary.md >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Open or update an anomaly issue
-        if: env.LCM_STATUS == 'anomaly' && env.LCM_MODE != 'demo'
+      - name: Open or update one issue per finding
+        if: env.LCM_MODE != 'demo'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          AS_OF=$(python -c 'import json; print(json.load(open("out/audit/audit.json"))["as_of"])')
-          FLOW=$(python -c 'import json; print(json.load(open("out/audit/audit.json"))["flow"])')
-          TITLE="Cohort anomaly: $FLOW"
-          gh label create cohort-anomaly --color B60205 --description "Daily cohort audit finding" --force
-          NUMBER=$(gh issue list --label cohort-anomaly --state open --search "in:title \"$TITLE\"" --json number --jq '.[0].number')
-          { echo "Audit for $AS_OF ([run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID))"; echo; cat out/audit/audit.md; } > body.md
-          if [ -n "$NUMBER" ]; then gh issue comment "$NUMBER" --body-file body.md
-          else gh issue create --title "$TITLE" --label cohort-anomaly --body-file body.md; fi
+          RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          jq -c '.[]' out/daily/issues.json | while read -r item; do
+            TITLE=$(jq -r '.title' <<< "$item")
+            LABEL=$(jq -r '.label' <<< "$item")
+            { echo "Daily check $(date -u +%F) ([run]($RUN_URL))"; echo; cat "$(jq -r '.body_path' <<< "$item")"; } > body.md
+            gh label create "$LABEL" --color B60205 --description "Daily lifecycle health finding" --force
+            NUMBER=$(gh issue list --label "$LABEL" --state open --limit 200 --json number,title \
+                     | jq -r --arg t "$TITLE" 'map(select(.title == $t))[0].number // empty')
+            if [ -n "$NUMBER" ]; then gh issue comment "$NUMBER" --body-file body.md
+            else gh issue create --title "$TITLE" --label "$LABEL" --body-file body.md; fi
+          done
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: cohort-audit-${{ github.run_id }}
-          path: |
-            out/audit
-            out/sheets
+          name: daily-health-${{ github.run_id }}
+          path: out/daily
           retention-days: 30
 
-      - name: Fail on anomaly when asked
-        if: env.LCM_STATUS == 'anomaly' && vars.LCM_FAIL_ON_ANOMALY == 'true'
+      - name: Fail on step errors, or on anomalies when asked
+        if: always()
         run: |
-          echo "::error::cohort anomaly found; see the run summary"
-          exit 1
+          python - <<'PY'
+          import json, os, sys
+          s = json.load(open("out/daily/status.json"))
+          for e in s["errors"]:
+              print(f"::error::{e}")
+          anomalies = [f["flow"] for f in s["flows"] if f.get("status") == "anomaly"]
+          if anomalies and os.environ.get("FAIL_ON_ANOMALY") == "true":
+              print(f"::error::cohort anomaly in {', '.join(anomalies)}; see the run summary")
+              sys.exit(1)
+          sys.exit(1 if s["errors"] else 0)
+          PY
+        env:
+          FAIL_ON_ANOMALY: ${{ vars.LCM_FAIL_ON_ANOMALY }}

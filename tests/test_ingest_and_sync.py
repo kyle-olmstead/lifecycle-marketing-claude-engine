@@ -306,13 +306,20 @@ def test_mcp_server_tools(tmp_path, monkeypatch):
     from scripts import mcp_server
     monkeypatch.setattr(mcp_server, "OUT", tmp_path)
     names = {t.name for t in asyncio.run(mcp_server.server.list_tools())}
-    assert names == {"draft_brief", "plan_campaign", "audit_cohort", "simulate_flow"}
+    assert names == {"draft_brief", "plan_campaign", "revise_plan", "approve_variant", "audit_cohort", "engagement_tiers", "check_domain",
+                     "simulate_flow"}
     r = asyncio.run(mcp_server.server.call_tool("plan_campaign", {"brief_path": str(ROOT / "briefs/examples/winback_14d.yaml"),
                                                                   "data_dir": str(ROOT / "tests/fixtures"), "copy_mode": "offline"}))
     text = r.content[0].text
     assert "Status: READY WITH ASSUMPTIONS" in text and (tmp_path / "ridgeview_winback_14d" / "flow_spec.json").exists()
     y = asyncio.run(mcp_server.server.call_tool("draft_brief", {"text": "5-touch win-back after 14 days inactive", "product_name": "Acme"}))
     assert "churn_threshold_days: 14" in y.content[0].text
+    ok = asyncio.run(mcp_server.server.call_tool("approve_variant", {"flow": "ridgeview_winback_14d", "step_id": "t1_email", "variant_id": "B"}))
+    assert ok.content[0].text.startswith("Approved")
+    rv = asyncio.run(mcp_server.server.call_tool("revise_plan", {"flow": "ridgeview_winback_14d", "changes": {"holdout_pct": 20}}))
+    assert "a revision of" in rv.content[0].text and "(approved)" in rv.content[0].text
+    tiers = asyncio.run(mcp_server.server.call_tool("engagement_tiers", {"data_dir": str(ROOT / "tests/fixtures")}))
+    assert "Unengaged share" in tiers.content[0].text
 
 
 def test_mcp_config():
@@ -332,8 +339,9 @@ def test_daily_workflow():
     wf = yaml.safe_load((ROOT / ".github/workflows/daily_cohort_audit.yml").read_text())
     assert wf[True]["schedule"] == [{"cron": "0 5 * * *"}]  # PyYAML reads the 'on' key as True
     runs = " ".join(s.get("run", "") for s in wf["jobs"]["audit"]["steps"])
-    for path in ("agents.cohort_analyst", "scripts/sheets_sync.py"):
-        assert path in runs
+    assert "scripts/daily.py" in runs
+    uses = [s["uses"] for s in wf["jobs"]["audit"]["steps"] if "uses" in s]
+    assert "actions/checkout@v7" in uses and "actions/upload-artifact@v7" in uses   # Node 24 majors
     assert (ROOT / "briefs/examples/winback_14d.yaml").exists()
 
 
@@ -359,3 +367,70 @@ def test_brief_command_creates_its_folder(tmp_path):
     out = tmp_path / "lmm-engine" / "briefs" / "acme.yaml"
     assert orchestrator._cli(["brief", "--text", "5-touch win-back after 14 days inactive", "--product", "Acme", "--out", str(out)]) == 0
     assert "churn_threshold_days: 14" in out.read_text()
+
+
+# ----------------------------------------------------------------------------------------------
+# real-time trigger forwarding (v2.2, opt-in)
+# ----------------------------------------------------------------------------------------------
+
+def _activation(platform="klaviyo"):
+    from agents.brief import parse_text
+    return parse_text("3-touch activation flow for people who signed up but have not created a report within 7 days", "Acme",
+                      {"platform": platform})
+
+
+def test_forwarder_adds_the_warehouse_holdout_and_sends_only_with_credentials(tmp_path):
+    import httpx
+    from agents.sql_dialects import holdout_bucket
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return httpx.Response(202, json={})
+
+    ev = {"event_id": "e1", "user_id": "u_0042", "event_name": "signed_up", "event_at": TS, "properties": {"method": "email"}}
+    other = {**ev, "event_id": "e2", "event_name": "feature_used"}
+    fw = webhook_parser.Forwarder([_activation()], tmp_path, env={"KLAVIYO_PRIVATE_KEY": "pk_test"}, transport=httpx.MockTransport(handler))
+    assert fw.forward([ev, other]) == {"forwarded": 1, "not_sent": 0, "failed": 0}
+    body = json.loads(seen[0].content)
+    props = body["data"]["attributes"]["properties"]
+    bucket = holdout_bucket("u_0042", "acme_activation")
+    assert props["holdout_bucket"] == bucket and props["in_holdout"] == (bucket < 15) and props["flow"] == "acme_activation"
+    assert seen[0].headers["Authorization"] == "Klaviyo-API-Key pk_test"
+    # no credential: nothing is sent, and the request is kept to replay, with the placeholder rather than any secret
+    fw2 = webhook_parser.Forwarder([_activation()], tmp_path, env={}, transport=httpx.MockTransport(handler))
+    assert fw2.forward([ev]) == {"forwarded": 0, "not_sent": 1, "failed": 0} and len(seen) == 1
+    kept = [json.loads(x) for x in next((tmp_path / "forward_failed").glob("*.ndjson")).read_text().splitlines()]
+    assert "KLAVIYO_PRIVATE_KEY" in kept[0]["reason"] and "${KLAVIYO_PRIVATE_KEY}" in json.dumps(kept[0]["request"])
+
+
+def test_forwarder_records_esp_errors_and_skips_winback_briefs(tmp_path):
+    import httpx
+    from agents.brief import load_brief
+    winback = load_brief(ROOT / "briefs/examples/winback_14d.yaml")
+    fw = webhook_parser.Forwarder([winback, _activation("braze")], tmp_path, env={"BRAZE_REST_API_KEY": "k"},
+                                  transport=httpx.MockTransport(lambda r: httpx.Response(400, text="bad")))
+    assert [b.slug for b in fw.briefs] == ["acme_activation"]
+    ev = {"event_id": "e1", "user_id": "u_1", "event_name": "signed_up", "event_at": TS, "properties": {}}
+    assert fw.forward([ev]) == {"forwarded": 0, "not_sent": 0, "failed": 1}
+
+
+def test_forwarding_is_off_unless_asked(tmp_path):
+    assert webhook_parser.Forwarder.from_env(tmp_path, env={}) is None
+
+
+def test_http_app_forwards_after_responding(tmp_path, monkeypatch):
+    import httpx
+    from datetime import datetime, timezone
+    from fastapi.testclient import TestClient
+    sent = []
+    fw = webhook_parser.Forwarder([_activation()], tmp_path, env={"KLAVIYO_PRIVATE_KEY": "pk"},
+                                  transport=httpx.MockTransport(lambda r: sent.append(r) or httpx.Response(202)))
+    monkeypatch.setattr(webhook_parser.Forwarder, "from_env", classmethod(lambda cls, root, env=None, transport=None: fw))
+    monkeypatch.setenv("SEGMENT_SHARED_SECRET", "s3cret")
+    client = TestClient(webhook_parser.create_app(tmp_path))
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    raw = json.dumps({**_seg("Signed Up", props={"method": "email", "plan": "free"}), "timestamp": now}).encode()
+    r = client.post("/webhooks/segment", content=raw, headers={"X-Signature": hmac.new(b"s3cret", raw, hashlib.sha1).hexdigest()})
+    assert r.json()["accepted"] == 1 and r.json()["forwarding"] == 1 and len(sent) == 1
+    assert client.get("/healthz").json()["forwarding"] == ["acme_activation (klaviyo): signed_up"]

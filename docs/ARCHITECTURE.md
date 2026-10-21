@@ -43,7 +43,7 @@ flowchart TB
 | Tools | `tools/*.py` | Deterministic computation, standard library plus a few parsers. No network, no API keys. |
 | Contracts | `schemas/`, `modules/02_*/schemas/` | JSON Schemas for event payloads and flow specifications, so outputs can be validated by machine. |
 | Checks | `tools/repo_check.py`, `tests/`, `.github/workflows/ci.yml` | Every SQL, template, JSON and XML example in the repository is checked against the rules the engine imposes on Claude. |
-| Teammate (2.1) | `agents/`, `scripts/`, `config/`, `briefs/` | One brief in, a checked plan out: four agents run the modules as code, a simulator dry-runs the flow, and a daily audit watches the cohort. See [`architectural_overview.md`](architectural_overview.md). |
+| Teammate (2.1, stateful in 2.2) | `agents/`, `scripts/`, `config/`, `briefs/` | One brief in, a checked plan out: a resumable pipeline of agents (Analyst, Strategist, Architect, Copywriter, Experiment, QA, Compliance) runs the modules as code, a simulator dry-runs the flow, `lcm` routes plain-English requests, and a daily job watches the cohorts, the engagement tiers and the sending domains. See [`architectural_overview.md`](architectural_overview.md). |
 
 ## 2. Module dependencies
 

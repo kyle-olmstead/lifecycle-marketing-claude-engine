@@ -1,11 +1,17 @@
 """
-Deterministic synthetic data for the three canonical tables (users, orders, track_events).
+Deterministic synthetic data for the canonical tables (users, orders, track_events, message_events).
 
 Nothing here is real. The shapes are chosen so that every query in modules/04 has something to
 find: a spread of signup cohorts, users with zero to many orders, refunds, anonymous events that
 later identify, and an activation event that some users never reach.
 
-    python tests/fixtures/make_fixtures.py        # writes users.csv, orders.csv, track_events.csv next to this file
+    python tests/fixtures/make_fixtures.py        # writes users.csv, orders.csv, track_events.csv, message_events.csv next to this file
+
+message_events is generated after the other three with its own random stream, so adding it changed
+none of them: a newsletter every two weeks for 26 weeks to people with email consent, with opens
+(some flagged as machine opens, as Apple Mail Privacy Protection produces), clicks that follow each
+person's product activity, and the occasional hard bounce, complaint or unsubscribe, after which
+that person is never mailed again.
 """
 from __future__ import annotations
 
@@ -105,7 +111,61 @@ def main() -> None:
             w = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
             w.writeheader()
             w.writerows(rows)
-    print(f"users={len(users)} orders={len(orders)} events={len(events)}")
+    messages = message_events(users, events)
+    with (HERE / "message_events.csv").open("w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(messages[0].keys()))
+        w.writeheader()
+        w.writerows(messages)
+    print(f"users={len(users)} orders={len(orders)} events={len(events)} message_events={len(messages)}")
+
+
+def message_events(users, events):
+    rng = random.Random(SEED + 1)
+    sessions = {}
+    for e in events:
+        if e["event_name"] == "session_started" and e["user_id"]:
+            sessions.setdefault(e["user_id"], []).append(datetime.strptime(e["event_at"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc))
+    sends = [AS_OF - timedelta(days=14 * k, hours=-10) for k in range(13, 0, -1)]   # 26 weeks of a biweekly newsletter, 10:00 UTC
+    out = []
+    n = 0
+
+    def add(uid, name, at, mid, machine=""):
+        nonlocal n
+        n += 1
+        out.append({"event_id": f"me_{n:06d}", "user_id": uid, "channel": "email", "event_name": name, "event_at": iso(at),
+                    "message_id": mid, "campaign": "newsletter", "machine_open": machine})
+
+    for u in users:
+        if not u["email_consent_at"]:
+            continue
+        uid = u["user_id"]
+        consent = datetime.strptime(u["email_consent_at"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        mpp = rng.random() < 0.35                              # an Apple Mail reader: every delivered email registers a machine open
+        for send in sends:
+            if send < consent + timedelta(days=1):
+                continue
+            mid = f"m_{send:%Y%m%d}"
+            recent = sum(1 for t in sessions.get(uid, []) if send - timedelta(days=45) <= t < send)
+            eng = min(1.0, recent / 6)
+            r = rng.random()
+            if r < 0.004:
+                add(uid, "bounced", send + timedelta(minutes=1), mid)
+                break
+            add(uid, "delivered", send + timedelta(minutes=1), mid)
+            if mpp:
+                add(uid, "opened", send + timedelta(minutes=rng.randint(2, 30)), mid, "true")
+            if rng.random() < 0.10 + 0.45 * eng:
+                opened_at = send + timedelta(hours=rng.randint(1, 40))
+                add(uid, "opened", opened_at, mid, "false")
+                if rng.random() < 0.08 + 0.35 * eng:
+                    add(uid, "clicked", opened_at + timedelta(minutes=rng.randint(1, 20)), mid)
+            if rng.random() < 0.0008:
+                add(uid, "complained", send + timedelta(hours=rng.randint(1, 48)), mid)
+                break
+            if rng.random() < 0.004:
+                add(uid, "unsubscribed", send + timedelta(hours=rng.randint(1, 48)), mid)
+                break
+    return out
 
 
 if __name__ == "__main__":

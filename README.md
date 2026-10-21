@@ -1,4 +1,4 @@
-# LMM Engine (lifecycle-marketing-claude-engine) v2.1
+# LMM Engine (lifecycle-marketing-claude-engine) v2.2
 
 **An operating layer for enterprise lifecycle marketing on Claude.** Claude works as two senior
 people at once: a principal lifecycle growth strategist and a senior CRM systems and data engineer.
@@ -16,13 +16,20 @@ segment math, experiment statistics, template and SQL syntax.
   who completed onboarding but haven't created a report in 14 days") and get a build-ready plan: the
   cohort SQL, a multi-channel flow that has been simulated, linted copy, and a holdout with its read
   date. Every assumption it made is listed for you to confirm. [Quickstart](docs/quickstart_for_marketers.md).
+- **New in 2.2:** one command for everything, in plain English (`lcm "check deliverability for
+  example.com"`); a five-stage pipeline (Analyst, Strategist, Copywriter, QA, Compliance) that saves
+  its state after every stage, so a failed run resumes and a change re-runs only what it affects;
+  a Compliance agent that checks CAN-SPAM, TCPA and state texting laws, CASL, PECR, ePrivacy, Germany
+  and Australia against your audience's countries; live SPF, DKIM, DMARC and MTA-STS checks; and
+  engagement tiers that take people who never click out of marketing sends. A daily job at 05:00 UTC
+  runs it all and logs it to Google Sheets. What changed and why: [`docs/AUDIT.md`](docs/AUDIT.md).
 - Every SQL, template and JSON example in this repository is checked in CI against the rules the
   engine imposes on Claude. Free and open source (Apache 2.0).
 
 | If you are | Start with | Time |
 |---|---|---|
 | a lifecycle or CRM manager | [Install](#4-install), then say *"set up the lifecycle engine"*, then *"check our deliverability"* | 15 minutes |
-| a marketer with a campaign to plan | [Quickstart for marketers](docs/quickstart_for_marketers.md), then type your brief | 10 minutes |
+| a marketer with a campaign to plan | [Quickstart for marketers](docs/quickstart_for_marketers.md), then `lcm "<your brief>"` | 10 minutes |
 | a marketing leader | [What it does](#1-what-it-does-in-plain-english) and [What is verified](#8-what-is-verified-and-what-is-not) | 5 minutes |
 | a data or marketing engineer | [Repository architecture](#5-repository-architecture), then `docs/ARCHITECTURE.md`, `docs/architectural_overview.md` and `tools/` | as long as you like |
 
@@ -44,13 +51,17 @@ segment math, experiment statistics, template and SQL syntax.
    Snowflake, BigQuery or PostgreSQL, with export payloads for Klaviyo and HubSpot.
 5. **Tells you what worked.** Test sizing before launch, and readouts that report attributed revenue,
    incremental revenue and the gap between them, with honest labels when a sample is too small.
-6. **Plans a whole campaign from one brief (new in 2.1).** Four agents in sequence: a cohort analyst
-   (who enters, on which events, with the SQL and the data checked), a campaign architect (the
-   multi-channel logic tree with waits, consent, exits and a sunset), a copywriter (variants per
-   message, rendered in your platform's template language and linted), and an experimentation agent
-   (a persistent holdout, 15% by default, sized with its read date). A QA pass simulates the flow
-   with synthetic customers before anyone builds it. A daily audit at 05:00 UTC checks the cohort's
-   health and logs it to Google Sheets.
+6. **Plans a whole campaign from one brief.** A pipeline of agents: the Analyst (who enters, on which
+   events, with the SQL and the data checked), the Strategist (which job each touch does, on which
+   channel and day, and why, written down), the Architect (the multi-channel logic tree with waits,
+   consent, exits and a sunset), the Copywriter (variants per message, rendered in your platform's
+   template language and linted), the Experimentation agent (a persistent holdout, 15% by default,
+   sized with its read date), QA (the flow simulated with synthetic customers) and Compliance (the
+   laws that apply to where your audience lives). Every stage is saved, so a run that fails part way
+   resumes there, and `revise` changes one thing without rewriting copy that did not change.
+7. **Checks itself every morning.** At 05:00 UTC a daily job audits the cohort of every live flow,
+   rebuilds the engagement tiers, pulls each sending domain's DNS, logs all of it to Google Sheets,
+   and opens one GitHub issue per problem.
 
 **What it will never do:** recommend more volume on a damaged sender, warm a domain with people who
 never engage, write fake urgency or invented personalization, report attributed revenue as if it were
@@ -73,6 +84,14 @@ assertion, evidence labels on every number (LIVE PULL, SUPPLIED, ESTIMATE, UNKNO
 suppression before content, and low-volume honesty.
 
 ## 3. A taste
+
+```text
+$ lcm "build the engagement tiers and the sunset list" --data tests/fixtures --platform klaviyo
+## Engagement tiers as of 2026-10-07
+...
+Mailable: 305. Unengaged share: 62.3% (RED on the sending gate). Sunset cohort: 190 people get
+lcm_sunset = true and leave marketing sends until they click again.
+```
 
 ```text
 $ python3 tools/deliverability.py analyze examples/deliverability/incident.json --markdown
@@ -127,20 +146,27 @@ one's template and SQL dialect, and writes the context file every other skill re
 **Without the plugin:** paste `core/system_prompt.md`, then your filled `core/context_loader.xml`,
 then the module prompt for the job, into any Claude conversation.
 
-**Run the tools locally** (Python 3.12 or later):
+**Run it locally** (Python 3.12 or later):
 
 ```text
-pip install -r requirements.txt
+pip install -r requirements.txt && pip install -e . --no-deps      # the second command puts lcm on your PATH
 pytest -q && python3 tools/repo_check.py
 ```
 
-**Run the teammate** (same install):
+**Use it in plain English** (same install):
 
 ```text
-python3 -m agents.orchestrator plan --text "Build a 5-touch win-back flow for users who completed onboarding but haven't created a report in 14 days" --product Acme
-python3 -m agents.orchestrator plan --brief briefs/brief_template.yaml --data <folder with users, orders, track_events exports>
-python3 -m agents.cohort_analyst audit --brief briefs/examples/winback_14d.yaml --data tests/fixtures --out out/audit
+lcm "plan a 5-touch win-back for users who completed onboarding but haven't created a report in 14 days" --product Acme
+lcm briefs/active/winback.yaml --data exports/            # a brief, or a YAML job file (kind: audit | engagement | ...)
+lcm "check deliverability for example.com"
+lcm "build the engagement tiers and the sunset list" --data exports/ --platform braze
+lcm "compare our monthly newsletter with the win-back trigger" --brief briefs/active/winback.yaml --data exports/
+lcm "how many people do we need to detect a 20% lift on a 10% baseline with a 15% holdout"
+lcm --dry-run "<anything>"                                 # which job it would run, and what it still needs
 ```
+
+Every job is also a module you can call directly (`python3 -m agents.orchestrator plan ...`,
+`python3 -m agents.orchestrator revise --run out/<flow> --set touches=4`, `python3 scripts/daily.py`).
 
 With the plugin, just describe the campaign; the `lifecycle-teammate` skill runs these for you.
 For Claude Desktop without the plugin, add the local MCP server in `config/mcp_server_config.json`.
@@ -196,28 +222,38 @@ lifecycle-marketing-claude-engine/
 ├── .claude-plugin/                          plugin and marketplace manifests                [added]
 ├── skills/                                  seven plugin skills that route to the modules   [added]
 ├── tools/                                   deterministic tools (below)                     [added]
-├── agents/                                  the teammate: orchestrator and four agents      [2.1]
-│   ├── orchestrator.py                      brief to plan: Analyst, Architect, Copywriter, Experiment, QA
-│   ├── cohort_analyst.py                    entry cohort, SQL in four dialects, daily health audit
-│   ├── campaign_architect.py                multi-channel logic tree as a flow spec
+├── agents/                                  the teammate                                    [2.1]
+│   ├── cli.py                               lcm: plain English or YAML to the right job     [2.2]
+│   ├── orchestrator.py                      CLI: plan, brief, resume, revise, approve, status
+│   ├── pipeline.py, stages.py               the stateful, resumable stage loop              [2.2]
+│   ├── cohort_analyst.py                    entry cohort, SQL in four dialects, health audit, blast vs trigger
+│   ├── strategist.py                        touch jobs, channels, days and offer, with reasons [2.2]
+│   ├── campaign_architect.py                compiles the strategy into a flow spec
 │   ├── copywriter.py                        variants, rendered per dialect and linted
 │   ├── experimentation_agent.py             persistent holdout, sizing, read date
+│   ├── compliance.py                        rules engine over config/compliance_rules.json  [2.2]
+│   ├── engagement.py                        engagement tiers and the sunset cohort          [2.2]
 │   └── models.py, brief.py, guardrails.py, sql_dialects.py
-├── briefs/brief_template.yaml               the campaign brief a marketer fills in          [2.1]
+├── briefs/
+│   ├── brief_template.yaml                  the campaign brief a marketer fills in          [2.1]
+│   └── active/                              briefs of live flows: the daily job audits each [2.2]
 ├── config/
 │   ├── mcp_server_config.json               local and remote MCP servers for live data      [2.1]
-│   └── esp_payload_schemas.json             trigger-event request bodies per ESP            [2.1]
+│   ├── esp_payload_schemas.json             event and attribute request bodies per ESP      [2.1]
+│   └── compliance_rules.json                21 rules, each with its source and check date   [2.2]
 ├── scripts/
+│   ├── daily.py                             the 05:00 UTC job: audits, tiers, DNS, Sheets   [2.2]
 │   ├── campaign_simulator.py                dry-run: structure, synthetic journeys, payloads [2.1]
-│   ├── webhook_parser.py                    Segment and GA4 ingest to canonical events      [2.1]
-│   ├── sheets_sync.py                       plans and audits to Google Sheets               [2.1]
+│   ├── webhook_parser.py                    Segment and GA4 ingest; opt-in real-time forwarding
+│   ├── sheets_sync.py                       six tabs, upserted by key                       [2.1]
 │   └── mcp_server.py                        the teammate as MCP tools                       [2.1]
-├── .github/workflows/daily_cohort_audit.yml 05:00 UTC cohort health check                   [2.1]
-├── schemas/flow_spec.schema.json            machine-readable flow specification             [added]
+├── .github/workflows/daily_cohort_audit.yml 05:00 UTC: scripts/daily.py, one issue per finding
+├── schemas/                                 flow spec and the tool input contracts (JSON Schema)
 ├── examples/                                fictional worked-example inputs                 [added]
 ├── tests/                                   pytest suite and DuckDB fixtures                [added]
 ├── CONNECTORS.md                            which tools have a Claude connector today       [added]
 ├── requirements.txt                         pinned Python dependencies for the tools        [added]
+├── pyproject.toml                           packaging; installs the lcm command             [2.2]
 ├── .gitignore                                                                               [added]
 ├── README.md                                this file
 └── LICENSE                                  Apache 2.0
@@ -230,13 +266,15 @@ beyond it, to make the engine installable as a Claude plugin and testable in CI.
 
 | Tool | Computes |
 |---|---|
-| `tools/deliverability.py` | SPF (lookup counts through includes), DKIM key size, DMARC (RFC 7489 and RFC 9989 tags), MTA-STS, TLS-RPT, BIMI eligibility, Authentication-Results alignment, RFC 8058 one-click unsubscribe, bulk-sender checks, the sending gate, copy-paste DNS fixes |
+| `tools/deliverability.py` | SPF (lookup counts through includes, loops), DKIM key size, DMARC (RFC 7489 and RFC 9989 tags, subdomain policy), MTA-STS, TLS-RPT, BIMI eligibility, Authentication-Results alignment, RFC 8058 one-click unsubscribe, bulk-sender checks, the sending gate, copy-paste DNS fixes |
+| `tools/dns_collect.py` | the live DNS pull in front of it: TXT, DMARC, MX, MTA-STS and its policy file, TLS-RPT, BIMI, every SPF include, DKIM selectors (2.2) |
+| `tools/contracts.py` | Pydantic contracts for every tool input, and the JSON Schemas generated from them (2.2) |
 | `tools/warmup.py` | a warming ladder that refuses on RED, holds on AMBER, never uses the unengaged tier, and caps at engaged capacity |
 | `tools/stats.py` | sample size for any allocation, MDE, holdout feasibility, Newcombe intervals, sample ratio checks, attributed versus incremental readouts |
-| `tools/template_lint.py` | syntax and fallback rules for Braze, Customer.io (latest and legacy), Klaviyo, HubL and AMPscript; email checks (unsubscribe, address, alt text, size, dark mode) |
+| `tools/template_lint.py` | syntax and fallback rules for Braze, Customer.io (latest and legacy), Klaviyo, HubL and AMPscript; email checks (unsubscribe, address, alt text, size, dark mode, text-to-image ratio) |
 | `tools/sql_check.py` | parse in a named dialect; run PostgreSQL on the fixtures |
 | `tools/sms.py` | GSM-7 versus UCS-2 encoding and segment counts, with the characters that forced the switch |
-| `tools/payloads.py` | Klaviyo bulk-import and HubSpot batch-upsert bodies within vendor limits |
+| `tools/payloads.py` | Klaviyo bulk-import and HubSpot batch-upsert bodies, and person-attribute updates for all four ESPs, within vendor limits |
 | `tools/event_payloads.py` | trigger-event requests for Klaviyo, HubSpot, Braze and Customer.io, within vendor limits (2.1) |
 | `tools/repo_check.py` | runs every check above on every example in the repository |
 
@@ -307,6 +345,9 @@ Details, and the paths for tools without a connector: [`CONNECTORS.md`](CONNECTO
 | every generated flow passes the simulator: holdout gets nothing, no send without consent, nothing after the core action, frequency cap, send hour, quiet hours; the simulator catches each of those defects when they are injected | your platform's own flow engine |
 | every rendered template lints in its dialect for all five platforms; trigger payloads validate against schemas written from vendor documentation (2026-10-20) | a live send or API call |
 | the Claude copy path (structured output, repair round, fallback) against a stub client | a live Claude API call in CI |
+| a run that fails at any stage resumes from that stage; a revision reuses copy only for touches whose copy brief is unchanged; approvals carry over | a long-running production deployment |
+| the compliance rules each name a check that exists and a source; the strictest state texting window is enforced | legal advice: it is a rules engine, and laws change |
+| the DNS collector against a fake resolver (SPF includes, DKIM, MTA-STS policy, a domain that does not resolve); the daily job end to end in demo mode and in BigQuery mode (its SQL transpiled to DuckDB) | live DNS and a live BigQuery run in CI |
 | the repository contains no em dashes (house style) | taste |
 
 Platform endpoints, limits and rules were read from vendor documentation in October 2026. They

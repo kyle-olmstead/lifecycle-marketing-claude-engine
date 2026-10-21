@@ -37,6 +37,7 @@ brand_voice: plain, specific, second person, no exclamation marks; operations vo
   (reports, data sources, teammates)
 postal_address: 100 Example Way, Suite 400, Springfield, OR 97477
 cta_url: https://app.ridgeview.example/reports/new
+recipient_countries: []
 offer_policy: no discounts or offers
 frequency_cap_per_week: 3
 send_hour_local: 10

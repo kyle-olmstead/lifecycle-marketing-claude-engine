@@ -1,0 +1,490 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kyle-olmstead/lifecycle-marketing-claude-engine/schemas/deliverability_input.schema.json",
+  "$defs": {
+    "DnsRecords": {
+      "additionalProperties": false,
+      "description": "What is published for one domain. Leave a key out when it was not looked up; an empty list means looked up, none found.",
+      "properties": {
+        "txt": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "TXT records at the domain itself (SPF lives here)",
+          "title": "Txt"
+        },
+        "dmarc": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the TXT record at _dmarc.<domain>",
+          "title": "Dmarc"
+        },
+        "mx": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mx"
+        },
+        "mta_sts": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the TXT record at _mta-sts.<domain>",
+          "title": "Mta Sts"
+        },
+        "tlsrpt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the TXT record at _smtp._tls.<domain>",
+          "title": "Tlsrpt"
+        },
+        "bimi": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the TXT record at default._bimi.<domain>",
+          "title": "Bimi"
+        }
+      },
+      "title": "DnsRecords",
+      "type": "object"
+    },
+    "HeadersRef": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "HeadersRef",
+      "type": "object"
+    },
+    "Signals": {
+      "additionalProperties": false,
+      "description": "Reputation and engagement signals for the sending gate. Every rate is a share between 0 and 1.",
+      "properties": {
+        "complaint_rate": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "a share between 0 and 1 (0.003 is 0.3%)",
+          "title": "Complaint Rate"
+        },
+        "hard_bounce_rate": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "a share between 0 and 1 (0.003 is 0.3%)",
+          "title": "Hard Bounce Rate"
+        },
+        "domain_reputation_bounces_90d": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Domain Reputation Bounces 90D"
+        },
+        "domain_reputation_bounces_trend": {
+          "anyOf": [
+            {
+              "enum": [
+                "rising",
+                "flat",
+                "falling"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Domain Reputation Bounces Trend"
+        },
+        "filtered_share": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "a share between 0 and 1 (0.003 is 0.3%)",
+          "title": "Filtered Share"
+        },
+        "postmaster_spam_rate": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "a share between 0 and 1 (0.003 is 0.3%)",
+          "title": "Postmaster Spam Rate"
+        },
+        "postmaster_compliance": {
+          "anyOf": [
+            {
+              "enum": [
+                "pass",
+                "fail"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Postmaster Compliance"
+        },
+        "postmaster_domain_reputation": {
+          "anyOf": [
+            {
+              "enum": [
+                "high",
+                "medium",
+                "low",
+                "bad"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Postmaster Domain Reputation"
+        },
+        "postmaster_reputation_trend": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Postmaster Reputation Trend"
+        },
+        "consumer_engagement_rate": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "a share between 0 and 1 (0.003 is 0.3%)",
+          "title": "Consumer Engagement Rate"
+        },
+        "enterprise_engagement_rate": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "a share between 0 and 1 (0.003 is 0.3%)",
+          "title": "Enterprise Engagement Rate"
+        },
+        "unengaged_share": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "a share between 0 and 1 (0.003 is 0.3%)",
+          "title": "Unengaged Share"
+        },
+        "auth_state": {
+          "anyOf": [
+            {
+              "enum": [
+                "verified",
+                "partial",
+                "failing",
+                "unknown"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Auth State"
+        }
+      },
+      "title": "Signals",
+      "type": "object"
+    },
+    "Volume": {
+      "additionalProperties": false,
+      "properties": {
+        "daily_to_gmail": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Daily To Gmail"
+        },
+        "daily_to_microsoft_consumer": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Daily To Microsoft Consumer"
+        },
+        "daily_total": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Daily Total"
+        }
+      },
+      "title": "Volume",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Everything tools/deliverability.py analyze reads. observed_at marks the records as looked up (LIVE PULL) on that date.",
+  "properties": {
+    "case": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "a note about what this input is",
+      "title": "Case"
+    },
+    "observed_at": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Observed At"
+    },
+    "message_class": {
+      "anyOf": [
+        {
+          "enum": [
+            "marketing",
+            "transactional",
+            "mixed"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Message Class"
+    },
+    "from_domain": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "From Domain"
+    },
+    "envelope_domain": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Envelope Domain"
+    },
+    "headers": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/HeadersRef"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "raw headers of one received message, or {path: file}",
+      "title": "Headers"
+    },
+    "dns": {
+      "additionalProperties": {
+        "$ref": "#/$defs/DnsRecords"
+      },
+      "title": "Dns",
+      "type": "object"
+    },
+    "spf_includes": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "SPF records of included domains, for lookup counting",
+      "title": "Spf Includes",
+      "type": "object"
+    },
+    "dkim_keys": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "selector._domainkey.<domain> to its TXT record",
+      "title": "Dkim Keys",
+      "type": "object"
+    },
+    "mta_sts_policies": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "domain to the text of https://mta-sts.<domain>/.well-known/mta-sts.txt",
+      "title": "Mta Sts Policies",
+      "type": "object"
+    },
+    "signals": {
+      "$ref": "#/$defs/Signals"
+    },
+    "volume": {
+      "$ref": "#/$defs/Volume"
+    }
+  },
+  "title": "DeliverabilityInput",
+  "type": "object"
+}

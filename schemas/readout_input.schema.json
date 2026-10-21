@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kyle-olmstead/lifecycle-marketing-claude-engine/schemas/readout_input.schema.json",
+  "$defs": {
+    "Arm": {
+      "additionalProperties": false,
+      "properties": {
+        "n": {
+          "description": "entrants in the arm",
+          "exclusiveMinimum": 0,
+          "title": "N",
+          "type": "integer"
+        },
+        "conversions": {
+          "minimum": 0,
+          "title": "Conversions",
+          "type": "integer"
+        },
+        "revenue": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "total revenue in the outcome window",
+          "title": "Revenue"
+        },
+        "revenue_sd": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "per-entrant revenue standard deviation, zeros included",
+          "title": "Revenue Sd"
+        },
+        "largest_transaction": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Largest Transaction"
+        }
+      },
+      "required": [
+        "n",
+        "conversions"
+      ],
+      "title": "Arm",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "flow": {
+      "title": "Flow",
+      "type": "string"
+    },
+    "period": {
+      "title": "Period",
+      "type": "string"
+    },
+    "design": {
+      "default": "persistent_holdout",
+      "enum": [
+        "persistent_holdout",
+        "holdout",
+        "pre_post"
+      ],
+      "title": "Design",
+      "type": "string"
+    },
+    "planned_holdout_share": {
+      "anyOf": [
+        {
+          "exclusiveMaximum": 1,
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Planned Holdout Share"
+    },
+    "treatment": {
+      "$ref": "#/$defs/Arm"
+    },
+    "holdout": {
+      "$ref": "#/$defs/Arm"
+    },
+    "attributed_revenue": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Attributed Revenue"
+    },
+    "attribution_model": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Attribution Model"
+    },
+    "window_days": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Window Days"
+    },
+    "window_reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Window Reason"
+    },
+    "inter_purchase_days_p50": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Inter Purchase Days P50"
+    },
+    "alpha": {
+      "default": 0.05,
+      "exclusiveMaximum": 0.5,
+      "exclusiveMinimum": 0,
+      "title": "Alpha",
+      "type": "number"
+    },
+    "caveats": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Caveats",
+      "type": "array"
+    }
+  },
+  "required": [
+    "flow",
+    "period",
+    "treatment",
+    "holdout"
+  ],
+  "title": "ReadoutInput",
+  "type": "object"
+}

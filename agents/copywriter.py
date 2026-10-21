@@ -35,6 +35,7 @@ from pydantic import BaseModel, ConfigDict
 from agents import guardrails
 from agents.models import Brief, CopyVariant, FlowPlan, Touch, TouchCopy, base_form
 from tools import template_lint
+from tools.sms import has_opt_out
 
 DEFAULT_MODEL = "claude-sonnet-5-5"
 PLACEHOLDER_CTA = "https://example.com/replace-with-your-deep-link"
@@ -232,7 +233,7 @@ def render_short(channel: str, f: Dict[str, Any], brief: Brief) -> Dict[str, Any
         text = f["text"].strip().replace("{product_name}", brief.product_name)
         if not text.lower().startswith(brief.product_name.lower()):
             text = f"{brief.product_name}: {text}"
-        if not re.search(r"\bSTOP\b", text):
+        if not has_opt_out(text):
             text = f"{text} Reply STOP to opt out."
         return {"text": _tokens(text, d, brief, escape=False, inline=True), "preview": _preview(text, brief)}
     keys = ("title", "body") if channel == "push" else ("headline", "body", "cta_label")
@@ -365,7 +366,10 @@ def _claude_client() -> Any:
 
 
 def write(brief: Brief, plan: FlowPlan, mode: str = "auto", drafts: Optional[Dict[str, List[Dict[str, Any]]]] = None,
-          client: Any = None, model: Optional[str] = None) -> List[TouchCopy]:
+          client: Any = None, model: Optional[str] = None, reuse: Optional[Dict[str, Any]] = None,
+          reuse_key: Optional[Callable[[Touch], str]] = None) -> List[TouchCopy]:
+    """Copy for every touch. reuse maps a touch identity (reuse_key) to (old copy, approval, run id) from an earlier run:
+    those words are kept and re-rendered for this plan instead of being written again."""
     if drafts is not None:
         mode = "supplied"
     elif mode == "auto":
@@ -376,6 +380,14 @@ def write(brief: Brief, plan: FlowPlan, mode: str = "auto", drafts: Optional[Dic
     out: List[TouchCopy] = []
     for t in plan.touches:
         cb = copy_brief(t, brief, plan)
+        k = reuse_key(t) if (reuse and reuse_key) else None
+        if k and k in reuse:
+            old, _approval, rid = reuse[k]
+            variants = [check_variant(t.channel, {**v.fields, "framework": v.framework, "hypothesis": v.hypothesis}, brief, t.step_id, v.variant_id)
+                        for v in old.variants]
+            out.append(TouchCopy(step_id=t.step_id, channel=t.channel, mode=old.mode, copy_brief=cb, variants=variants,
+                                 note=f"reused from run {rid} (copy brief unchanged; re-rendered and re-linted)"))
+            continue
         if mode == "handoff":
             out.append(TouchCopy(step_id=t.step_id, channel=t.channel, mode="handoff", copy_brief=cb,
                                  note="awaiting drafts: answer copy_briefs.md, then re-run with --drafts"))

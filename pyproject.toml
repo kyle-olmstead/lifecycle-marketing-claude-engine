@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lmm-engine"
+version = "2.2.0"
+description = "Lifecycle marketing engine: agents that turn a one-sentence brief into a build-ready, compliant, measurable flow"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "LICENSE" }
+# requirements.txt pins the verified versions; install with: pip install -r requirements.txt && pip install -e . --no-deps
+
+[project.scripts]
+lcm = "agents.cli:main"
+
+[tool.setuptools]
+packages = ["agents", "tools", "scripts"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
