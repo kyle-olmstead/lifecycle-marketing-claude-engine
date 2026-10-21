@@ -162,68 +162,60 @@ def _preview(text: str, brief: Brief) -> str:
     return text.replace("{first_name}", PREVIEW_NAME).replace("{product_name}", brief.product_name)
 
 
-def render_email(f: Dict[str, Any], brief: Brief, step_id: str) -> Tuple[str, str]:
+from typing import TYPE_CHECKING  # noqa: E402  (render_email's brand kit type, kept beside the renderer)
+
+if TYPE_CHECKING:
+    from engine.render.brand import BrandKit
+
+
+def render_email_mjml(f: Dict[str, Any], brief: Brief, step_id: str, brand: Optional[BrandKit] = None,
+                      product_items: Optional[str] = None) -> Tuple[str, str, str]:
+    """(MJML source, compiled HTML, plain text) for one email, laid out by engine/render/mjml_render.py.
+
+    The words go into the platform dialect here (fallback on every token); the layout, colors, logo, fonts and footer
+    come from the brand kit (engine/render/brand.py; the neutral default when brand is None). The unsubscribe link and
+    postal address come from unsubscribe_html/address_html; when the brief has no postal address, the kit's footer
+    address is used. product_items fills the MJML product block slot (a no-op when None)."""
+    from engine.render import mjml_render
+    from engine.render.brand import DEFAULT_BRAND
+    kit = brand or DEFAULT_BRAND
     d = brief.template_dialect
     url = brief.cta_url or PLACEHOLDER_CTA
     sep = "&" if "?" in url else "?"
     href = html.escape(f"{url}{sep}utm_source=lifecycle&utm_medium=email&utm_campaign={brief.slug}&utm_content={step_id}")
-    paras = "\n".join(f'          <p class="lcm-text" style="margin:0 0 16px;font:16px/1.5 Arial,sans-serif;">{_tokens(p, d, brief)}</p>'
-                      for p in f["paragraphs"])
     head = AMPSCRIPT_HEAD if d == "ampscript" else ""   # declared before first use, including the <title>
-    body = f"""<!-- dialect: {d} -->
-<!-- {brief.slug} / {step_id}. Rendered by engine/agents/copywriter.py; lint: python3 engine/render/template_lint.py --dialect {d} --email <this file> -->
-{head}<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light dark">
-  <meta name="supported-color-schemes" content="light dark">
-  <title>{_tokens(f['subject'], d, brief)}</title>
-  <style>
-    :root {{ color-scheme: light dark; }}
-    body {{ margin: 0; padding: 0; }}
-    .lcm-card {{ background-color: #FFFFFF; }}
-    .lcm-text {{ color: #1C1C1C; }}
-    @media (prefers-color-scheme: dark) {{
-      .lcm-card {{ background-color: #1E1E1E !important; }}
-      .lcm-text {{ color: #F2F2F2 !important; }}
-    }}
-  </style>
-</head>
-<body>
-<div class="preheader" style="display:none;max-height:0;overflow:hidden;">{_tokens(f['preheader'], d, brief)}</div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-  <tr>
-    <td align="center">
-      <table role="presentation" class="lcm-card" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;">
-        <tr><td style="padding:32px 24px;">
-          <h1 class="lcm-text" style="margin:0 0 16px;font:bold 22px/1.3 Arial,sans-serif;">{_tokens(f['headline'], d, brief)}</h1>
-{paras}
-          <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-            <td style="border-radius:6px;background-color:#1F5F4A;">
-              <a href="{href}" style="display:inline-block;padding:12px 20px;font:bold 16px Arial,sans-serif;color:#FFFFFF;text-decoration:none;">{_tokens(f['cta_label'], d, brief)}</a>
-            </td>
-          </tr></table>
-        </td></tr>
-        <tr><td class="lcm-text" style="padding:16px 24px;font:12px/1.5 Arial,sans-serif;">
-          {html.escape(brief.sender_name or brief.product_name)}<br>
-          {address_html(d, brief)}<br>
-          {unsubscribe_html(d)}
-        </td></tr>
-      </table>
-    </td>
-  </tr>
-</table>
-</body>
-</html>
-"""
+    file_start = (f"<!-- dialect: {d} -->\n"
+                  f"<!-- {brief.slug} / {step_id}. Rendered by engine/agents/copywriter.py through MJML (engine/render/mjml_render.py); "
+                  f"lint: python3 engine/render/template_lint.py --dialect {d} --email <this file> -->\n{head}")
+    addr_brief = brief if (brief.postal_address or not kit.footer.postal_address) else brief.model_copy(
+        update={"postal_address": kit.footer.postal_address})
+    address = address_html(d, addr_brief)
+    if kit.footer.legal_name and addr_brief.postal_address and d in ("customerio", "braze"):
+        address = f"{html.escape(kit.footer.legal_name)}, {address}"   # the token dialects already print the organization name
+    sender = brief.sender_name or kit.brand_name or brief.product_name
+    extra = [_tokens(x, d, brief) for x in kit.footer.extra_lines]
+    # the title is also the wrapper's aria-label, so quotes in the words are escaped as well (template tags stay as written)
+    title = _tokens(html.escape(f["subject"], quote=True).replace("{product_name}", html.escape(brief.product_name, quote=True)),
+                    d, brief, escape=False)
+    content = mjml_render.EmailContent(
+        dialect=d, title=title, preheader=_tokens(f["preheader"], d, brief), headline=_tokens(f["headline"], d, brief),
+        paragraphs=tuple(_tokens(p, d, brief) for p in f["paragraphs"]), cta_label=_tokens(f["cta_label"], d, brief),
+        cta_href=href, sender_line=html.escape(sender), address_line=address, unsubscribe=unsubscribe_html(d),
+        extra_lines=tuple(extra), file_start=file_start, product_items=product_items)
+    mjml_source, body = mjml_render.render(content, kit)
     unsub_text = {"customerio": "{% unsubscribe_url %}", "braze": "{{${set_user_to_unsubscribed_url}}}",
                   "klaviyo": "{% unsubscribe_link %}", "hubl": "{{ unsubscribe_link }}", "ampscript": "%%unsub_center_url%%"}[d]
-    text = (AMPSCRIPT_HEAD if d == "ampscript" else "") + "\n\n".join(
+    footer = [sender, html.unescape(address)] + [_tokens(x, d, brief, escape=False) for x in kit.footer.extra_lines]
+    footer += [f"{s.label}: {s.url}" for s in kit.social] + [f"Unsubscribe: {unsub_text}"]
+    text = head + "\n\n".join(
         [_tokens(f["headline"], d, brief, escape=False)] + [_tokens(p, d, brief, escape=False) for p in f["paragraphs"]]
-        + [f"{_tokens(f['cta_label'], d, brief, escape=False)}: {html.unescape(href)}",
-           f"{brief.sender_name or brief.product_name}\n{html.unescape(address_html(d, brief))}\nUnsubscribe: {unsub_text}"]) + "\n"
+        + [f"{_tokens(f['cta_label'], d, brief, escape=False)}: {html.unescape(href)}", "\n".join(footer)]) + "\n"
+    return mjml_source, body, text
+
+
+def render_email(f: Dict[str, Any], brief: Brief, step_id: str, brand: Optional[BrandKit] = None) -> Tuple[str, str]:
+    """(HTML, plain text) for one email in the brief's dialect, compiled from MJML; see render_email_mjml."""
+    _mjml, body, text = render_email_mjml(f, brief, step_id, brand=brand)
     return body, text
 
 

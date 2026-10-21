@@ -1,0 +1,81 @@
+<!--
+  LMM Engine MJML base layout, version 3.0.0
+
+  The skeleton of every email the engine renders. engine/render/mjml_render.py fills the [[placeholders]] from the
+  brand kit (engine/render/brand.py) and the email's words, already rendered into the platform's template dialect,
+  then compiles the result with the mjml package (mjml-python) and restores every template tag verbatim.
+
+  Layout, top to bottom (each part is its own file in this folder):
+    preheader.mjml      hidden preview text, padded so the inbox preview never shows body text
+    header.mjml         the logo; only when the kit has one (the neutral default starts with the headline)
+    headline.mjml       one h1
+    paragraph.mjml      one per paragraph
+    product_block.mjml  a slot for per-platform product loops; empty, and absent from the output, by default
+    button.mjml         the single call to action
+    footer.mjml         sender, postal address, extra lines, social links, unsubscribe
+
+  Head parts written by mjml_render.py: [[file_start]] is an mj-raw with position="file-start" (the dialect comments
+  and the AMPscript declaration block, placed before the doctype as official MJML does); [[web_font]] is an mj-font
+  when the kit names a web font; [[mso_fonts]] pins Outlook for Windows to the web-safe stack when a web font is used.
+
+  Dark mode: the color-scheme metas plus prefers-color-scheme rules (Apple Mail, iOS Mail, Outlook for Mac) and the
+  [data-ogsc] / [data-ogsb] rules Outlook.com uses. Every color comes from the kit; nothing here is hard-coded.
+  Never put two braces side by side, or a brace before a percent sign or a hash, in this file: the template
+  linters would read it as template code.
+-->
+<mjml lang="[[lang]]">
+[[file_start]]
+  <mj-head>
+    <mj-title>[[title]]</mj-title>
+[[web_font]]
+    <mj-attributes>
+      <mj-all font-family="[[font_family]]" />
+      <mj-section padding="0" />
+      <mj-text color="[[text]]" font-size="16px" line-height="1.5" padding="0 24px 16px 24px" />
+      <mj-image padding="0 24px" />
+    </mj-attributes>
+    <mj-raw>
+      <meta name="color-scheme" content="light dark">
+      <meta name="supported-color-schemes" content="light dark">
+      <meta name="x-apple-disable-message-reformatting">
+    </mj-raw>
+[[mso_fonts]]
+    <mj-style>
+      :root { color-scheme: light dark; supported-color-schemes: light dark; }
+      a { color: [[link]]; }
+      @media (prefers-color-scheme: dark) {
+        body, .lcm-body { background-color: [[dark_background]] !important; }
+        .lcm-card, .lcm-card > table { background: [[dark_card]] !important; background-color: [[dark_card]] !important; }
+        .lcm-footer, .lcm-footer > table { background: [[dark_background]] !important; background-color: [[dark_background]] !important; }
+        .lcm-text div, .lcm-text h1 { color: [[dark_text]] !important; }
+        a { color: [[dark_link]] !important; }
+        .lcm-button td, .lcm-button a { background: [[dark_primary]] !important; background-color: [[dark_primary]] !important; }
+        .lcm-button a { color: [[dark_button_text]] !important; }
+      }
+      [data-ogsc] .lcm-text div, [data-ogsc] .lcm-text h1 { color: [[dark_text]] !important; }
+      [data-ogsc] a { color: [[dark_link]] !important; }
+      [data-ogsc] .lcm-button a { color: [[dark_button_text]] !important; }
+      [data-ogsb] .lcm-body { background-color: [[dark_background]] !important; }
+      [data-ogsb] .lcm-card, [data-ogsb] .lcm-card > table { background-color: [[dark_card]] !important; }
+      [data-ogsb] .lcm-footer, [data-ogsb] .lcm-footer > table { background-color: [[dark_background]] !important; }
+      [data-ogsb] .lcm-button td, [data-ogsb] .lcm-button a { background-color: [[dark_primary]] !important; }
+    </mj-style>
+  </mj-head>
+  <mj-body width="600px" background-color="[[background]]" css-class="lcm-body">
+[[preheader]]
+[[header]]
+    <mj-section css-class="lcm-card" background-color="[[card]]" padding="[[content_padding]]">
+      <mj-column>
+[[headline]]
+[[paragraphs]]
+      </mj-column>
+    </mj-section>
+[[product_block]]
+    <mj-section css-class="lcm-card" background-color="[[card]]" padding="0 0 32px 0">
+      <mj-column>
+[[button]]
+      </mj-column>
+    </mj-section>
+[[footer]]
+  </mj-body>
+</mjml>

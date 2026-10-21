@@ -1,0 +1,13 @@
+<!--
+  Footer: who sent it, the postal address CAN-SPAM requires, the kit's extra lines and social links (text links,
+  not icons, so nothing depends on images), and the unsubscribe link in the platform's own syntax. Sits on the
+  kit's background color, outside the card, at 12px.
+  Placeholders: [[background]] [[footer_lines]] (lines joined with line breaks, in the platform dialect)
+-->
+    <mj-section css-class="lcm-footer" background-color="[[background]]" padding="16px 0 24px 0">
+      <mj-column>
+        <mj-text css-class="lcm-text" font-size="12px" line-height="1.5" padding="0 24px">
+          [[footer_lines]]
+        </mj-text>
+      </mj-column>
+    </mj-section>

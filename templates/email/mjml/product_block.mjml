@@ -1,0 +1,20 @@
+<!--
+  Product block slot. A documented no-op: with no product content the slot renders nothing at all, not even an
+  empty section, so emails without products are byte-for-byte unaffected by it.
+
+  Contract for filling it (engine/render/mjml_render.py, EmailContent.product_items):
+    * product_items is MJML that goes inside one mj-column on the card: mj-text, mj-image, mj-table, mj-divider,
+      mj-spacer or mj-raw elements, in the platform's dialect (an ESP product loop, for example).
+    * Template logic that sits between elements (a for loop, an if) must be wrapped in mj-raw, because the compiler
+      drops bare text between elements; mjml_render.compile_mjml raises an error if any template tag goes missing.
+      For example (Klaviyo): mj-raw holding the opening for tag, an mj-text holding the item name, mj-raw holding endfor.
+    * Every image needs alt text, and the email must stay readable with images off (the text-to-image check runs
+      on the compiled HTML).
+    * The slot sits between the paragraphs and the button, so the call to action stays last.
+  Placeholders: [[card]] [[product_items]]
+-->
+    <mj-section css-class="lcm-card lcm-products" background-color="[[card]]" padding="0 0 16px 0">
+      <mj-column>
+[[product_items]]
+      </mj-column>
+    </mj-section>

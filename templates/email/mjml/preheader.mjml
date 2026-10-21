@@ -1,0 +1,9 @@
+<!--
+  Preheader: the inbox preview line. A second promise, not a subject extension. Hidden in every client
+  (display:none plus mso-hide:all for Outlook) and padded with zero-width non-joiners and no-break spaces so the
+  preview stops after it instead of running into the headline.
+  Placeholders: [[preheader]] the text in the platform dialect; [[padding]] the spacer characters.
+-->
+    <mj-raw>
+      <div class="preheader" style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">[[preheader]][[padding]]</div>
+    </mj-raw>
