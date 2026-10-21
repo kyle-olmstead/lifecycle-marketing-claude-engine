@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kyle-olmstead/lifecycle-marketing-claude-engine/schemas/brand_kit.schema.json",
+  "title": "Brand kit",
+  "description": "One brand's look and voice for every email the engine renders: logo, colors (light and dark mode), fonts, footer, voice, sender identities and social links. Loaded by engine/render/brand.py, which also checks text contrast against WCAG 2.1 AA (4.5:1 for normal text, https://www.w3.org/TR/WCAG21/#contrast-minimum). Every field except brand_name is optional; missing values come from the neutral default kit. A filled, commented example is templates/brand/brand.yaml.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["brand_name"],
+  "properties": {
+    "brand_name": {
+      "$ref": "#/$defs/plain_text",
+      "minLength": 1,
+      "maxLength": 80,
+      "description": "The name people know the brand by, as it should appear in emails."
+    },
+    "lang": {
+      "type": "string",
+      "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$",
+      "description": "Language of the emails as a BCP 47 tag (en, en-GB, de, fr-CA). Sets the lang attribute screen readers use. Default: en."
+    },
+    "website": {
+      "$ref": "#/$defs/https_url",
+      "description": "The brand's home page. The logo links here."
+    },
+    "logo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "alt", "width"],
+      "description": "The logo at the top of every email. Leave it out and emails start with the headline, as the neutral default does.",
+      "properties": {
+        "url": {"$ref": "#/$defs/https_url", "description": "A PNG, JPG or GIF on a public https address (no SVG: most email clients do not show it)."},
+        "alt": {"$ref": "#/$defs/plain_text", "minLength": 1, "maxLength": 120, "description": "What the logo says, read aloud by screen readers and shown when images are off. Usually the brand name."},
+        "width": {"type": "integer", "minimum": 16, "maximum": 600, "description": "Display width in pixels. Export the file at twice this width so it stays sharp on high-density screens."},
+        "height": {"type": "integer", "minimum": 8, "maximum": 400, "description": "Display height in pixels. Optional: left out, the height follows the image's proportions."}
+      }
+    },
+    "colors": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Light-mode colors as #RRGGBB, plus their dark-mode counterparts under dark. Text, link and button-text colors must reach 4.5:1 contrast against what they sit on, in both modes, or the kit is rejected.",
+      "properties": {
+        "primary": {"$ref": "#/$defs/color", "description": "The call-to-action button's fill."},
+        "button_text": {"$ref": "#/$defs/color", "description": "The button label's color."},
+        "text": {"$ref": "#/$defs/color", "description": "Headline, body and footer text."},
+        "background": {"$ref": "#/$defs/color", "description": "The page around the card, and the footer."},
+        "card": {"$ref": "#/$defs/color", "description": "The content area behind the logo, headline, body and button."},
+        "link": {"$ref": "#/$defs/color", "description": "Links, including the footer links. Default: primary, when it is readable; otherwise text."},
+        "dark": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "The same roles in dark mode, applied by clients that support prefers-color-scheme (Apple Mail, iOS Mail, Outlook for Mac, Outlook.com and others). Missing values: primary and button_text keep their light values, text #F2F2F2, background #121212, card #1E1E1E, link the light link when readable, otherwise the dark text.",
+          "properties": {
+            "primary": {"$ref": "#/$defs/color"},
+            "button_text": {"$ref": "#/$defs/color"},
+            "text": {"$ref": "#/$defs/color"},
+            "background": {"$ref": "#/$defs/color"},
+            "card": {"$ref": "#/$defs/color"},
+            "link": {"$ref": "#/$defs/color"}
+          }
+        }
+      }
+    },
+    "fonts": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Typefaces. The stack is what most inboxes show; a web font is an optional extra for the clients that load one (Apple Mail, iOS Mail, some Android apps).",
+      "properties": {
+        "stack": {"$ref": "#/$defs/font_list", "description": "A comma-separated web-safe font stack, for example: Arial, Helvetica, sans-serif. Outlook for Windows always uses the first font in it."},
+        "web_font": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "url"],
+          "properties": {
+            "name": {"$ref": "#/$defs/font_list", "description": "The font family name exactly as the stylesheet declares it, for example: Inter."},
+            "url": {"$ref": "#/$defs/https_url", "description": "The stylesheet address, for example a Google Fonts css2 link."}
+          }
+        }
+      }
+    },
+    "footer": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What the footer says. The unsubscribe link is always added by the renderer in the platform's own syntax.",
+      "properties": {
+        "legal_name": {"$ref": "#/$defs/plain_text", "maxLength": 120, "description": "The registered company name shown before a literal postal address."},
+        "postal_address": {"$ref": "#/$defs/plain_text", "maxLength": 200, "description": "The physical mailing address CAN-SPAM requires. Used when the brief has none and the platform has no address token (Customer.io, Braze)."},
+        "extra_lines": {
+          "type": "array",
+          "maxItems": 4,
+          "items": {"$ref": "#/$defs/plain_text", "maxLength": 300},
+          "description": "Extra footer sentences, such as why the reader gets this email. {product_name} is filled in."
+        }
+      }
+    },
+    "voice": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "How the brand writes. Handed to the writer with every copy brief and checked after drafting; never rendered on its own.",
+      "properties": {
+        "register": {"type": "string", "maxLength": 300, "description": "The tone in a sentence: plain, specific, second person, no exclamation marks."},
+        "vocabulary": {
+          "type": "array",
+          "maxItems": 40,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["avoid", "use_instead"],
+            "properties": {
+              "avoid": {"type": "string", "minLength": 1, "maxLength": 80},
+              "use_instead": {"type": "string", "minLength": 1, "maxLength": 80}
+            }
+          },
+          "description": "Words the brand never writes, each with the words it uses instead."
+        },
+        "forbidden_phrases": {
+          "type": "array",
+          "maxItems": 60,
+          "items": {"type": "string", "minLength": 1, "maxLength": 80},
+          "description": "Phrases that must never appear in copy."
+        },
+        "sign_off": {"$ref": "#/$defs/plain_text", "maxLength": 80, "description": "How a message signs off when it signs off at all, for example: The Ridgeview team."}
+      }
+    },
+    "senders": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Who emails come from. marketing is the brand itself; person is a named human for plain, one-to-one style messages.",
+      "properties": {
+        "marketing": {"$ref": "#/$defs/sender"},
+        "person": {"$ref": "#/$defs/sender"}
+      }
+    },
+    "social": {
+      "type": "array",
+      "maxItems": 6,
+      "description": "Social profiles, shown as text links in the footer (text, not icons, so the email stays readable with images off).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "url"],
+        "properties": {
+          "label": {"$ref": "#/$defs/plain_text", "minLength": 1, "maxLength": 30},
+          "url": {"$ref": "#/$defs/https_url"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "color": {
+      "type": "string",
+      "pattern": "^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$",
+      "description": "A hex color: #RRGGBB (or the #RGB shorthand)."
+    },
+    "https_url": {
+      "type": "string",
+      "pattern": "^https://[^\\s\"'<>]+$",
+      "maxLength": 2000
+    },
+    "plain_text": {
+      "type": "string",
+      "pattern": "^(?![\\s\\S]*(\\{\\{|\\{%|%%|\\$\\{|<|>))[\\s\\S]*$",
+      "description": "Words only: no HTML and no template code ({{ }}, {% %}, %% %%, ${ }). The renderer adds the template code for each platform."
+    },
+    "font_list": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[A-Za-z0-9 ,'\\-]+$"
+    },
+    "email": {
+      "type": "string",
+      "pattern": "^[^@\\s\"'<>]+@[^@\\s\"'<>]+\\.[^@\\s\"'<>]+$",
+      "maxLength": 254
+    },
+    "sender": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from_name", "from_address"],
+      "properties": {
+        "from_name": {"$ref": "#/$defs/plain_text", "minLength": 1, "maxLength": 80},
+        "from_address": {"$ref": "#/$defs/email"},
+        "reply_to": {"$ref": "#/$defs/email"}
+      }
+    }
+  }
+}

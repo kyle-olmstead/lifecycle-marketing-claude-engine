@@ -1,0 +1,69 @@
+# Brand kit for Northfield Coffee Roasters, a fictional direct-to-consumer coffee roaster that sells beans and
+# subscriptions online. Every name, address and domain is invented (reserved .example and example.com names).
+# Field guide: templates/brand/brand.yaml and docs/BRAND_KIT.md.
+#   python3 engine/render/brand.py examples/brands/northfield_dtc/brand.yaml
+#   python3 engine/render/mjml_render.py --brand examples/brands/northfield_dtc/brand.yaml --dialect klaviyo
+brand_name: Northfield Coffee Roasters
+lang: en-US
+website: https://www.northfieldcoffee.example
+
+logo:
+  url: https://www.northfieldcoffee.example/email/northfield-wordmark-320x80.png
+  alt: Northfield Coffee Roasters
+  width: 160
+  height: 40
+
+colors:
+  primary: "#6B3E26"       # roast brown
+  button_text: "#FFFFFF"
+  text: "#2B2118"
+  background: "#F6F1EA"    # unbleached paper
+  card: "#FFFFFF"
+  link: "#6B3E26"
+  dark:
+    primary: "#D9A066"     # caramel, readable with dark text on it
+    button_text: "#1A120C"
+    text: "#F3ECE4"
+    background: "#15100C"
+    card: "#211913"
+    link: "#E0A878"
+
+fonts:
+  stack: Georgia, 'Times New Roman', serif
+  web_font:
+    name: Lora
+    url: https://fonts.googleapis.com/css2?family=Lora:wght@400;700&display=swap
+
+footer:
+  legal_name: Northfield Coffee Roasters LLC (fictional)
+  postal_address: 48 Example Street, Unit 2, Portland, ME 04101
+  extra_lines:
+    - You are getting this because you bought from us or joined the roast list.
+    - Questions about an order? Reply to this email and a person on our team will answer.
+
+voice:
+  register: warm, concrete and unhurried; talk about the coffee, the farm and the roast date, never about hype
+  vocabulary:
+    - avoid: java
+      use_instead: coffee
+    - avoid: premium beans
+      use_instead: the name of the farm and the roast date
+    - avoid: customers
+      use_instead: you
+  forbidden_phrases: [best coffee ever, limited time only, act now, don't miss out]
+  sign_off: From the roastery in Portland
+
+senders:
+  marketing:
+    from_name: Northfield Coffee
+    from_address: roastlist@example.com
+    reply_to: hello@example.com
+  person:
+    from_name: Sam Whitaker, head roaster
+    from_address: sam@example.com
+
+social:
+  - label: Instagram
+    url: https://www.instagram.example/northfieldcoffee
+  - label: Brew guides
+    url: https://www.northfieldcoffee.example/brew

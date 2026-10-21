@@ -1,0 +1,5 @@
+<!--
+  Paragraph: one block of body copy at 16px with a 1.5 line height, the kit's text color, 16px below.
+  Placeholder: [[text]] the paragraph in the platform dialect (HTML-escaped words with template tags in place).
+-->
+        <mj-text css-class="lcm-text">[[text]]</mj-text>

@@ -1,0 +1,7 @@
+<!--
+  Button: the single call to action. A bulletproof MJML button: a table cell filled with the kit's primary color
+  (Outlook paints the cell's bgcolor, so the button keeps its color there) around a padded link. The label's
+  contrast against the fill is checked against WCAG 2.1 AA by engine/render/brand.py before anything renders.
+  Placeholders: [[href]] (the UTM-tagged link, HTML-escaped) [[primary]] [[button_text]] [[label]]
+-->
+        <mj-button css-class="lcm-button" href="[[href]]" align="left" background-color="[[primary]]" color="[[button_text]]" font-size="16px" font-weight="bold" line-height="1.25" border-radius="6px" inner-padding="12px 20px" padding="8px 24px 0 24px">[[label]]</mj-button>

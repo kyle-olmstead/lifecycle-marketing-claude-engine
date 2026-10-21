@@ -1,0 +1,115 @@
+# Brand kit template. Copy this file to your workspace folder as brand.yaml (next to lmm.yaml) and fill it in.
+#
+# Every email the engine renders takes its look from this file: the logo at the top, the colors in light and dark
+# mode, the fonts, the footer. The voice and sender sections tell the writer how the brand sounds and who emails
+# come from. Plain-English guide: docs/BRAND_KIT.md. Field reference: schemas/brand_kit.schema.json.
+#
+# Only brand_name is required. Leave anything else out and the neutral default is used (a white card, near-black
+# Arial text, a dark green button). The optional sections below are commented out: remove the leading "# " from a
+# section's lines to use it.
+#
+# Check your kit before you use it, and preview an email built from it:
+#   python3 engine/render/brand.py brand.yaml                                  # validation and contrast table
+#   python3 engine/render/mjml_render.py --brand brand.yaml --dialect klaviyo  # writes lcm_preview_klaviyo.html
+#
+# Words only in every text field: no HTML and no template code ({{ }}, {% %}, %% %%). The renderer writes the
+# platform's own template code, including the unsubscribe link, for you.
+
+# The name people know you by, as it should appear in emails (the footer's sender line uses it).
+brand_name: Your Brand
+
+# The language your emails are written in, as a language tag: en, en-GB, de, fr-CA. Screen readers use it to
+# pick a voice. Default: en.
+lang: en
+
+# Your home page, starting with https://. The logo links here.
+# website: https://www.example.com
+
+# The logo at the top of every email. Leave this section out and emails open with the headline.
+#   url    a PNG, JPG or GIF on a public https address. Not SVG: most email clients do not show it.
+#          Use a logo that reads on light and dark backgrounds (dark-mode clients do not swap images).
+#   alt    what the logo says, read aloud by screen readers and shown when images are off. Usually your name.
+#   width  display width in pixels (16 to 600). Export the file at twice this width so it stays sharp.
+#   height optional display height in pixels; left out, it follows the image's proportions.
+# logo:
+#   url: https://www.example.com/email/logo.png
+#   alt: Your Brand
+#   width: 140
+#   height: 32
+
+# Colors as #RRGGBB. Every text color is checked against what it sits on, in light and in dark mode, and the kit
+# is rejected below 4.5:1: the WCAG 2.1 AA minimum for normal text (https://www.w3.org/TR/WCAG21/#contrast-minimum).
+colors:
+  primary: "#1F5F4A"       # the call-to-action button's fill
+  button_text: "#FFFFFF"   # the button label
+  text: "#1C1C1C"          # headline, body copy and footer text
+  background: "#FFFFFF"    # the page around the card, and the footer
+  card: "#FFFFFF"          # the content area behind the logo, headline, body and button
+  link: "#1F5F4A"          # links, including the footer's; left out: primary when readable, otherwise text
+  # Dark mode: the same roles for clients that support it (Apple Mail, iOS Mail, Outlook for Mac, Outlook.com).
+  # Left out: primary and button_text keep their light values, text #F2F2F2, background #121212, card #1E1E1E,
+  # link the light link when it is readable on the dark card, otherwise the dark text color.
+  dark:
+    primary: "#1F5F4A"
+    button_text: "#FFFFFF"
+    text: "#F2F2F2"
+    background: "#121212"
+    card: "#1E1E1E"
+    link: "#8FD3B6"
+
+# Fonts.
+#   stack     a comma-separated, web-safe font stack. Most inboxes show this, and Outlook for Windows always
+#             uses its first font, so put a font every computer has first (Arial, Helvetica, Georgia, Verdana).
+#   web_font  optional: a web font for the clients that load one (Apple Mail, iOS Mail, some Android apps).
+#             name is the family name exactly as the stylesheet declares it; url is the stylesheet's address.
+fonts:
+  stack: Arial, Helvetica, sans-serif
+  # web_font:
+  #   name: Inter
+  #   url: https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap
+
+# The footer. The unsubscribe link is always added, in your platform's own syntax.
+#   legal_name      your registered company name, shown before a written-out postal address
+#   postal_address  the physical mailing address CAN-SPAM requires. Used when a brief has none and the platform
+#                   has no address setting of its own (Customer.io, Braze). Klaviyo, HubSpot and Salesforce
+#                   Marketing Cloud print the address from your account settings instead.
+#   extra_lines     up to four short sentences, such as why the reader gets this email. {product_name} is filled in.
+# footer:
+#   legal_name: Your Company, Inc.
+#   postal_address: 100 Example Way, Suite 400, Springfield, OR 97477
+#   extra_lines:
+#     - You are getting this because you have a {product_name} account.
+
+# How the brand writes. Handed to the writer with every copy brief and checked after drafting; never printed.
+#   register           the tone in one sentence
+#   vocabulary         words you never write, each with what you write instead
+#   forbidden_phrases  phrases that must never appear
+#   sign_off           how a message signs off, when it signs off at all
+# voice:
+#   register: plain, specific, second person; short sentences; no exclamation marks
+#   vocabulary:
+#     - avoid: leverage
+#       use_instead: use
+#   forbidden_phrases: [unlock, supercharge, game-changing, act now]
+#   sign_off: The Your Brand team
+
+# Who emails come from. marketing is the brand itself; person is a named human for plain, one-to-one messages.
+#   from_name     the name in the inbox's From column
+#   from_address  the sending address (on a domain you have authenticated with SPF, DKIM and DMARC)
+#   reply_to      optional: where replies go, if not to the sending address
+# senders:
+#   marketing:
+#     from_name: Your Brand
+#     from_address: news@example.com
+#     reply_to: support@example.com
+#   person:
+#     from_name: Alex Rivera
+#     from_address: alex@example.com
+
+# Social profiles, shown as text links in the footer (text, not icons, so the email reads with images off).
+# Up to six, each with a label and an https address.
+# social:
+#   - label: LinkedIn
+#     url: https://www.linkedin.com/company/example
+#   - label: Instagram
+#     url: https://www.instagram.com/example

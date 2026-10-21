@@ -1,0 +1,11 @@
+<!--
+  Header: the brand kit's logo, left-aligned on the card, linked to the kit's website when it has one.
+  Rendered only when the kit has a logo; the neutral default kit has none, so its emails open with the headline.
+  The image always carries alt text (the kit requires it), a width, and a height when the kit gives one.
+  Placeholders: [[card]] [[logo_url]] [[logo_alt]] [[logo_width]] and [[logo_extra]] (height and href attributes).
+-->
+    <mj-section css-class="lcm-card" background-color="[[card]]" padding="24px 0 0 0">
+      <mj-column>
+        <mj-image src="[[logo_url]]" alt="[[logo_alt]]" width="[[logo_width]]px" align="left"[[logo_extra]] />
+      </mj-column>
+    </mj-section>
