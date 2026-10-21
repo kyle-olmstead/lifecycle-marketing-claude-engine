@@ -43,7 +43,7 @@ TEAMMATE_TREE = [
     "agents/pipeline.py", "agents/stages.py", "agents/strategist.py", "agents/compliance.py", "agents/engagement.py", "agents/cli.py",
     "tools/dns_collect.py", "tools/contracts.py", "scripts/daily.py", "config/compliance_rules.json", "pyproject.toml",
     "schemas/deliverability_input.schema.json", "schemas/readout_input.schema.json", "schemas/warmup_tiers.schema.json",
-    "tests/fixtures/message_events.csv", "docs/AUDIT.md", "briefs/active/README.md",
+    "tests/fixtures/message_events.csv", "docs/AUDIT.md", "briefs/active/README.md", "docs/ROI_MEMO.md", "scripts/roi_model.py",
 ]
 
 

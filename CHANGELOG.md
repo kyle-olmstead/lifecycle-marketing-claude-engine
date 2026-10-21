@@ -31,6 +31,8 @@ audit behind this release, finding by finding: `docs/AUDIT.md`.
 - Opt-in real-time forwarding of activation triggers from the webhook parser, with the holdout
   assignment added.
 - `--set FIELD=VALUE` on `plan` and `brief`.
+- `docs/ROI_MEMO.md` and `scripts/roi_model.py`: the business case in plain English, every figure from
+  one calculator you can rerun with your own numbers (tested against the memo).
 - `tests/fixtures/message_events.csv`; GitHub Actions moved to the Node 24 majors.
 
 **Fixes** (each with a regression test; details in `docs/AUDIT.md`)

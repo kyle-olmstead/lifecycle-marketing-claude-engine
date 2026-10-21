@@ -31,7 +31,7 @@
 
 | If you are… | Start with | What you'll have | Time |
 |---|---|---|---|
-| **A CEO or exec** deciding if this is worth the team's time | §1–4 (§4 is the business case), then ask your marketing lead to run it on one campaign | A clear picture of what it does, what it won't do, and what it needs from you | 5 min |
+| **A CEO or exec** deciding if this is worth the team's time | §1–4 (§4 is the business case; the [full memo](docs/ROI_MEMO.md) shows every number), then ask your marketing lead to run it on one campaign | A clear picture of what it does, what it won't do, and what it needs from you | 5 min |
 | **A lifecycle or CRM marketer** | §5 Install → say *"set up the lifecycle engine"* → describe a campaign | A build-ready plan with the copy written and checked | 15 min |
 | **A head of marketing** rolling it out | The same, then §8 (the routine) and the [quickstart](docs/quickstart_for_marketers.md) | Every campaign planned, checked and measured the same way | 1 hour |
 | **Marketing ops or data** | §11 The daily check | A 05:00 UTC health check on every flow, logged to Google Sheets | 1–2 days |
@@ -90,18 +90,26 @@ Each step saves its work. If a step fails (a data export is missing, an API time
 
 ## 4. What it's worth
 
-The engine is free. Its value sits in four places, and three of them are about avoiding costs that are easy to underestimate:
+Start with one person. A lifecycle marketer costs about **$204,148 a year** fully loaded (the government's median pay for marketing managers plus a conservative benefits load), which is about **$113 an hour** of productive time. The engine takes over the assembly and the checking around the messages (specifying flows, revising them, deliverability checks, reporting, holdout reads, list hygiene), and in the model that returns **393 hours a year, about 22 percent of a working year**.
+
+| | One lifecycle marketer, per year |
+|---|---|
+| Time the engine gives back | 393 hours (about 22 percent) |
+| What that time costs you today | $44,572 |
+| What the engine costs | $1,345 a year, plus $560 once |
+
+That is about 33 dollars of time back for every dollar, and it pays for itself at 12 hours a year. Time is not cash, so the memo also prices the things that are:
 
 | What it protects | What getting it wrong costs | What the engine does |
 |---|---|---|
-| **The inbox** | Gmail requires bulk senders to keep spam complaints under 0.3% and, since November 2025, rejects mail that breaks its rules; Yahoo and Microsoft enforce similar rules. When it happens, every email program the company runs is affected at once. | Checks authentication live, issues the sending gate before anything sends, and removes the unengaged people who drive complaints |
-| **Legal exposure** | CAN-SPAM penalties reach $53,088 per email. Under the TCPA a marketing text sent without the right consent carries $500 to $1,500 in statutory damages per message, which is why texting class actions are common. | Blocks a plan that breaks a tracked rule, holds texts to the strictest state calling window it tracks, and lists every consent question for counsel |
+| **The inbox** | Gmail requires bulk senders to keep spam complaints under 0.3% and, since November 2025, rejects mail that breaks its rules; Yahoo and Microsoft enforce similar rules. In the memo's modest scenario, catching one problem the next morning instead of three weeks later keeps about **$12,500** of revenue. | Checks authentication live every morning, issues the sending gate before anything sends, and removes the unengaged people who drive complaints |
+| **Legal exposure** | Under the TCPA a marketing text without the right consent or outside allowed hours carries $500 to $1,500 per message: **$2.5 million to $7.5 million** for one send to 5,000 people. CAN-SPAM penalties reach $53,088 per email. | Blocks a plan that breaks a tracked rule, holds texts to the strictest state calling window it tracks, and lists every consent question for counsel |
 | **Budget decisions** | Platforms credit flows with sales that would have happened anyway, so money and attention go to the wrong programs | Measures every flow against a holdout and reports credited versus true lift (example below) |
-| **Team time** | A single flow often needs a strategist, a data analyst, a builder and a copywriter, and can take days to weeks to specify | Produces the full specification, checked, in minutes; the team reviews and builds |
+| **Team time** | A team of three gets back about two thirds of a person's year, $133,717 of time, to ship more, test more, or wait on the next hire | Produces the full specification, checked, in minutes; the team reviews and builds |
 
 **What the measurement difference looks like.** In the repository's worked readout (a fictional company), the email platform credited a win-back flow with **$41,900**. Compared against its holdout, the flow actually added about **$15,880**. The other **$26,020, 62% of the credit,** would have come in anyway, and the engine says plainly that even the $15,880 is not yet statistically certain. A team reading only the platform's number would scale the flow; a team reading this one would keep testing it.
 
-These are illustrations, not customer results: the engine has not yet run in a production deployment, and it does not yet ship a time-savings model. The penalty figures come from the regulators' own pages, linked in [`config/compliance_rules.json`](config/compliance_rules.json).
+These are modeled figures, not customer results, and the engine has not yet run in a production deployment. The full memo explains every number in plain English, names what could go wrong, separates what is verified from what you should test yourself, and ships with the calculator so you can rerun it with your own figures: [`docs/ROI_MEMO.md`](docs/ROI_MEMO.md).
 
 ---
 
@@ -227,15 +235,17 @@ lifecycle-marketing-claude-engine/
 │                    Experiment, QA, Compliance), engagement tiers, and lcm, the plain-English front door
 ├── tools/           deterministic checks: deliverability and live DNS, warm-up, statistics, template
 │                    and SQL linting, SMS segments, ESP request bodies, typed input contracts
-├── scripts/         the daily job, Google Sheets sync, Segment and GA4 event receiver, flow simulator, MCP server
+├── scripts/         the daily job, Google Sheets sync, Segment and GA4 event receiver, flow simulator, MCP server,
+│                    and the ROI calculator
 ├── modules/         the method as prompts: deliverability, flows, copy, SQL, experimentation
 ├── skills/          seven Claude plugin skills that route requests to the above
 ├── config/          compliance rules (each with its source), ESP request schemas, MCP servers
 ├── schemas/         machine-readable contracts: flow spec and every tool input
 ├── briefs/          the campaign brief template, an example, and active/ for live flows
 ├── examples/        a complete worked example and sample inputs (fictional companies)
-├── docs/            architecture, the v2.2 audit, SQL conventions, template cheat sheet, operations guide
-└── tests/           303 checks CI runs on every change, including a real PostgreSQL 16
+├── docs/            the business case (ROI memo), architecture, the v2.2 audit, SQL conventions, template
+│                    cheat sheet, operations guide
+└── tests/           306 checks CI runs on every change, including a real PostgreSQL 16
 ```
 
 | Tool | What it computes |
