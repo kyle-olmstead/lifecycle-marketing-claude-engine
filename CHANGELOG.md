@@ -6,19 +6,25 @@
 morning check, which answers it every day.
 
 - `agents/priorities.py`: opportunities found in your data (an onboarding step where new users stall, customers
-  lapsing with no flow to catch them, first-time buyers who never order again, a newsletter reaching people late),
-  each sized as people a month x the measured baseline x an assumed lift range x the value of a conversion, and
-  ranked by that value, the data behind it and the effort. Fixes that cap every build (a RED domain, a RED list,
-  data that stopped arriving) come first. Each build ships with a ready brief and the command to plan it.
-- `agents/tracking.py`: every tracked event's last 7 days against its usual week, required properties going
-  missing, events arriving off the plan, the live flows at risk, and the webhook receiver's quarantine reasons.
-- `agents/retention.py`: the weekly retention curve on the core action, with the cliff (only when bigger than
-  chance) and the floor, by plan, country or lifecycle stage.
+  lapsing with no flow to catch them, first-time buyers who never order again), each sized as people a month x the
+  measured baseline x an assumed lift range x the value of a conversion, and ranked by that value, the data behind it
+  and the effort. Fixes that cap every build (a RED domain, a RED list, data that stopped arriving, a live flow's
+  trigger that stopped) come first; "top 3" is three builds after them. Win-back and activation builds ship with a
+  ready brief and the command to plan it. When `message_events` shows a recurring newsletter, a win-back carries how
+  late its real sends reached the people the trigger would catch.
+- `agents/tracking.py`: every tracked event's last 7 days (to yesterday) against its usual week, a stale feed,
+  required properties going missing, events arriving off the plan, each live flow whose exact trigger or core action
+  has stopped, and the webhook receiver's quarantine reasons. The daily check runs it.
+- `agents/retention.py`: the weekly retention curve on the core action, with the cliff (a paired week-to-week test on
+  the same people, corrected for the number of weeks tested) and the floor, by plan, country or lifecycle stage.
+- `blast-vs-trigger` reads your recurring campaign's real sends and recipients from `message_events` by default, and
+  labels a comparison without them as simulated.
 - The question bank (`config/question_bank.yaml`, `docs/QUESTION_BANK.md`): 25 questions a lifecycle manager asks
   daily, weekly, monthly, quarterly and yearly, each with what you get, the data it needs, and what it cannot
   answer. CI checks that every question reaches its job.
-- `lcm` understands those questions: new jobs `priorities`, `daily`, `tracking`, `retention` and `roi`. The daily
-  job opens with the priorities and writes a Priorities tab; the MCP server gains a `priorities` tool.
+- `lcm` understands those questions: new jobs `priorities`, `daily`, `tracking`, `retention` and `roi`. Asking for
+  or naming a flow still plans it, and a question `lcm` has no job for points to Claude instead of starting a plan.
+  The daily job opens with the priorities and writes a Priorities tab; the MCP server gains a `priorities` tool.
 
 ## 2.2.0 (2026-10)
 

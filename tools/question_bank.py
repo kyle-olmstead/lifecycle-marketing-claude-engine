@@ -60,13 +60,16 @@ def render(bank: Dict[str, List[Dict[str, Any]]]) -> str:
     n = sum(len(v) for v in bank.values())
     L = ["# The question bank", "",
          "> **In plain English.** These are the questions a lifecycle marketing manager asks every day, week, month, quarter",
-         "> and year, and what the engine does with each. Ask any of them in a Claude conversation with the plugin installed,",
-         "> or type it after `lcm` in a terminal. Each one lists what you get, what data it needs, and what it cannot answer,",
-         "> so a partial answer is never mistaken for a whole one. The single most useful one is the first: *what are my top",
-         "> 3 priority builds today and why?* The morning check answers it every day without being asked.", "",
-         f"{n} questions. The plain version is how you would say it; the expert version is the same question at full depth, and",
-         "either works. This page is written from `config/question_bank.yaml` (`python3 tools/question_bank.py --write`); CI checks",
-         "that every question with an `lcm` command reaches the job named here.", ""]
+         "> and year, and what the engine does with each. Ask any of them in a Claude conversation with the plugin installed.",
+         "> The ones with an `lcm` command also run in a terminal: type the command shown. Each one lists what you get, what",
+         "> data it needs, and what it cannot answer, so a partial answer is never mistaken for a whole one. The single most",
+         "> useful one is the first: *what are my top 3 priority builds today and why?* The morning check answers it every day",
+         "> without being asked.", "",
+         f"{n} questions. The plain version is how you would say it; the expert version is the same question at full depth.",
+         "In Claude either works. After `lcm`, type the plain version: the terminal router is rules, not a model, and CI checks",
+         "that every plain question with an `lcm` command reaches the job named here. Questions marked *the ... skill in Claude*",
+         "have no terminal job; `lcm` says so instead of guessing. This page is written from `config/question_bank.yaml`",
+         "(`python3 tools/question_bank.py --write`).", ""]
     L += ["| Cadence | Questions |", "|---|---|"]
     L += [f"| [{c.capitalize()}](#{c}) | " + "; ".join(q["ask"] for q in bank[c]) + " |" for c in CADENCES]
     for c in CADENCES:

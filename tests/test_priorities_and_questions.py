@@ -46,7 +46,7 @@ def test_every_build_is_sized_from_measured_inputs_and_shows_its_assumptions(ran
     winback = next(o for o in r["top"] + r["others"] if o.key == "ridgeview_winback_14d")
     assert winback.brief_path and Path(winback.brief_path).exists()
     assert load_brief(Path(winback.brief_path)).flow_type == "winback"
-    assert any("late" in w and "observed, not a test" in w for w in winback.why)
+    assert any("'newsletter'" in w and "observed sends, not a test" in w for w in winback.why)
 
 
 def test_a_live_flow_is_not_suggested_again():
@@ -73,11 +73,13 @@ def test_a_red_domain_is_a_fix_that_outranks_everything():
 
 def test_priorities_reach_the_daily_summary_and_sheet(tmp_path):
     st = daily.run("demo", briefs_dir=tmp_path / "none", out=tmp_path / "out", dry_run=True)
-    assert st["priorities"]["status"] == "ok" and len(st["priorities"]["top"]) == 3
+    assert st["priorities"]["status"] == "ok" and len(st["priorities"]["top"]) == 4      # the fix, then three builds
     summary = (tmp_path / "out" / "summary.md").read_text()
-    assert summary.index("Top 3 priorities today") < summary.index("Engagement tiers")
+    assert summary.index("Today's priorities") < summary.index("Engagement tiers")
+    assert "### Fix first: Sunset the unengaged" in summary and "### 3. " in summary
+    assert "## Tracking health" in summary and st["tracking"]["status"] == "ok"
     rows = (tmp_path / "out" / "sheets" / "priorities.csv").read_text().splitlines()
-    assert rows[0].startswith("as_of,rank,kind,title") and len(rows) == 4
+    assert rows[0].startswith("as_of,rank,kind,title") and len(rows) == 5
     assert set(sheets_sync.TABS["Priorities"]["header"]) >= {"rank", "title", "why", "next_step"}
 
 
@@ -94,10 +96,10 @@ def test_tracking_health_flags_a_stopped_event_and_the_flow_that_needs_it(tmp_pa
     at = lines[0].split(",").index("event_at")
     kept = [ln for ln in lines[1:] if not (",feature_used," in ln and ln.split(",")[at] >= "2026-10-12")]
     (data / "track_events.csv").write_text("\n".join([lines[0]] + kept) + "\n")
-    r = tracking.health(str(data), briefs=[load_brief(EXAMPLE)])
+    r = tracking.health(str(data), as_of="2026-10-18", briefs=[load_brief(EXAMPLE)])
     fu = next(e for e in r["events"] if e["event"] == "feature_used")
-    assert fu["status"] == "stopped" and r["status"] == "problem"
-    assert r["flows_affected"] == [{"flow": "ridgeview_winback_14d", "events": ["feature_used"]}]
+    assert fu["status"] == "stopped" and r["status"] == "problem" and not r["stale"]
+    assert [(f["flow"], f["events"]) for f in r["flows_affected"]] == [("ridgeview_winback_14d", ["feature_used where feature = reports"])]
     assert "feature_used stopped" in tracking.render(r)
 
 
@@ -126,11 +128,22 @@ def test_retention_curve_counts_only_observed_weeks_and_only_real_cliffs():
         retention.curve(FIXTURES, by="email")
 
 
-def test_noise_is_not_a_cliff():
-    flat = [{"week": k, "observed": 40, "active": 4, "rate": 0.1 if k % 2 else 0.12} for k in range(8)]
-    assert retention._shape(flat)["cliff_week"] is None
-    steep = [{"week": k, "observed": 400, "active": 0, "rate": r} for k, r in enumerate([0.6, 0.55, 0.3, 0.29, 0.29, 0.28])]
-    assert retention._shape(steep)["cliff_week"] == 2
+def _steps(changes, n=400, churn=20):
+    """Paired steps for week 1.. with a given net change in points (negative is a drop) and some two-way churn."""
+    out = []
+    for k, c in enumerate(changes, 1):
+        moved = round(abs(c) * n)
+        lost, gained = (churn + moved, churn) if c < 0 else (churn, churn + moved)
+        out.append({"week": k, "n": n, "lost": lost, "gained": gained})
+    return out
+
+
+def test_noise_is_not_a_cliff_and_a_real_drop_is():
+    assert retention._shape(_steps([0.01, -0.01, 0.0, 0.01, -0.01, 0.0]))["cliff_week"] is None
+    steep = retention._shape(_steps([-0.05, -0.25, -0.01, 0.0, -0.01]))
+    assert steep["cliff_week"] == 2 and steep["cliff_drop"] == pytest.approx(0.25, abs=0.01)
+    bounced = retention._shape(_steps([0.0, -0.2, 0.15, 0.0]))         # a drop undone the next week is not a cliff
+    assert bounced["cliff_week"] is None
 
 
 # ----------------------------------------------------------------------------------------------

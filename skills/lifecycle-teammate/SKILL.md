@@ -36,15 +36,18 @@ sections below are the same jobs called directly, for when you need their option
 When the user asks what to build, what their priorities are, or for campaign ideas, run:
 
 ```text
-python3 ${CLAUDE_PLUGIN_ROOT}/agents/priorities.py --data <exports> --top 3 --out <workdir>/lmm-engine [--value-per-conversion <dollars>]
+python3 ${CLAUDE_PLUGIN_ROOT}/agents/priorities.py --data <exports> --top 3 --out <workdir>/lmm-engine [--value-per-conversion <dollars>] [--domain <sending domain>]
 ```
 
-- Lead with the ranked list as written: fixes first, then builds, each with its evidence, the monthly range with
-  the assumptions, confidence, effort and the next step. Never present the range as a forecast; the lift is assumed.
+- Lead with the ranked list as written: fixes first, then the top builds, each with its evidence, the monthly range
+  with the assumptions, confidence, effort and the next step. Never present the range as a forecast; the lift is assumed.
+- Add `--domain <sending domain>` (or set LCM_DOMAINS) so a failing domain shows up as a fix; otherwise say that no
+  domain was checked.
 - If the user knows what one conversion is worth, ask for it and pass `--value-per-conversion`; the default is an
   estimate from their orders.
-- Offer to plan the top build: each build has a ready brief under `<workdir>/lmm-engine/priorities/`; plan it with
-  Step 2.
+- Offer to plan the top build: each win-back and activation build has a ready brief under
+  `<workdir>/lmm-engine/priorities/`; plan it with Step 2. A post-purchase build has no brief type yet: plan it from
+  the request it names with the lifecycle-flows skill.
 
 Every other question a lifecycle manager asks, by cadence, with the job or skill that answers it and what it cannot
 answer, is in `${CLAUDE_PLUGIN_ROOT}/config/question_bank.yaml` (readable version: `docs/QUESTION_BANK.md`). Match

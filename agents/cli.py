@@ -39,28 +39,40 @@ YAML_PATH = re.compile(r"[\w./-]+\.ya?ml\b")
 JSON_PATH = re.compile(r"[\w./-]+\.json\b")
 PCT = re.compile(r"(\d+(?:\.\d+)?)\s*%")
 INTENTS = (
-    ("priorities", r"priorit|what (should|do) (i|we) build|what to build|top \d+ .*(build|campaign|idea|flow)|campaign ideas|"
-                   r"biggest opportunit|opportunities|where.*(leaving|losing) (money|revenue)"),
+    ("priorities", r"\bpriorit(y|ies)\s+(builds?|campaigns?|flows?|projects?)\b|\btop priorit|"
+                   r"what (should|do|can) (i|we) (build|launch|work on|focus on|prioriti[sz]e)\b|what to build|"
+                   r"which (flows?|campaigns?|builds?) should (i|we) (build|launch|start|do|prioriti[sz]e)\b|"
+                   r"top \d+ (\w+ ){0,3}?(builds?|campaigns?|campaign ideas|ideas|flows?|priorities)\b(?! by)|campaign ideas|"
+                   r"(flow|win-?back|lifecycle|retention|email) ideas|ideas for (new )?(flows?|campaigns?)|"
+                   r"(next|best) (\w+ )?(flow|campaign|build)s? to (build|launch)|what('s| is) (the )?next (best )?(build|flow|campaign)\b|"
+                   r"biggest (\w+ )?opportunit|(best|biggest|top) opportunities|where .*(leaving|losing) (money|revenue)|money on the table"),
     ("daily", r"what broke|overnight|anything break|morning (check|brief|summary|report)|daily (check|summary|health|report)"),
     ("tracking", r"events? (are |is )?firing|event (stream|tracking|taxonomy|schema)|tracking plan|tracking (health|break|broke)|"
                  r"schema (drift|fidelity)|data (has )?drift|has the data drifted|webhook|null values|break a trigger|broke a trigger|"
-                 r"triggers? (stopped|broke|breaking)"),
+                 r"triggers? (stopped|broke|breaking)|break (our |the )?tracking|still (coming|arriving)|\bnull\b"),
     ("retention", r"retention curve|churn cliff|stop using|stop doing|when do (customers|users|people) (stop|churn|drop|leave)|"
-                  r"retention (drop|cliff|by)|levels? off|flatten"),
-    ("deliverability", r"deliverab|inbox|spam folder|\bspf\b|\bdkim\b|\bdmarc\b|mta-sts|authenticat|sending gate|bounce rate|blocklist|blacklist"),
+                  r"retention (drop|cliff|by|differ|look|rate)|week \d+ retention|levels? off|flatten"),
+    ("deliverability", r"deliverab|inbox|\bspam\b|warm-?up|new (sending )?domain|sending plan|\bspf\b|\bdkim\b|\bdmarc\b|mta-sts|authenticat|sending gate|bounce rate|blocklist|blacklist"),
     ("engagement", r"engagement tier|unengaged|sunset|suppress|re-?permission list|inactive subscribers|stop (emailing|mailing|sending to)|"
                    r"over-?mail|list (health|hygiene)|healthy is our list|dormant"),
     ("blast", r"blast|newsletter|calendar|batch(?:-and-| and )blast|one-off send|scheduled send"),
     ("audit", r"\baudit\b|health check|cohort health|anomal|unusual|drop(ping)? off in onboarding|onboarding (drop|leak|funnel)|funnel|\bleak"),
-    ("size", r"sample size|how many (people|users|entrants)|power|minimum detectable|\bmde\b|how long .*holdout"),
-    ("readout", r"read ?out|results?\b|incremental|attributed|did (it|the flow) work|holdout|lift we got|ready to call|call (the|this|my) test|"
-                r"significan|actually add|platform credits|credited|underperform"),
-    ("roi", r"\broi\b|business case|program worth|engine worth|worth next year|worth it"),
+    ("size", r"sample size|how many (people|users|entrants)|power|minimum detectable|\bmde\b|how long .*holdout|holdout (size|share)|"
+             r"how (big|large) .*holdout"),
+    ("readout", r"read ?out|results?\b|incremental|attributed|did (it|the [\w -]*?(flow|campaign|test)) (actually |really )?work|holdout (results?|read|lift)|lift we got|"
+                r"ready to call|call (the|this|my) test|significan|actually add|platform credits|credited|underperform|"
+                r"\broi\b (of|on|from) (the|our|my|this)\b"),
+    ("roi", r"\broi\b|business case|program worth|engine worth|worth next year"),
     ("plan", r"\bplan\b|flow|campaign|journey|sequence|series|touch|win-?back|onboarding|welcome|activation|nurture|re-?engage"),
 )
 # Asking for a flow is a plan, whatever else the sentence mentions ("a re-engagement flow for inactive subscribers").
 PLAN_FIRST = re.compile(r"\b(plan|build|design|create|draft|write|set up|map out)\b[^.?!]*\b(flow|campaign|journey|sequence|series|cadence|drip|"
                         r"win-?back|onboarding|welcome|nurture|re-?engagement|reactivation|activation)\b", re.I)
+# ...and so is naming one, without a verb: "a 5-touch win-back flow with a 15% holdout", "nurture sequence for dormant leads"
+PLAN_NOUN = re.compile(r"^\s*(?:(?:i|we) (?:need|want|would like) )?(?:an? |the |our )?(?:\d+[- ](?:touch|step|email|message)s? )?"
+                       r"(?:[\w-]+ ){0,2}?(?:flow|sequence|series|journey|drip|cadence|win-?back)\b(?! (?:ideas?|priorities)\b)", re.I)
+PLAN_IMPERATIVE = re.compile(r"^\s*(?:please )?(?:re-?engage|win back|bring back|reactivate)\b", re.I)
+QUESTION = re.compile(r"^\s*(what|which|when|where|why|who|how|is|are|do|does|did|should|can|could|would|will)\b|\?\s*$", re.I)
 NOT_DOMAINS = {"e.g", "i.e"}
 # what each job needs, and how to ask for it
 NEEDS: Dict[str, List[Tuple[str, str]]] = {
@@ -86,13 +98,21 @@ class Job:
 
 
 def classify(text: str) -> Optional[str]:
+    """Rules, in order: asking for a flow is a plan; then "what should I build"; then naming a flow; then the first job
+    whose words appear. A question that only mentions a flow ("which flows should we retire?") matches no job: lcm
+    says so and points to Claude, instead of starting a campaign plan nobody asked for."""
     low = text.lower()
-    if re.search(INTENTS[0][1], low):      # "what should I build" asks for priorities, not a plan
-        return "priorities"
     if PLAN_FIRST.search(low):
         return "plan"
-    for kind, pattern in INTENTS:
+    if re.search(INTENTS[0][1], low):      # "what should I build" asks for priorities, not a plan
+        return "priorities"
+    asking = bool(QUESTION.search(low))
+    if not asking and (PLAN_NOUN.search(low) or PLAN_IMPERATIVE.search(low)):
+        return "plan"
+    for kind, pattern in INTENTS[1:]:
         if re.search(pattern, low):
+            if kind == "plan" and asking and not re.search(r"\b(plan|draft|design|build|worth)\b", low):
+                return None
             return kind
     return None
 
@@ -127,18 +147,19 @@ def route(text: str, opts: Dict[str, Any]) -> Job:
             else:
                 job.missing.append("--brief (which flow's cohort)" + (f"; active briefs: {', '.join(Path(p).name for p in active)}" if active else ""))
     elif kind == "daily":
-        job.args = {"data": a.get("data"), "domains": a.get("domain"), "out": a.get("out", "out")}
+        job.args = {"data": a.get("data"), "domains": a.get("domain") or os.environ.get("LCM_DOMAINS") or None, "out": a.get("out", "out")}
     elif kind == "tracking":
         job.args = {"data": a.get("data"), "events_dir": a.get("events_dir") or os.environ.get("LCM_EVENTS_DIR"), "out": a.get("out", "out")}
     elif kind == "retention":
-        by = a.get("by") or next((c for c, pat in (("plan", r"\bplan\b|tier|enterprise|segment"), ("country", r"countr|region"),
-                                                    ("lifecycle_stage", r"lifecycle stage")) if re.search(pat, low)), None)
+        by = a.get("by") or next((c for c, pat in (("country", r"countr|region|\bgeo"), ("lifecycle_stage", r"lifecycle stage"),
+                                                    ("plan", r"\bplans?\b|tier|enterprise|segment")) if re.search(pat, low)), None)
         job.args = {"data": a.get("data"), "brief": brief, "by": by, "out": a.get("out", "out")}
     elif kind == "roi":
         job.args = {}
     elif kind == "priorities":
         n = re.search(r"\btop\s+(\d+)", low)
-        job.args = {"data": a.get("data"), "brief": a.get("brief"), "top": int(n.group(1)) if n else 3, "out": a.get("out", "out")}
+        job.args = {"data": a.get("data"), "brief": a.get("brief"), "top": int(n.group(1)) if n else 3, "value": a.get("value"),
+                    "domain": a.get("domain"), "out": a.get("out", "out")}
     elif kind == "engagement":
         plat = next((p for p in ("klaviyo", "hubspot", "braze", "customerio", "customer.io") if p in low), None)
         job.args = {"data": a.get("data"), "platform": a.get("platform") or (plat.replace(".", "") if plat else None), "out": a.get("out", "out")}
@@ -222,6 +243,9 @@ def run(job: Job) -> int:
             argv += ["--brief", str(a["brief"])]
         if a.get("value"):
             argv += ["--value-per-conversion", str(a["value"])]
+        for d in str(a.get("domain") or "").split(","):
+            if d.strip():
+                argv += ["--domain", d.strip()]
         return priorities._cli(argv)
     if job.kind == "deliverability":
         from tools import dns_collect
@@ -254,6 +278,9 @@ def run(job: Job) -> int:
             return stats._cli(["feasible", "--entries-per-month", str(a["entries_per_month"]), "--holdout", str(a["holdout"]),
                                "--baseline", str(a["baseline"]), "--mde-rel", str(a["mde_rel"])])
         return stats._cli(["size", "--baseline", str(a["baseline"]), "--mde-rel", str(a["mde_rel"]), "--holdout", str(a["holdout"])])
+    if job.kind == "help" and job.why == "no job matched":
+        print("lcm runs the engine's jobs; this does not ask for one. Ask it in a Claude conversation with the plugin installed, "
+              "or see docs/QUESTION_BANK.md for what to type here.\n", file=sys.stderr)
     print(__doc__)
     return 0 if job.kind == "help" else 2
 

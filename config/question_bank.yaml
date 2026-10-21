@@ -12,8 +12,8 @@ daily:
     expert: Which flows, ranked by measured audience, baseline and value, would add the most incremental revenue per hour of build effort, and is anything capping all of them?
     route: {job: priorities}
     command: lcm "what are my top 3 priority builds today and why?" --data exports/
-    you_get: Fixes that cap everything else first, then up to three builds, each with the evidence, a monthly value range with its assumptions, confidence, effort, and the one command that turns it into a plan.
-    needs: users, orders and track_events exports; message_events for the list check
+    you_get: Fixes that cap everything else first, then the top three builds, each with the evidence, a monthly value range with its assumptions, confidence, effort, and the next step (a ready brief and one command for win-back and activation builds).
+    needs: users, orders and track_events exports; message_events for the list check and the newsletter timing; LCM_DOMAINS (or --domain) for the domain check
     limits: The lift is assumed (10 to 25 percent relative by default, changeable); only a holdout turns the estimate into a result.
 
   - id: overnight
@@ -21,7 +21,7 @@ daily:
     expert: Did any flow's audience, any sending domain or the list's engagement move outside its normal range since yesterday?
     route: {job: daily}
     command: lcm "what broke overnight?" --data exports/
-    you_get: The morning check, run now or read from 05:00 UTC; priorities, cohort anomalies, engagement and every domain's sending gate.
+    you_get: The morning check, run now or read from 05:00 UTC; priorities, tracking health, cohort anomalies, engagement and every domain's sending gate.
     needs: the same exports; LCM_DOMAINS for the domain checks
     limits: It sees what your data and DNS show; a provider-side block without bounces shows up only as a drop in engagement.
 
@@ -39,7 +39,7 @@ daily:
     expert: Is every event in the tracking plan arriving at its usual volume with its required properties, and is any live flow depending on one that stopped?
     route: {job: tracking}
     command: lcm "are our events firing correctly?" --data exports/
-    you_get: Each tracked event's last 7 days against its usual week, required properties going missing, events arriving off the plan, the flows at risk, and the webhook receiver's quarantine reasons.
+    you_get: Each tracked event's last 7 days against its usual week, a stalled feed, required properties going missing, events arriving off the plan, each live flow whose exact trigger or core action (with its property filters) has stopped, and the webhook receiver's quarantine reasons.
     needs: track_events; the receiver's folder for quarantine counts
     limits: It checks shape and volume, not whether an event fires at the right moment in the product.
 
@@ -49,7 +49,7 @@ daily:
     route: {job: audit}
     command: lcm "any anomalies in our flow audiences today?" --data exports/
     you_get: Each metric against its 28-day median with a robust z-score, the risk bands, and the largest funnel leak.
-    needs: users, orders, track_events; a brief in briefs/active/
+    needs: users, orders, track_events; one brief in briefs/active/, or --brief when there are none or several
     limits: Small series (a median under 5) are not judged, so quiet flows stay quiet.
 
 weekly:
@@ -68,7 +68,7 @@ weekly:
     route: {job: audit}
     command: lcm "where are new users dropping off in onboarding?" --data exports/
     you_get: The onboarding funnel with each step's share of signups and the largest leak; plan an activation flow aimed at it from the priorities list.
-    needs: onboarding_step_completed events with step_index
+    needs: onboarding_step_completed events with step_index; one brief in briefs/active/, or --brief when there are none or several
     limits: Which message failed needs per-flow send data from the ESP.
 
   - id: stop_emailing
@@ -122,8 +122,8 @@ monthly:
     expert: What share of each calendar send reaches people too early or too late relative to their own lapse, and how do on-time recipients act compared with late ones?
     route: {job: blast}
     command: lcm "is our monthly newsletter worth keeping?" --brief briefs/active/winback.yaml --data exports/
-    you_get: Each past send's recipients sorted into active, at risk, on time and late, with each band's core-action rate.
-    needs: a brief for the trigger; users and track_events
+    you_get: Your recurring campaign's last three real sends (from message_events), each send's recipients sorted into active, at risk, on time and late, with each band's core-action rate. Without message_events, or with --dates, it shows what a send to everyone qualified would have reached, labeled as such.
+    needs: a brief for the trigger; users and track_events; message_events for the real sends
     limits: The comparison is observed, not a test; a holdout on the trigger settles it.
 
   - id: ltv

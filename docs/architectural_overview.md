@@ -111,8 +111,10 @@ has answered the CDP, and writes failed requests (with placeholders, never secre
 `forward_failed/` for replay. Their volume and baseline come from new qualifiers per month and the
 share who reach the core action unaided, not from lapses.
 
-**Calendar blast or trigger.** `cohort_analyst blast-vs-trigger` takes past blast dates (the first of
-each of the last three months by default) and sorts everyone a blast reached into four bands against
+**Calendar blast or trigger.** `cohort_analyst blast-vs-trigger` reads the last three real sends of your
+recurring campaign from `message_events` (a message delivered within two days, three or more in six months), or
+the dates you give (then everyone qualified, as if one send reached them all; with neither, the first of each of
+the last three months, labeled simulated), and sorts everyone a send reached into four bands against
 the trigger's threshold: active (did the core action within half the threshold), at risk, on time
 (lapsed up to a week past the threshold, when the trigger would have caught them) and late, with each
 band's core-action rate in the following window. It is the comparison a marketer needs to retire a
@@ -166,21 +168,26 @@ own finding: a stalled pipeline looks like a churn spike otherwise.
 | Candidate | Found when | Sized as |
 |---|---|---|
 | Activation flow aimed at the largest onboarding leak | no live activation brief for the core action | new signups a month x share reaching the core action unaided x lift |
-| Win-back | no live win-back brief for the core action | threshold crossings a month x share returning unaided in 30 days x lift; the calendar-send comparison is attached as evidence |
-| Post-purchase second order | at least 20 matured first-time buyers | new customers a month x share ordering again within 60 days x lift x average order value |
-| Fix: domain RED, list RED, data stalled | the deliverability check, engagement tiers or the audit say so | not sized: listed first, because no build pays while they stand |
+| Win-back | no live win-back brief for the core action | threshold crossings a month x share returning unaided within the flow's outcome window x lift; when `message_events` shows a recurring newsletter, its real sends' timing is attached as evidence |
+| Post-purchase second order | at least 20 matured first-time buyers, and no live or candidate flow already working on completed orders | new customers a month x share ordering again within 60 days x lift x average order value |
+| Fix: domain RED, list RED, data stalled, a live flow's trigger stopped | the deliverability check, engagement tiers, the audit or tracking health say so | not sized: listed first, because no build pays while they stand |
 
 Audience and baseline come from the Analyst's own estimates (`cohort_analyst.define`), so a priority and the plan it
 becomes use the same numbers. The lift is a range, 10 to 25 percent relative by default (the effects the engine
 plans tests to detect), and the value of a conversion is supplied or estimated from orders, labeled either way.
 Ranking is mid-range monthly value x confidence weight (high 1.0, medium 0.7, low 0.4) / effort weight (S 1.0, M
-1.5, L 2.0), with fixes pinned above. Each build gets a ready brief, so the next step is one command.
+1.5, L 2.0), with fixes pinned above; "top 3" is three builds after any fixes. Each win-back and activation build gets
+a ready brief carrying today's sending gate (the worst of the domains and the list checked), so the next step is one
+command; two core actions for one product get briefs named by their core action, so neither overwrites the other.
 
 `config/question_bank.yaml` lists 25 questions by cadence; each names the `lcm` job or skill that answers it and
 what it cannot answer. `tools/question_bank.py` checks that every routed question reaches its job and writes
-`docs/QUESTION_BANK.md`. Two jobs exist mainly for it: `agents/tracking.py` (events arriving, complete and on the
-plan, against their usual week) and `agents/retention.py` (the weekly retention curve, with a cliff only when the
-drop exceeds about two standard errors).
+`docs/QUESTION_BANK.md`. Two jobs exist mainly for it. `agents/tracking.py` reads the week to yesterday (so a dead
+feed reads as stale, not as last week's numbers), calls an event stopped only when a silence that long would happen
+by chance less than 1 time in 100 at its rate before, and judges each live flow's trigger and core action with the
+flow's own property filters. `agents/retention.py` draws the weekly retention curve and finds the cliff by comparing
+the same people from one week to the next (a paired test, Bonferroni-corrected for the weeks tested, and only when
+the drop is not undone the following week), so a change in cohort mix never reads as churn.
 
 **DKIM selectors probed by default** (`tools/dns_collect.py SELECTOR_SOURCES`), read from each
 provider's setup documentation on 2026-10-20: Google Workspace `google`; Microsoft 365 `selector1`,

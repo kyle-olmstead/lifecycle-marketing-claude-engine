@@ -22,10 +22,12 @@ What are my top 3 priority builds today and why?
 ```
 
 The engine reads your data for opportunities (new users stalling in onboarding, customers lapsing with no flow
-to catch them, first-time buyers who never order again, a newsletter reaching people too late), ranks them by
-likely monthly revenue, the data behind the estimate and the work involved, and puts anything that would undercut
-every build first. Each comes with its evidence, a revenue range with the assumptions spelled out, and the one
-command that turns it into a full plan. The morning check (section 7) answers the same question every day without
+to catch them, first-time buyers who never order again), ranks them by estimated monthly revenue, the data behind
+the estimate and the work involved, and puts anything that would undercut every build first (a failing sending
+domain, a stale list, a release that broke the event a live flow runs on). Each comes with its evidence, a revenue
+range with the assumptions spelled out, and its next step: for a win-back or activation build, a ready brief and the
+one command that turns it into a full plan. When your email data shows a recurring newsletter, a win-back also says
+how late its real sends reached the people the trigger would catch. The morning check (section 7) answers the same question every day without
 being asked. For everything else a lifecycle manager asks daily, weekly, monthly, quarterly and yearly, see the
 [question bank](QUESTION_BANK.md).
 
@@ -184,9 +186,10 @@ Customer.io, BigQuery, Snowflake and Google Sheets, so Claude can read your real
 ## 7. The daily health check
 
 Every morning at 05:00 UTC, `.github/workflows/daily_cohort_audit.yml` runs `scripts/daily.py`. It
-ranks today's top 3 priorities, checks the cohort behind every flow in `briefs/active/`, sorts your email
-audience into engagement tiers, looks up each sending domain's authentication records, and logs it all to a
-Google Sheet. The summary opens with the priorities:
+lists anything to fix and ranks today's top 3 builds, checks the cohort behind every flow in `briefs/active/`,
+checks that the events those flows run on are still arriving, sorts your email audience into engagement tiers,
+looks up each sending domain's authentication records, and logs it all to a Google Sheet. The summary opens with
+the priorities:
 
 | Tab | One row per | Shows |
 |---|---|---|

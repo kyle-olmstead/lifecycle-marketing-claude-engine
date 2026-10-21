@@ -430,11 +430,16 @@ def audit_sql(brief: Brief, dialect_name: str, as_of: Optional[str] = None, look
 BLAST_BANDS = ("1 active", "2 at risk", "3 on time", "4 late")
 
 
-def blast_sql(brief: Brief, dialect_name: str, blast_date: str, window_days: Optional[int] = None) -> str:
+def blast_sql(brief: Brief, dialect_name: str, blast_date: str, window_days: Optional[int] = None,
+              message_id: Optional[str] = None) -> str:
     """Everyone a calendar blast to the qualified base reached on blast_date, banded by where they were in their own
     cycle that day, with how many did the core action in the following window. A behavioral trigger would have
-    reached each person on the day they crossed the threshold instead."""
+    reached each person on the day they crossed the threshold instead. With message_id, only the people that send was
+    actually delivered to (from message_events); without it, everyone qualified, as if one send went to all of them."""
     D = dialect(dialect_name)
+    rcpt = ("" if message_id is None else
+            "JOIN (SELECT DISTINCT me.user_id FROM message_events me WHERE me.event_name = 'delivered' "
+            f"AND me.message_id = '{str(message_id).replace(chr(39), chr(39) * 2)}') r ON r.user_id = a.user_id\n")
     b = D.date_literal(blast_date)
     n = brief.churn_threshold_days
     half = max(1, math.ceil(n / 2))
@@ -457,25 +462,67 @@ def blast_sql(brief: Brief, dialect_name: str, blast_date: str, window_days: Opt
             f"       COUNT(*) AS recipients,\n"
             f"       SUM(CASE WHEN ab.user_id IS NOT NULL THEN 1 ELSE 0 END) AS acted_within_window,\n"
             f"       SUM({days}) AS total_days_since_core\n"
-            f"FROM anchored a\nLEFT JOIN after_blast ab ON ab.user_id = a.user_id\n"
+            f"FROM anchored a\n{rcpt}LEFT JOIN after_blast ab ON ab.user_id = a.user_id\n"
             f"GROUP BY 1\nORDER BY 1\n")
 
 
-def blast_vs_trigger(brief: Brief, data: str, blast_dates: Optional[List[str]] = None) -> Dict[str, Any]:
-    """Compare calendar blasts with the behavioral trigger, on the brief's own cohort and data."""
+def recurring_sends(con, as_of: date, window: int, k: int = 3, lookback: int = 180) -> Optional[Dict[str, Any]]:
+    """The last k sends of the most frequent recurring campaign in message_events, each with a full outcome window
+    before as_of. A send is one message_id delivered within 2 days (a triggered flow's messages trickle out over weeks
+    and are not sends); a campaign is recurring with 3 or more sends in the lookback."""
+    try:
+        rows = _rows(con, """
+            SELECT campaign, message_id, CAST(MIN(event_at) AS DATE) AS d, CAST(MAX(event_at) AS DATE) AS last_d,
+                   COUNT(DISTINCT user_id) AS recipients
+            FROM message_events WHERE event_name = 'delivered' AND campaign IS NOT NULL AND message_id IS NOT NULL
+            GROUP BY campaign, message_id""")
+    except Exception:  # noqa: BLE001 - no message_events table loaded
+        return None
+    latest = as_of - timedelta(days=window)
+    by: Dict[str, List[Dict[str, Any]]] = {}
+    for r in rows:
+        if (r["last_d"] - r["d"]).days <= 2 and as_of - timedelta(days=lookback) < r["d"] <= latest:
+            by.setdefault(str(r["campaign"]), []).append(r)
+    best = sorted(((c, xs) for c, xs in by.items() if len(xs) >= 3), key=lambda cx: (-len(cx[1]), cx[0]))
+    if not best:
+        return None
+    campaign, sends = best[0]
+    sends = sorted(sends, key=lambda r: r["d"])[-k:]
+    return {"campaign": campaign, "sends": [{"date": r["d"].isoformat(), "message_id": str(r["message_id"]),
+                                             "delivered": int(r["recipients"])} for r in sends]}
+
+
+def blast_vs_trigger(brief: Brief, data: str, blast_dates: Optional[List[str]] = None, as_of: Optional[str] = None) -> Dict[str, Any]:
+    """Compare calendar blasts with the behavioral trigger, on the brief's own cohort and data.
+
+    With blast_dates: a send to everyone qualified on each date (what a blast on those dates would have reached).
+    Without: the last three real sends of your recurring campaign in message_events, to the people they were delivered
+    to; when there is none, a send to everyone qualified on the first of each of the last three months, labeled simulated."""
     con = connect(data)
-    as_of, _latest = latest_complete_day(con)
+    as_of_d = date.fromisoformat(as_of) if as_of else latest_complete_day(con)[0]
     w = _window(brief)
-    if not blast_dates:   # the first of each of the last three months that still have a full window after them
-        d = (as_of - timedelta(days=w)).replace(day=1)
-        blast_dates = []
-        while len(blast_dates) < 3:
-            blast_dates.insert(0, d.isoformat())
-            d = (d - timedelta(days=1)).replace(day=1)
+    plan: List[Tuple[str, Optional[str]]] = []
+    campaign = None
+    if blast_dates:
+        plan = [(d, None) for d in blast_dates]
+        source = "dates given: a send to everyone qualified on each date"
+    else:
+        rec = recurring_sends(con, as_of_d, w)
+        if rec:
+            campaign = rec["campaign"]
+            plan = [(x["date"], x["message_id"]) for x in rec["sends"]]
+            source = f"observed: the last {len(plan)} sends of '{campaign}' in message_events, to the people each was delivered to"
+        else:
+            d = (as_of_d - timedelta(days=w)).replace(day=1)
+            while len(plan) < 3:
+                plan.insert(0, (d.isoformat(), None))
+                d = (d - timedelta(days=1)).replace(day=1)
+            source = ("simulated: no recurring campaign in message_events, so a send to everyone qualified on the first of "
+                      "each of the last three months")
     n = brief.churn_threshold_days
     out_dates = []
-    for bd in blast_dates:
-        rows = {r["band"]: r for r in _rows(con, blast_sql(brief, "duckdb", bd, w))}
+    for bd, mid in plan:
+        rows = {r["band"]: r for r in _rows(con, blast_sql(brief, "duckdb", bd, w, message_id=mid))}
         total = sum(int(r["recipients"]) for r in rows.values())
         bands = {}
         for band in BLAST_BANDS:
@@ -487,11 +534,12 @@ def blast_vs_trigger(brief: Brief, data: str, blast_dates: Optional[List[str]] =
                                             "acted_within_window": acted, "rate": round(acted / k, 4) if k else None,
                                             "mean_days_since_core": None if mean_days is None else round(mean_days, 1)}
         late = bands["late"]
-        out_dates.append({"date": bd, "recipients": total, "bands": bands,
+        out_dates.append({"date": bd, "message_id": mid, "recipients": total, "bands": bands,
                           "late_by_days_mean": None if late["mean_days_since_core"] is None else round(late["mean_days_since_core"] - n, 1)})
     tot = sum(d["recipients"] for d in out_dates)
     agg = {k: sum(d["bands"][k]["recipients"] for d in out_dates) for k in ("active", "at risk", "on time", "late")}
-    return {"flow": brief.slug, "threshold_days": n, "window_days": w, "as_of": as_of.isoformat(), "blasts": out_dates,
+    return {"flow": brief.slug, "threshold_days": n, "window_days": w, "as_of": as_of_d.isoformat(), "blasts": out_dates,
+            "source": source, "observed": campaign is not None, "campaign": campaign,
             "summary": {"recipients": tot, **{f"{k}_share": round(v / tot, 4) if tot else None for k, v in agg.items()}},
             "reading": ("A blast reaches people wherever they are in their cycle: 'active' were still using the product (the message "
                         "interrupts them), 'at risk' were early, 'on time' had just crossed the threshold (where the trigger fires), "
@@ -501,7 +549,8 @@ def blast_vs_trigger(brief: Brief, data: str, blast_dates: Optional[List[str]] =
 
 def render_blast(r: Dict[str, Any]) -> str:
     L = [f"## Calendar blast vs behavioral trigger: {r['flow']}", "",
-         f"Threshold {r['threshold_days']} days; outcome window {r['window_days']} days; data to {r['as_of']}.", "",
+         f"Threshold {r['threshold_days']} days; outcome window {r['window_days']} days; data to {r['as_of']}.",
+         f"Sends: {r.get('source', 'dates given')}.", "",
          "| Blast | Recipients | Active | At risk | On time | Late | Late by (mean days) |", "|---|---:|---:|---:|---:|---:|---:|"]
     for d in r["blasts"]:
         b = d["bands"]
@@ -857,7 +906,9 @@ def _cli(argv: Optional[List[str]] = None) -> int:
     bl = sub.add_parser("blast-vs-trigger", help="compare calendar blasts with the behavioral trigger on your data")
     bl.add_argument("--brief", required=True)
     bl.add_argument("--data", required=True)
-    bl.add_argument("--dates", help="comma-separated blast dates (default: the first of each of the last three full months)")
+    bl.add_argument("--dates", help="comma-separated blast dates (default: your recurring campaign's last three sends in "
+                                    "message_events, else the first of each of the last three months, labeled simulated)")
+    bl.add_argument("--as-of")
     bl.add_argument("--out")
     s = sub.add_parser("audit-sql")
     s.add_argument("--brief", required=True)
@@ -869,7 +920,7 @@ def _cli(argv: Optional[List[str]] = None) -> int:
         print(define(brief, args.data, args.as_of).model_dump_json(indent=2))
         return 0
     if args.cmd == "blast-vs-trigger":
-        r = blast_vs_trigger(brief, args.data, args.dates.split(",") if args.dates else None)
+        r = blast_vs_trigger(brief, args.data, args.dates.split(",") if args.dates else None, args.as_of)
         if args.out:
             out = Path(args.out)
             out.mkdir(parents=True, exist_ok=True)

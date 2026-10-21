@@ -13,6 +13,8 @@ What it does, in order. Each step is independent: one that fails is recorded and
      empty): daily metrics against their 28-day median, risk bands, the funnel's largest leak.
   2. Engagement tiers from message_events (agents/engagement.py): the unengaged share is the sending
      gate's input. Skipped, not failed, when the data has no message_events table.
+  2b. Tracking health (agents/tracking.py): is every event in the tracking plan still arriving, is the feed stale, and
+     has the exact trigger or core action of any live flow stopped? File data only (demo or url mode).
   3. For each domain in --domains (or LCM_DOMAINS), a live DNS pull (tools/dns_collect.py) and the
      deliverability analysis, with today's unengaged share as a signal.
   4. Today's priorities (agents/priorities.py): the builds most worth doing next, ranked from the data, with fixes that
@@ -167,7 +169,7 @@ def run(mode: str = "demo", data: Optional[str] = None, briefs_dir: Path = ROOT 
     out.mkdir(parents=True, exist_ok=True)
     logged_at = _now()
     status: Dict[str, Any] = {"generated_at": logged_at, "mode": mode, "notes": [], "flows": [], "engagement": None,
-                              "deliverability": [], "priorities": None, "errors": [], "sheets": None}
+                              "deliverability": [], "tracking": None, "priorities": None, "errors": [], "sheets": None}
     eng_summary: Optional[Dict[str, Any]] = None
     analyses: Dict[str, Dict[str, Any]] = {}
     md: List[str] = [f"# Daily lifecycle health, {logged_at[:10]}", "", f"Data: {mode}" + (f" ({cohort_analyst.data_label(data)})" if data else ""), ""]
@@ -216,6 +218,31 @@ def run(mode: str = "demo", data: Optional[str] = None, briefs_dir: Path = ROOT 
         status["errors"].append(f"engagement: {_error(e)}")
         md += ["## Engagement tiers: failed", "", f"`{_error(e)}`", ""]
 
+    from agents.brief import load_brief
+    tracking_r: Optional[Dict[str, Any]] = None
+    if mode == "bigquery":
+        status["tracking"] = {"status": "skipped", "reason": "tracking health reads file data; run it with --data on an export"}
+    else:
+        try:
+            from agents import tracking
+            events_dir = os.environ.get("LCM_EVENTS_DIR")
+            tracking_r = tracking.health(data, briefs=[] if note else [load_brief(p) for p in briefs],
+                                         events_dir=Path(events_dir) if events_dir else None)
+            status["tracking"] = {"status": tracking_r["status"], "stale": bool(tracking_r["stale"]),
+                                  "flows_affected": [f["flow"] for f in tracking_r["flows_affected"]]}
+            if tracking_r["status"] == "ok":
+                md += ["## Tracking health", "", "Every tracked event is arriving at its usual volume with its required properties.", ""]
+            else:
+                body = out / "tracking.md"
+                body.write_text(tracking.render(tracking_r), encoding="utf-8")
+                md += [tracking.render(tracking_r), ""]
+                if tracking_r["stale"] or tracking_r["flows_affected"]:
+                    issues.append({"title": "Tracking: a live flow's events stopped" if not tracking_r["stale"] else "Tracking: no new events",
+                                   "label": "tracking", "body_path": str(body)})
+        except Exception as e:  # noqa: BLE001
+            status["tracking"] = {"status": "error", "error": _error(e)}
+            status["errors"].append(f"tracking: {_error(e)}")
+
     for domain in [d.strip().lower() for d in (domains or []) if d.strip()]:
         try:
             res = deliverability_step(domain, {k: v for k, v in signals.items() if v is not None}, out, collect)
@@ -237,11 +264,10 @@ def run(mode: str = "demo", data: Optional[str] = None, briefs_dir: Path = ROOT 
         status["priorities"] = {"status": "skipped", "reason": "priorities read file data; run them with --data on an export"}
     else:
         from agents import priorities
-        from agents.brief import load_brief
         try:
             live = [] if note else [load_brief(p) for p in briefs]
             pr = priorities.run(data, briefs=[load_brief(p) for p in briefs], live=live, top=3, audits=audits, engagement=eng_summary,
-                                deliverability=analyses, out=out)
+                                deliverability=analyses, out=out, tracking=tracking_r)
             section = priorities.render(pr)
             (out / "priorities.md").write_text(section, encoding="utf-8")
             (out / "priorities.json").write_text(json.dumps(priorities.to_json(pr), indent=2, default=str), encoding="utf-8")
@@ -292,7 +318,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         traceback.print_exc()
         return 2
     print((Path(a.out) / "summary.md").read_text(encoding="utf-8"))
-    print(json.dumps({k: status[k] for k in ("mode", "flows", "engagement", "deliverability", "priorities", "errors", "issues")}, indent=2, default=str))
+    print(json.dumps({k: status[k] for k in ("mode", "flows", "engagement", "tracking", "deliverability", "priorities", "errors", "issues")}, indent=2, default=str))
     return 1 if (a.strict and status["errors"]) else 0
 
 

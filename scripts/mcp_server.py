@@ -107,12 +107,15 @@ def engagement_tiers(data_dir: str, as_of: Optional[str] = None) -> str:
 
 
 @server.tool()
-def priorities(data_dir: str, top: int = 3, value_per_conversion: Optional[float] = None) -> str:
+def priorities(data_dir: str, top: int = 3, value_per_conversion: Optional[float] = None, domains: Optional[List[str]] = None) -> str:
     """Today's top builds, ranked from the data with their why, size, confidence and effort; fixes that cap everything
-    else come first. Use for "what should I build next?", "what are my top 3 priorities today?", or campaign ideas."""
+    else come first (a RED sending domain among them when domains, or LCM_DOMAINS, names one). Use for "what should I
+    build next?", "what are my top 3 priorities today?", or campaign ideas."""
     from agents import priorities as prio
+    domains = domains or [d.strip() for d in os.environ.get("LCM_DOMAINS", "").split(",") if d.strip()]
     try:
-        r = prio.run(data_dir, top=top, value=value_per_conversion, out=OUT)
+        r = prio.run(data_dir, top=top, value=value_per_conversion, out=OUT,
+                     deliverability=prio.check_domains(domains) if domains else None)
     except (ValueError, FileNotFoundError) as e:
         return f"Could not rank priorities: {e}"
     return prio.render(r)

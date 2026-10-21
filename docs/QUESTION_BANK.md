@@ -1,14 +1,17 @@
 # The question bank
 
 > **In plain English.** These are the questions a lifecycle marketing manager asks every day, week, month, quarter
-> and year, and what the engine does with each. Ask any of them in a Claude conversation with the plugin installed,
-> or type it after `lcm` in a terminal. Each one lists what you get, what data it needs, and what it cannot answer,
-> so a partial answer is never mistaken for a whole one. The single most useful one is the first: *what are my top
-> 3 priority builds today and why?* The morning check answers it every day without being asked.
+> and year, and what the engine does with each. Ask any of them in a Claude conversation with the plugin installed.
+> The ones with an `lcm` command also run in a terminal: type the command shown. Each one lists what you get, what
+> data it needs, and what it cannot answer, so a partial answer is never mistaken for a whole one. The single most
+> useful one is the first: *what are my top 3 priority builds today and why?* The morning check answers it every day
+> without being asked.
 
-25 questions. The plain version is how you would say it; the expert version is the same question at full depth, and
-either works. This page is written from `config/question_bank.yaml` (`python3 tools/question_bank.py --write`); CI checks
-that every question with an `lcm` command reaches the job named here.
+25 questions. The plain version is how you would say it; the expert version is the same question at full depth.
+In Claude either works. After `lcm`, type the plain version: the terminal router is rules, not a model, and CI checks
+that every plain question with an `lcm` command reaches the job named here. Questions marked *the ... skill in Claude*
+have no terminal job; `lcm` says so instead of guessing. This page is written from `config/question_bank.yaml`
+(`python3 tools/question_bank.py --write`).
 
 | Cadence | Questions |
 |---|---|
@@ -25,8 +28,8 @@ that every question with an `lcm` command reaches the job named here.
 *Expert version:* Which flows, ranked by measured audience, baseline and value, would add the most incremental revenue per hour of build effort, and is anything capping all of them?
 
 - **How:** `lcm` job `priorities`: `lcm "what are my top 3 priority builds today and why?" --data exports/`
-- **You get:** Fixes that cap everything else first, then up to three builds, each with the evidence, a monthly value range with its assumptions, confidence, effort, and the one command that turns it into a plan.
-- **Needs:** users, orders and track_events exports; message_events for the list check
+- **You get:** Fixes that cap everything else first, then the top three builds, each with the evidence, a monthly value range with its assumptions, confidence, effort, and the next step (a ready brief and one command for win-back and activation builds).
+- **Needs:** users, orders and track_events exports; message_events for the list check and the newsletter timing; LCM_DOMAINS (or --domain) for the domain check
 - **Cannot answer:** The lift is assumed (10 to 25 percent relative by default, changeable); only a holdout turns the estimate into a result.
 
 ### What broke overnight?
@@ -34,7 +37,7 @@ that every question with an `lcm` command reaches the job named here.
 *Expert version:* Did any flow's audience, any sending domain or the list's engagement move outside its normal range since yesterday?
 
 - **How:** `lcm` job `daily`: `lcm "what broke overnight?" --data exports/`
-- **You get:** The morning check, run now or read from 05:00 UTC; priorities, cohort anomalies, engagement and every domain's sending gate.
+- **You get:** The morning check, run now or read from 05:00 UTC; priorities, tracking health, cohort anomalies, engagement and every domain's sending gate.
 - **Needs:** the same exports; LCM_DOMAINS for the domain checks
 - **Cannot answer:** It sees what your data and DNS show; a provider-side block without bounces shows up only as a drop in engagement.
 
@@ -52,7 +55,7 @@ that every question with an `lcm` command reaches the job named here.
 *Expert version:* Is every event in the tracking plan arriving at its usual volume with its required properties, and is any live flow depending on one that stopped?
 
 - **How:** `lcm` job `tracking`: `lcm "are our events firing correctly?" --data exports/`
-- **You get:** Each tracked event's last 7 days against its usual week, required properties going missing, events arriving off the plan, the flows at risk, and the webhook receiver's quarantine reasons.
+- **You get:** Each tracked event's last 7 days against its usual week, a stalled feed, required properties going missing, events arriving off the plan, each live flow whose exact trigger or core action (with its property filters) has stopped, and the webhook receiver's quarantine reasons.
 - **Needs:** track_events; the receiver's folder for quarantine counts
 - **Cannot answer:** It checks shape and volume, not whether an event fires at the right moment in the product.
 
@@ -62,7 +65,7 @@ that every question with an `lcm` command reaches the job named here.
 
 - **How:** `lcm` job `audit`: `lcm "any anomalies in our flow audiences today?" --data exports/`
 - **You get:** Each metric against its 28-day median with a robust z-score, the risk bands, and the largest funnel leak.
-- **Needs:** users, orders, track_events; a brief in briefs/active/
+- **Needs:** users, orders, track_events; one brief in briefs/active/, or --brief when there are none or several
 - **Cannot answer:** Small series (a median under 5) are not judged, so quiet flows stay quiet.
 
 
@@ -83,7 +86,7 @@ that every question with an `lcm` command reaches the job named here.
 
 - **How:** `lcm` job `audit`: `lcm "where are new users dropping off in onboarding?" --data exports/`
 - **You get:** The onboarding funnel with each step's share of signups and the largest leak; plan an activation flow aimed at it from the priorities list.
-- **Needs:** onboarding_step_completed events with step_index
+- **Needs:** onboarding_step_completed events with step_index; one brief in briefs/active/, or --brief when there are none or several
 - **Cannot answer:** Which message failed needs per-flow send data from the ESP.
 
 ### Who should we stop emailing?
@@ -139,8 +142,8 @@ that every question with an `lcm` command reaches the job named here.
 *Expert version:* What share of each calendar send reaches people too early or too late relative to their own lapse, and how do on-time recipients act compared with late ones?
 
 - **How:** `lcm` job `blast`: `lcm "is our monthly newsletter worth keeping?" --brief briefs/active/winback.yaml --data exports/`
-- **You get:** Each past send's recipients sorted into active, at risk, on time and late, with each band's core-action rate.
-- **Needs:** a brief for the trigger; users and track_events
+- **You get:** Your recurring campaign's last three real sends (from message_events), each send's recipients sorted into active, at risk, on time and late, with each band's core-action rate. Without message_events, or with --dates, it shows what a send to everyone qualified would have reached, labeled as such.
+- **Needs:** a brief for the trigger; users and track_events; message_events for the real sends
 - **Cannot answer:** The comparison is observed, not a test; a holdout on the trigger settles it.
 
 ### What does our LTV curve look like by signup cohort?

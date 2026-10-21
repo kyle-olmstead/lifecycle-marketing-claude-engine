@@ -321,7 +321,7 @@ def test_mcp_server_tools(tmp_path, monkeypatch):
     tiers = asyncio.run(mcp_server.server.call_tool("engagement_tiers", {"data_dir": str(ROOT / "tests/fixtures")}))
     assert "Unengaged share" in tiers.content[0].text
     top = asyncio.run(mcp_server.server.call_tool("priorities", {"data_dir": str(ROOT / "tests/fixtures")}))
-    assert "Top 3 priorities today" in top.content[0].text
+    assert "Today's priorities" in top.content[0].text and "### 3. " in top.content[0].text
 
 
 def test_mcp_config():
