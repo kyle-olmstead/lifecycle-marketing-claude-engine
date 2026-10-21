@@ -81,44 +81,16 @@ LEDGER = "lcm_flow_entries"
 # data access
 # ----------------------------------------------------------------------------------------------
 
-TRANSIENT_LOAD = re.compile(r"HTTP 5\d\d|\(HTTP 429\)|\b(429|500|502|503|504)\b|timed? ?out|connection (refused|reset|aborted)|"
-                            r"could not resolve|temporar", re.I)
+from engine.data.load import TRANSIENT_LOAD  # noqa: E402,F401  (kept importable from here)
 
 
 def connect(data: Optional[str]):
-    """DuckDB over the canonical tables, from a folder or URL prefix holding users, orders and track_events (.parquet or .csv).
+    """DuckDB over the canonical tables, from a folder or URL prefix (.parquet or .csv per table; see engine/data/schema.py).
 
-    For each table, .parquet is tried first, then .csv. orders and the entry ledger are optional: a product without orders
-    has an empty orders table, and a first run has an empty ledger."""
-    import duckdb
-    if data is None:
-        return None
-    con = duckdb.connect()
-    remote = data.startswith(("http://", "https://", "s3://", "gs://"))
-    if remote:
-        con.execute("INSTALL httpfs; LOAD httpfs;")
-    base = data.rstrip("/")
-    for table, cols in sql_check.TABLE_DDL.items():
-        con.execute(f"CREATE TABLE {table} ({cols})")
-        errors = []
-        loaded = False
-        for source in (f"{base}/{table}.parquet", f"{base}/{table}.csv"):
-            if not remote and not Path(source).exists():
-                continue
-            reader = (f"read_parquet('{source}')" if source.endswith(".parquet") else
-                      f"read_csv('{source}', header=true, all_varchar=true, nullstr='')")
-            try:
-                con.execute(f"INSERT INTO {table} SELECT * FROM {reader}")
-                loaded = True
-                break
-            except Exception as e:  # noqa: BLE001
-                errors.append(f"{source}: {str(e).splitlines()[0]}")
-        if not loaded and table not in ("orders",) + sql_check.OPTIONAL_TABLES:
-            msg = f"{data}: could not load {table} from .parquet or .csv ({'; '.join(errors) or 'no file'})"
-            # a server error or a dropped connection can pass on retry; a missing file cannot
-            if remote and any(TRANSIENT_LOAD.search(e) for e in errors):
-                raise ConnectionError(msg)
-            raise FileNotFoundError(msg)
+    users and track_events are required; every other table is optional and empty when absent. Columns are matched by name,
+    so an export may carry extra columns or leave out optional ones."""
+    from engine.data.load import connect as load
+    con, _notes = load(data)
     return con
 
 

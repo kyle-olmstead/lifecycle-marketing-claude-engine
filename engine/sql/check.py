@@ -33,21 +33,9 @@ DIALECT_ALIASES = {"postgresql": "postgres", "postgres": "postgres", "pg": "post
                    "bigquery": "bigquery", "bq": "bigquery", "duckdb": "duckdb"}
 # PostgreSQL JSON builders that DuckDB names differently; rewritten only for the fixture run
 PG_TO_DUCKDB = {"jsonb_build_object": "json_object", "json_build_object": "json_object", "jsonb_agg": "json_group_array", "json_agg": "json_group_array"}
-TABLE_DDL = {
-    "users": "user_id VARCHAR, email VARCHAR, created_at TIMESTAMP, country VARCHAR, plan VARCHAR, lifecycle_stage VARCHAR, "
-             "email_consent_at TIMESTAMP, sms_consent_at TIMESTAMP",
-    "orders": "order_id VARCHAR, user_id VARCHAR, order_at TIMESTAMP, status VARCHAR, gross_amount DECIMAL(18,2), "
-              "discount_amount DECIMAL(18,2), net_amount DECIMAL(18,2), currency VARCHAR",
-    "track_events": "event_id VARCHAR, user_id VARCHAR, anonymous_id VARCHAR, event_name VARCHAR, event_at TIMESTAMP, properties JSON",
-    # email engagement exported from the ESP (2.2): delivered, opened (machine_open marks privacy-proxy opens), clicked,
-    # bounced (hard), complained, unsubscribed
-    "message_events": "event_id VARCHAR, user_id VARCHAR, channel VARCHAR, event_name VARCHAR, event_at TIMESTAMP, message_id VARCHAR, "
-                      "campaign VARCHAR, machine_open BOOLEAN",
-    # the teammate's ledger of flow entries already pushed (2.1); empty unless a fixture file exists
-    "lcm_flow_entries": "flow VARCHAR, user_id VARCHAR, anchor_date DATE, holdout_bucket INTEGER, in_holdout BOOLEAN, status VARCHAR, "
-                        "queued_at TIMESTAMP, pushed_at TIMESTAMP",
-}
-OPTIONAL_TABLES = ("lcm_flow_entries", "message_events")
+from engine.data.schema import OPTIONAL_TABLES, TABLES  # noqa: E402  (the canonical tables, one place)
+
+TABLE_DDL = {name: table.ddl for name, table in TABLES.items()}
 
 
 def declared_dialect(sql: str) -> Optional[str]:
@@ -70,15 +58,8 @@ def parse(sql: str, dialect: str) -> Tuple[bool, str]:
 def connect(fixtures: Path = FIXTURES, integer_division: bool = True):
     """DuckDB over the fixtures. integer_division=True matches PostgreSQL (integer / integer truncates), for the reference
     SQL; pass False for SQL transpiled from Snowflake or BigQuery, where integer / integer is a decimal."""
-    import duckdb
-    con = duckdb.connect()
-    con.execute(f"SET integer_division = {'true' if integer_division else 'false'}")
-    for table, cols in TABLE_DDL.items():
-        path = fixtures / f"{table}.csv"
-        con.execute(f"CREATE TABLE {table} ({cols})")
-        if table in OPTIONAL_TABLES and not path.exists():
-            continue
-        con.execute(f"INSERT INTO {table} SELECT * FROM read_csv('{path.as_posix()}', header=true, all_varchar=true, nullstr='')")
+    from engine.data.load import connect as load
+    con, _notes = load(str(fixtures), integer_division=integer_division)
     return con
 
 

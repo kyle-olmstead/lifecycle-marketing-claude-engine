@@ -300,13 +300,18 @@ def for_subdomain(d: DMARCResult) -> DMARCResult:
 
 
 def next_dmarc_step(current: DMARCResult, domain: str, aligned_pass_observed: bool = False,
-                    subdomain: bool = False) -> Optional[Dict[str, Any]]:
+                    subdomain: bool = False, aligned_fail_observed: bool = False) -> Optional[Dict[str, Any]]:
     """The next record on the path none (with reports) -> quarantine (t=y) -> quarantine -> reject.
 
     Enforcement is never recommended blind. From p=none the next step is quarantine only when the record
     already has a rua= reporting address AND an aligned SPF or DKIM pass was observed for this mail;
     otherwise the step is p=none with reporting, because quarantining before every legitimate sender
     aligns sends your own mail to spam. Returns None when the record is already where it should be.
+
+    The same evidence gates every later step (quarantine in testing to full quarantine, quarantine to reject,
+    dropping a testing phase): a rua= address, an aligned pass observed for this mail, and no aligned failure
+    observed. Mail seen failing alignment is never pushed to a stricter policy; the step is to hold, with the
+    reason, until the failing sender is fixed.
 
     subdomain=True: the mail comes from a subdomain covered by this (organizational) record. When the record
     has sp=, sp is what applies, so sp is the tag stepped and p is left alone; t=y is not added, since it
@@ -318,13 +323,21 @@ def next_dmarc_step(current: DMARCResult, domain: str, aligned_pass_observed: bo
     keep = {k: v for k, v in current.tags.items() if k in ("rua", "ruf", "adkim", "aspf", "fo", "sp", "np", "t")}
     if "rua" not in keep:
         keep["rua"] = f"mailto:dmarc-reports@{domain}"
-    ready = bool(current.rua) and aligned_pass_observed
-    if current.policy == "none" and not ready:
+    ready = bool(current.rua) and aligned_pass_observed and not aligned_fail_observed
+    if current.policy != "none" and not ready:
+        if current.rua:
+            return None   # hold: the record is right for now; analyze() says why it must not be tightened yet
+        nxt = {"p": current.policy, **({"t": "y"} if current.testing else {})}
+        note = (f"Hold at p={current.policy} and add aggregate reporting: tightening without reports is blind"
+                + ("; this mail also failed DMARC alignment, so fix that sender first" if aligned_fail_observed else "") + ".")
+    elif current.policy == "none" and not ready:
         nxt = {"p": "none"}
         missing = []
         if not current.rua:
             missing.append("add a rua= address so aggregate reports show who sends as this domain")
-        if not aligned_pass_observed:
+        if aligned_fail_observed:
+            missing.append("this mail failed DMARC alignment, so enforcement now would quarantine your own sends")
+        elif not aligned_pass_observed:
             missing.append("no aligned SPF or DKIM pass was observed for this mail, so enforcement now would quarantine your own sends")
         note = "Stay at p=none: " + "; ".join(missing) + ". Fix alignment first, then watch two weeks of reports before quarantine."
     elif current.policy == "none":
@@ -706,8 +719,15 @@ def _band(value: Optional[float], green_below: float, red_above: float) -> Optio
     return "RED" if value > red_above else "AMBER"
 
 
-def sending_gate(signals: Dict[str, Any]) -> Dict[str, Any]:
-    """Thresholds from the deliverability-engineer method. The worst signal sets the verdict."""
+AUTH_ORDER = {"verified": 0, "partial": 1, "failing": 2, "unknown": 3}
+
+
+def sending_gate(signals: Dict[str, Any], auth_observed: bool = False) -> Dict[str, Any]:
+    """Thresholds from the deliverability-engineer method. The worst signal sets the verdict.
+
+    auth_observed: True only when authentication was verified from evidence this run observed (a LIVE PULL of DNS and
+    headers with an aligned DMARC pass; analyze() decides). A supplied auth_state of "verified" without it reads AMBER:
+    a claim about system state can lower the gate, never raise it."""
     rows: List[Dict[str, Any]] = []
 
     def add(signal: str, value: Any, status: Optional[str], rule: str) -> None:
@@ -737,8 +757,11 @@ def sending_gate(signals: Dict[str, Any]) -> Dict[str, Any]:
         "enterprise gateway engagement as a share of consumer: GREEN comparable (>=60%), AMBER 30 to 60%, RED <30% (quarantine, not disinterest). Use clicks or bot-excluded opens")
     add("unengaged_share", s.get("unengaged_share"), _band(s.get("unengaged_share"), 0.20, 0.50), "GREEN <20%, AMBER 20 to 50%, RED >50%")
     auth = (s.get("auth_state") or "unknown").lower()
-    add("authentication_state", auth, {"verified": "GREEN", "partial": "AMBER", "failing": "RED", "unknown": "RED"}.get(auth, "RED"),
-        "GREEN verified, AMBER partial, RED failing or UNKNOWN")
+    auth_status = {"verified": "GREEN", "partial": "AMBER", "failing": "RED", "unknown": "RED"}.get(auth, "RED")
+    if auth == "verified" and not auth_observed:
+        auth_status = "AMBER"
+    add("authentication_state", auth if auth_status != "AMBER" or auth != "verified" else "verified (supplied, not observed)", auth_status,
+        "GREEN verified from observed DNS and headers (LIVE PULL), AMBER partial or verified only by assertion, RED failing or UNKNOWN")
 
     statuses = [r["status"] for r in rows if r["status"] != "UNKNOWN"]
     verdict = max(statuses, key=lambda x: GATE_ORDER[x]) if statuses else "AMBER"
@@ -869,8 +892,10 @@ def analyze(doc: Dict[str, Any]) -> Dict[str, Any]:
             dmarc.issues.append(("high" if effective.policy == "none" else "info",
                                  f"mail from {from_domain} is covered by the organizational record's sp={effective.policy}, not p={dmarc.policy}"
                                  + (": this subdomain is not protected while the parent enforces" if effective.policy == "none" else "")))
-        observed = bool(hdr) and evaluate_alignment(hdr, dmarc)["dmarc_computed"] == "pass"
-        nxt = next_dmarc_step(dmarc, dmarc_host, aligned_pass_observed=observed, subdomain=sub)
+        seen = evaluate_alignment(hdr, dmarc) if hdr else {}
+        verdicts = {seen.get("dmarc_computed"), seen.get("dmarc_reported")} - {None}
+        nxt = next_dmarc_step(dmarc, dmarc_host, aligned_pass_observed="pass" in verdicts and "fail" not in verdicts,
+                              subdomain=sub, aligned_fail_observed="fail" in verdicts)
         findings += _issues_to_findings("dmarc", dmarc.issues, "identity", label, f"dig +short TXT _dmarc.{dmarc_host}", nxt)
         checked["dmarc"] = {"host": f"_dmarc.{dmarc_host}", **{k: v for k, v in asdict(dmarc).items() if k != "issues"},
                             "applies_as": "own record" if dmarc_host == from_domain else "organizational domain record (sp applies)",
@@ -983,9 +1008,28 @@ def analyze(doc: Dict[str, Any]) -> Dict[str, Any]:
                                     "; ".join(bimi["reasons"]) + ". Cosmetic only; never a remediation priority.", label, f"dig +short TXT default._bimi.{org}"))
 
     signals = dict(doc.get("signals") or {})
-    if "auth_state" not in signals:
-        signals["auth_state"] = _auth_state(dmarc, al, label, bool(dns), bool(hdr))
-    gate = sending_gate(signals)
+    computed = _auth_state(dmarc, al, label, bool(dns), bool(hdr))
+    supplied = (signals.get("auth_state") or "").lower() or None
+    if supplied and not dns and not hdr:
+        effective = supplied                    # nothing observed: the claim stands, and sending_gate caps "verified" at AMBER
+    elif supplied:
+        effective = max(supplied, computed, key=lambda s: AUTH_ORDER.get(s, 3))   # a claim can lower the state, never raise it
+    else:
+        effective = computed
+    signals["auth_state"] = effective
+    gate = sending_gate(signals, auth_observed=(effective == "verified" and computed == "verified"))
+    if dmarc and dmarc.policy in ("quarantine", "reject") and dmarc.rua and hdr:
+        seen = evaluate_alignment(hdr, dmarc)
+        verdicts = {seen.get("dmarc_computed"), seen.get("dmarc_reported")} - {None}
+        if "fail" in verdicts or "pass" not in verdicts:
+            findings.append(Finding("dmarc.hold", "info", "identity", f"Do not tighten DMARC past p={dmarc.policy} yet",
+                                    ("This message failed DMARC alignment" if "fail" in verdicts else "No aligned pass was observed for this message")
+                                    + ": a stricter policy would quarantine or reject your own mail. Fix the sender, confirm aligned DKIM "
+                                    "across two weeks of aggregate reports, then step up.", label, f"dig +short TXT _dmarc.{dmarc_host}"))
+    critical_identity = [f for f in findings if f.severity == "critical" and f.cause == "identity"]
+    if critical_identity and gate["verdict"] == "GREEN":
+        gate = {**gate, "verdict": "AMBER", "permitted": GATE_PERMITS["AMBER"],
+                "reasons": gate["reasons"] + [f"critical identity finding: {f.title}" for f in critical_identity]}
     for r in gate["signals"]:
         if r["status"] in ("RED", "AMBER") and r["signal"] not in ("authentication_state",):
             cause = {"complaint_rate": "consent", "hard_bounce_rate": "consent", "domain_reputation_bounces": "reputation",

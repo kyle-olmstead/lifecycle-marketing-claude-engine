@@ -74,11 +74,19 @@ def plan(target: int, tiers: Dict[str, int], gate: str, days: int = 30, max_per_
     if gate == "RED":
         return {**base, "schedule": [], "summary": "Gate is RED. No warming ladder is permitted. Stop bulk sending; remediation and re-permission only."}
     if gate == "AMBER":
-        flat = min(current if current is not None else cap["engaged_30d"], cumulative["engaged_90d"])
+        # AMBER holds today's volume; it never invents a higher one. Without a current volume, a new domain or IP holds at the
+        # same small start a GREEN ladder would use, and existing infrastructure must say what it sends today.
+        if current is None and not new_infrastructure:
+            return {**base, "schedule": [],
+                    "summary": ("Gate is AMBER: hold current volume flat to engaged tiers only while remediating. Give today's daily "
+                                "volume (--current) and the plan holds it; nothing is scheduled until then.")}
+        held = current if current is not None else min(cap["engaged_30d"], 500)
+        flat = min(held, cumulative["engaged_90d"])
         rows = [{"day": d, "volume": flat, "step": 0, "tiers": _tiers_for(flat, cumulative), "checkpoint": d % 7 == 0,
                  "providers": _split(flat, provider_mix or {})} for d in range(1, days + 1)]
+        why = ("your current volume" if current is not None else "the new-infrastructure start, since no current volume was given")
         return {**base, "schedule": rows,
-                "summary": (f"Gate is AMBER. Hold flat at {flat:,} a day to engaged tiers only while remediating. "
+                "summary": (f"Gate is AMBER. Hold flat at {flat:,} a day ({why}) to engaged tiers only while remediating. "
                             "Re-run the gate weekly; a ladder starts only after it reads GREEN.")}
 
     goal = min(target, engaged_capacity)

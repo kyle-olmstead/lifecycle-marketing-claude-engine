@@ -112,7 +112,8 @@ def test_healthy_sender_is_green():
 
 def test_gate_never_green_on_unverified_or_unknown():
     base = {"complaint_rate": 0.0005, "hard_bounce_rate": 0.002, "auth_state": "verified"}
-    assert D.sending_gate(base)["verdict"] == "GREEN"
+    assert D.sending_gate(base, auth_observed=True)["verdict"] == "GREEN"
+    assert D.sending_gate(base)["verdict"] == "AMBER"          # "verified" by assertion only
     assert D.sending_gate({**base, "auth_state": "unknown"})["verdict"] == "RED"
     assert D.sending_gate({"hard_bounce_rate": 0.002, "auth_state": "verified"})["verdict"] == "AMBER"
     assert D.sending_gate({**base, "domain_reputation_bounces_90d": 1})["verdict"] == "AMBER"
@@ -211,3 +212,41 @@ def test_subdomain_testing_phase_ends_by_dropping_t():
     rec = D.parse_dmarc("v=DMARC1; p=reject; sp=quarantine; t=y; rua=mailto:d@example.com")
     step = D.next_dmarc_step(rec, "example.com", aligned_pass_observed=True, subdomain=True)
     assert step["value"] == "v=DMARC1; p=reject; sp=quarantine; rua=mailto:d@example.com"
+
+
+# ---- regressions from the v2.3 product audit: false greens ----
+
+def test_a_supplied_verified_claim_never_raises_the_gate():
+    # no DNS and no headers: "verified" is a claim, so authentication reads AMBER, and so does the gate
+    r = D.analyze({"signals": {"complaint_rate": 0.0004, "hard_bounce_rate": 0.003, "unengaged_share": 0.1, "auth_state": "verified"}})
+    assert r["gate"]["verdict"] == "AMBER"
+    row = next(s for s in r["gate"]["signals"] if s["signal"] == "authentication_state")
+    assert row["status"] == "AMBER" and "supplied" in str(row["value"])
+    # a claim can still lower an observed state: failing beats an observed pass
+    doc = json.loads((ROOT / "examples/deliverability/healthy.json").read_text())
+    doc["signals"] = {**(doc.get("signals") or {}), "auth_state": "failing"}
+    assert D.analyze(doc)["gate"]["verdict"] == "RED"
+
+
+def test_spf_plus_all_keeps_an_otherwise_healthy_sender_off_green():
+    doc = json.loads((ROOT / "examples/deliverability/healthy.json").read_text())
+    for host, rec in doc["dns"].items():
+        if rec.get("txt"):
+            rec["txt"] = ["v=spf1 include:_spf.example-esp.net +all" if t.lower().startswith("v=spf1") else t for t in rec["txt"]]
+    r = D.analyze(doc)
+    assert any(f["severity"] == "critical" and f["cause"] == "identity" for f in r["findings"])
+    assert r["gate"]["verdict"] == "AMBER"
+    assert any("critical identity finding" in x for x in r["gate"]["reasons"])
+
+
+def test_dmarc_never_tightens_for_mail_seen_failing_or_without_an_observed_pass():
+    q = D.parse_dmarc("v=DMARC1; p=quarantine; rua=mailto:d@example.com")
+    assert D.next_dmarc_step(q, "example.com", aligned_pass_observed=True)["value"].startswith("v=DMARC1; p=reject")
+    assert D.next_dmarc_step(q, "example.com", aligned_pass_observed=True, aligned_fail_observed=True) is None
+    assert D.next_dmarc_step(q, "example.com", aligned_pass_observed=False) is None
+    # no reports: the only step is to add them, at the same policy
+    held = D.next_dmarc_step(D.parse_dmarc("v=DMARC1; p=quarantine"), "example.com", aligned_pass_observed=True)
+    assert held["value"].startswith("v=DMARC1; p=quarantine;") and "rua=" in held["value"]
+    # testing phases are not dropped on failing mail either
+    assert D.next_dmarc_step(D.parse_dmarc("v=DMARC1; p=quarantine; t=y; rua=mailto:d@example.com"), "example.com", True,
+                             aligned_fail_observed=True) is None

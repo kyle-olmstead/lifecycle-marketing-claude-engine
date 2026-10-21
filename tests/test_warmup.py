@@ -43,3 +43,18 @@ def test_zero_days_is_rejected_and_zero_engaged_capacity_schedules_nothing():
         plan(40000, TIERS, "GREEN", days=0)
     p = plan(40000, {"engaged_30d": 0, "engaged_90d": 0, "engaged_180d": 0, "unengaged": 9000}, "GREEN")
     assert p["schedule"] == [] and p["goal_daily_volume"] == 0 and "Nothing is scheduled" in p["summary"]
+
+
+def test_amber_without_a_current_volume_holds_the_new_infrastructure_start_not_tier_capacity():
+    # v2.3 held an AMBER domain at the 30-day tier's capacity (12,857 a day here), far above any GREEN start
+    p = plan(40000, TIERS, "AMBER")
+    assert {r["volume"] for r in p["schedule"]} == {500}
+    assert "no current volume was given" in p["summary"]
+    green = plan(40000, TIERS, "GREEN")
+    assert max(r["volume"] for r in p["schedule"]) <= green["schedule"][0]["volume"]
+
+
+def test_amber_on_existing_infrastructure_asks_for_todays_volume():
+    p = plan(40000, TIERS, "AMBER", new_infrastructure=False)
+    assert p["schedule"] == [] and "--current" in p["summary"]
+    assert {r["volume"] for r in plan(40000, TIERS, "AMBER", current=7000, new_infrastructure=False)["schedule"]} == {7000}
