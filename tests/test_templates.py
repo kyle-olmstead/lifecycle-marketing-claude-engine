@@ -57,7 +57,8 @@ def test_text_to_image_ignores_template_tags_and_hidden_preheaders():
     from engine.render.template_lint import text_to_image
     body = '<div style="display:none">' + "x" * 400 + '</div>{{ customer.first_name }}{% if a %}{% endif %}<img src="a.png" alt="a">'
     r = text_to_image("<html><body>" + body + "<p>Short.</p></body></html>")
-    assert r["visible_text_chars"] == len("Short.") and r["errors"] and "image-only" in r["errors"][0]
+    # logic tags count as nothing; an output tag renders as words, so it counts as one short word (never more than a real value)
+    assert r["visible_text_chars"] == len("mergefield Short.") and r["errors"] and "image-only" in r["errors"][0]
     ok = text_to_image("<html><body><p>" + "Plenty of live text. " * 30 + '</p><img src="a.png" alt="a"></body></html>')
     assert not ok["errors"] and not ok["warnings"]
 
