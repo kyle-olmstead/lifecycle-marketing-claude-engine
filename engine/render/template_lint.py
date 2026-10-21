@@ -134,7 +134,10 @@ def _braze_attrs(src: str, r: LintResult) -> str:
     if re.search(r"\$\{[^{}%\n]*$", src, re.M):
         r["errors"].append("unterminated Braze attribute: '${' without '}'")
     src = re.sub(r"\$\{(" + "|".join(BRAZE_SYSTEM_ATTRS) + r")\}", "__braze_sys__", src)
-    return BRAZE_ATTR.sub("__braze_attr__", src)
+    src = BRAZE_ATTR.sub("__braze_attr__", src)
+    # Braze's documented idiom puts an output inside a tag: {% for item in {{context.${products}}} %}. Its Liquid accepts it;
+    # standard Liquid does not, so the inner braces are dropped before parsing (braze.com/docs, ecommerce_use_cases).
+    return re.sub(r"(\{%-?[^%]*?)\{\{\s*([^{}]+?)\s*\}\}([^%]*?-?%\})", r"\1\2\3", src)
 
 
 def _fallback_warnings_liquid(src: str, r: LintResult, default_pattern: str = r"\|\s*default\b") -> None:
@@ -457,9 +460,12 @@ class _Visible(HTMLParser):
 
 
 def text_to_image(html_src: str) -> Dict[str, Any]:
-    """Readable text against images. Template tags are stripped first so they do not count as text."""
+    """Readable text against images. Logic tags are stripped; an output tag (a merge field such as a product name or the
+    first name) renders as words, so it counts as a short word of text (10 characters, less than any real value), never
+    as an image and never as nothing."""
     src = re.sub(r"<!--.*?-->", "", html_src, flags=re.S)
-    src = re.sub(r"\{%.*?%\}|\{\{.*?\}\}|%%\[.*?\]%%|%%=.*?=%%|%%\w+%%", " ", src, flags=re.S)
+    src = re.sub(r"\{%.*?%\}|%%\[.*?\]%%", " ", src, flags=re.S)
+    src = re.sub(r"\{\{.*?\}\}\}?|%%=.*?=%%|%%\w+%%", " mergefield ", src, flags=re.S)
     p = _Visible()
     p.feed(src)
     text = re.sub(r"\s+", " ", html_unescape(" ".join(p.text))).strip()

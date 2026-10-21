@@ -191,6 +191,11 @@ def _no_deception(rule, brief, cohort, flow, copy_plan):
 
 def _suppression(rule, brief, cohort, flow, copy_plan):
     sup = " ".join(flow.flow_spec.get("suppressions", [])).lower()
+    if flow.flow_spec.get("message_class") == "transactional":
+        missing = [w for w in ("bounce", "spam") if w not in sup]
+        return (("fail", f"the flow does not suppress: {', '.join(missing)}") if missing else
+                ("pass", "billing notices are transactional: hard bounces and complaints are suppressed; a marketing unsubscribe does not "
+                         "stop them, so they carry no marketing content"))
     needed = [w for w in ("unsubscribed", "bounce", "spam") if w not in sup]
     if needed:
         return "fail", f"the flow does not suppress: {', '.join(needed)}"

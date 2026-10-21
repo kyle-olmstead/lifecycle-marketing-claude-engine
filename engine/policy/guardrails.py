@@ -81,7 +81,7 @@ def mandatory_suppressions(flow_type: str) -> List[str]:
     if fd is not None and fd.message_class == "transactional":
         return ["hard bounced (the address does not exist)", "marked a message as spam (complaint): send only the legally required "
                 "notice, from the transactional stream", "internal, test and seed addresses",
-                "marketing unsubscribes do NOT suppress billing notices; keep these messages free of marketing content"]
+                "unsubscribed from marketing: does NOT suppress billing notices, so keep them free of marketing content"]
     rules = [
         "unsubscribed from marketing email, or hard bounced",
         "marked any message as spam (complaint), ever",

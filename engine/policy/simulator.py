@@ -350,8 +350,9 @@ def behavioral(spec: Dict[str, Any], rules: Dict[str, Any]) -> Tuple[List[Dict[s
         return bool(w) and not (w[0] <= h < w[1])
     ps = personas(spec, rules)
     h = journeys["holdout member"]
-    checks.append(_check("holdout members receive nothing", not h["sends"] and "holdout" in h["outcome"],
-                         f"outcome: {h['outcome']}, {len(h['sends'])} message(s)"))
+    if rules.get("holdout_pct", 1) > 0:
+        checks.append(_check("holdout members receive nothing", not h["sends"] and "holdout" in h["outcome"],
+                             f"outcome: {h['outcome']}, {len(h['sends'])} message(s)"))
     nc = journeys["no consent on any channel"]
     checks.append(_check("no message without consent", not [x for x in nc["sends"] if x["action"].startswith("sent")],
                          f"{len(nc['sends'])} message(s) to a person with no consent"))

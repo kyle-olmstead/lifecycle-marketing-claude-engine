@@ -41,7 +41,7 @@ class FlowDef:
     requires: Tuple[str, ...] = ("users", "track_events")
     models: Tuple[str, ...] = ("*",)              # business models it fits
     lifecycle_stage: str = ""
-    clv_lever: Literal["acquisition", "frequency", "monetary_value", "lifespan"] = "lifespan"
+    clv_lever: Literal["acquisition", "transaction_value", "frequency", "lifespan"] = "lifespan"
     outcome_days: int = 14                        # default outcome window after the last touch, in days
     product_block: bool = False                   # touches can show the cart, viewed or purchased items
     native: Dict[str, str] = field(default_factory=dict)   # platform -> how to build the trigger natively

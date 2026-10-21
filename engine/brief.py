@@ -62,6 +62,41 @@ CORE_PHRASES: List[Tuple[str, EventMatch, str]] = [
 ]
 
 
+# Flow types beyond win-back and activation, recognized by name. Order matters: the first match wins.
+FLOW_PATTERNS: List[Tuple[str, str]] = [
+    ("dunning", r"dunning|failed (payment|charge|renewal)|payment (failure|failed|declined)|card (declined|expired|failed)|"
+                r"involuntary churn|past[- ]due|update (their|your) (card|payment)"),
+    ("cart_abandon", r"abandon\w* (cart|checkout)|(cart|checkout) abandon\w*|left (items |something |it )?in (their|the|a) cart|"
+                     r"cart recovery|started (a )?checkout but"),
+    ("browse_abandon", r"browse abandon\w*|abandon\w* brows\w*|viewed (a )?products? (but|and (didn't|did not|never))|"
+                       r"looked at (a )?products?|product views? (but|without)"),
+    ("replenishment", r"replenish\w*|re-?order reminder|run(ning)? (low|out)|refill|restock reminder|reorder"),
+    ("post_purchase", r"post[- ]purchase|after (their|the|a) (first )?(order|purchase)|first[- ]time (buyers?|customers?|purchasers?)|"
+                      r"thank[- ]you (flow|series|email)|order follow[- ]?up|review request"),
+    ("trial_convert", r"trial (conversion|to paid|convert\w*|expir\w*|ending|ends)|convert\w* (free )?trial|"
+                      r"(free )?trial (users|accounts) (to|into) paid|before (their|the) trial ends"),
+    ("sunset", r"\bsunset\b|re-?permission|list hygiene|unengaged (subscribers|contacts|people)|clean (up )?(the|our) list|"
+               r"stop (emailing|mailing) (people|subscribers) who"),
+    ("welcome", r"welcome (flow|series|email|sequence)|new (newsletter )?subscribers?|newsletter sign[- ]?ups?|joined (the|our) (list|newsletter)"),
+]
+HOURS = re.compile(r"\b(\d+(?:\.\d+)?|one|two|three|four|five|six|twelve|24|48|72)\s*(?:-|\s)?\s*(hours?|hrs?|h\b|minutes?|mins?)")
+
+
+def flow_type_of(text: str) -> Tuple[Optional[str], Optional[str]]:
+    """(flow type, None), or (None, why) for a flow the engine recognizes but does not build. Rules, not a model."""
+    from engine.flows.library import UNSUPPORTED
+    low = " ".join(text.lower().replace("’", "'").split())
+    for ft, pattern in FLOW_PATTERNS:
+        if re.search(pattern, low):
+            if ft == "welcome" and re.search(r"connect\w* (a |your |their )?data|invit\w* (a )?(teammate|colleague)|report|log(ged)? ?in", low):
+                return "activation", None     # a SaaS onboarding sentence that happens to say "welcome"
+            return ft, None
+    for key, (pattern, why) in UNSUPPORTED.items():
+        if re.search(pattern, low):
+            return None, why
+    return "", None
+
+
 def _num(token: str) -> Optional[int]:
     token = token.lower()
     return int(token) if token.isdigit() else NUMBER_WORDS.get(token)
@@ -78,11 +113,19 @@ def parse_text(text: str, product_name: Optional[str] = None, overrides: Optiona
         data[field] = value
         assumptions.append(Assumption(field=field, value=value if not isinstance(value, EventMatch) else value.model_dump(), why=why))
 
-    # flow type: explicit lapse words win; then "haven't ... since" (a lapse); then explicit new-user words; then
-    # "haven't ... yet" (not done it for the first time); then any negation or "in N days" (a lapse)
+    # flow type: a named flow from the library first (cart, browse, post-purchase, replenishment, dunning, trial, sunset,
+    # welcome); a recognized flow the engine does not build is refused by name; then win-back and activation as before:
+    # explicit lapse words win; then "haven't ... since" (a lapse); then explicit new-user words; then "haven't ... yet"
+    # (not done it for the first time); then any negation or "in N days" (a lapse)
+    named, refusal = flow_type_of(t)
+    if refusal:
+        raise ValueError(f"not supported yet: {refusal}. The engine plans these flows: welcome, activation, win-back, abandoned cart, "
+                         f"browse abandonment, post-purchase, replenishment, failed payment (dunning), trial conversion and sunset")
     neg = r"(haven't|have not|hasn't|has not)"
-    repeat = r"second (order|purchase)|(order|ordered|buy|bought|purchase|purchased) again|repeat (order|purchase)|reorder"
-    if any(w in low for w in WINBACK_WORDS) or re.search(neg + r".*\bsince\b", low) or re.search(repeat, low):
+    repeat = r"second (order|purchase)|(order|ordered|buy|bought|purchase|purchased) again|repeat (order|purchase)"
+    if named:
+        data["flow_type"] = named
+    elif any(w in low for w in WINBACK_WORDS) or re.search(neg + r".*\bsince\b", low) or re.search(repeat, low):
         data["flow_type"] = "winback"
     elif any(w in low for w in ACTIVATION_WORDS):
         data["flow_type"] = "activation"
@@ -94,18 +137,48 @@ def parse_text(text: str, product_name: Optional[str] = None, overrides: Optiona
         assume("flow_type", "winback", "the brief does not say whether this is a win-back or an activation flow")
 
     # touches
-    m = re.search(r"\b(\d+|one|two|three|four|five|six|seven|eight)[- ](touch|step|message|email|part)", low)
+    from engine.flows.library import FLOWS
+    fd = FLOWS[data.get("flow_type", "winback")]
+    m = re.search(r"\b(\d+|one|two|three|four|five|six|seven|eight)[- ](touch|step|message|email|text|part)", low)
     if m:
-        data["touches"] = _num(m.group(1))
+        n = _num(m.group(1)) or fd.default_touches
+        if n > fd.max_touches:
+            assume("touches", fd.max_touches, f"the sentence asked for {n} touches; a {fd.label.lower()} flow has at most {fd.max_touches} "
+                                               f"in the library, so the plan uses {fd.max_touches}")
+        else:
+            data["touches"] = n
     else:
-        assume("touches", 5 if data.get("flow_type", "winback") == "winback" else 4, "number of touches not stated")
+        assume("touches", fd.default_touches, "number of touches not stated")
+
+    # hours: cart and browse flows wait in hours; any other flow cannot, and says so instead of dropping the number
+    hm = HOURS.search(low)
+    if hm:
+        qty = _num(hm.group(1)) if not hm.group(1).replace(".", "").isdigit() else float(hm.group(1))
+        hrs = (qty or 0) / (60 if hm.group(2).startswith("min") else 1)
+        if fd.hour_level and hrs > 0:
+            data["abandon_after_hours"] = min(max(hrs, 0.25), 72)
+        elif hrs > 0:
+            assumptions.append(Assumption(field="timing", value=f"{hm.group(0)}",
+                                          why=f"the sentence asked for {hm.group(0)}, but a {fd.label.lower()} flow is timed in days, not hours; "
+                                              f"the hours were not used. Abandoned cart and browse flows wait in hours"))
 
     # inactivity threshold
     m = re.search(r"\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(day|week|month)s?\b", low)
-    if m:
+    ft = data.get("flow_type", "winback")
+    if m and ft in ("winback", "sunset", "activation", "welcome"):
         n = _num(m.group(1)) or 14
-        data["churn_threshold_days"] = n * {"day": 1, "week": 7, "month": 30}[m.group(2)]
-    elif data.get("flow_type", "winback") == "winback":
+        days = n * {"day": 1, "week": 7, "month": 30}[m.group(2)]
+        if days < 3 and ft == "winback":
+            assume("churn_threshold_days", 3, f"the sentence asked for {days} day(s); a win-back threshold is at least 3 days")
+        elif ft in ("winback", "sunset"):
+            data["churn_threshold_days"] = days
+    elif m and ft == "replenishment":
+        n = _num(m.group(1)) or 30
+        data["replenish_after_days"] = n * {"day": 1, "week": 7, "month": 30}[m.group(2)]
+    elif m and ft == "trial_convert":
+        n = _num(m.group(1)) or 14
+        data["trial_days"] = min(90, n * {"day": 1, "week": 7, "month": 30}[m.group(2)])
+    elif ft == "winback":
         assume("churn_threshold_days", 14, "inactivity threshold not stated")
 
     # qualifying cohort: the clause before "but", or the whole sentence
@@ -115,30 +188,33 @@ def parse_text(text: str, product_name: Optional[str] = None, overrides: Optiona
             who = who.rsplit(sep, 1)[1]
     if data.get("flow_type") == "activation" and re.search(SIGNUP, low):
         who = "signed up"   # an activation flow starts at signup when the sentence mentions it anywhere
-    for pattern, match, why in QUALIFYING_PHRASES:
+    phrase_flows = ("winback", "activation", "welcome")
+    for pattern, match, why in (QUALIFYING_PHRASES if data.get("flow_type", "winback") in phrase_flows else []):
         if re.search(pattern, who):
             data["qualifying_event"] = match
             assumptions.append(Assumption(field="qualifying_event", value=match.model_dump(), why=why))
             break
     else:
-        if data.get("flow_type") == "activation":
+        ft_now = data.get("flow_type", "winback")
+        if ft_now == "activation":
             assume("qualifying_event", EventMatch(event="signed_up", label="signed up"), "who qualifies was not stated; defaulted to new signups")
-        else:
+        elif ft_now == "winback":
             assume("qualifying_event", EventMatch(event="activation_reached", label="reached activation"),
                    "who qualifies was not stated; defaulted to users who reached activation")
 
     # core action: the clause after "but" / "haven't"
     after = re.split(NEGATION, low, maxsplit=1)
     action = after[1] if len(after) > 1 else ""
-    for pattern, match, why in CORE_PHRASES:
+    for pattern, match, why in (CORE_PHRASES if data.get("flow_type", "winback") in phrase_flows else []):
         if re.search(pattern, action):
             data["core_conversion_event"] = match
             assumptions.append(Assumption(field="core_conversion_event", value=match.model_dump(), why=why))
             break
     else:
-        assume("core_conversion_event", EventMatch(event="feature_used", label="used the core feature"),
-               "the core action was not named; defaulted to feature_used (any feature). Name the one action that means a user is "
-               "getting value, e.g. feature_used with feature = reports")
+        if data.get("flow_type", "winback") in ("winback", "activation"):
+            assume("core_conversion_event", EventMatch(event="feature_used", label="used the core feature"),
+                   "the core action was not named; defaulted to feature_used (any feature). Name the one action that means a user is "
+                   "getting value, e.g. feature_used with feature = reports")
 
     # platform
     for needle, platform in PLATFORMS:
@@ -165,8 +241,14 @@ def parse_text(text: str, product_name: Optional[str] = None, overrides: Optiona
     if m:
         data["holdout_pct"] = float(m.group(1))
 
-    if re.search(r"\b(shop|store|ecommerce|e-commerce|cart|orders?|purchases?)\b", low):
+    saas_words = r"\b(data sources?|teammates?|reports?|dashboards?|workspaces?|log(ged)? ?in|the app|trials?|seats?|plans?)\b"
+    events = [x.event for x in (data.get("qualifying_event"), data.get("core_conversion_event")) if isinstance(x, EventMatch)]
+    if re.search(r"\b(shop|store|ecommerce|e-commerce|dtc|d2c|cart|checkout|orders?|purchases?|products?|buyers?)\b", low) or \
+            FLOWS[data.get("flow_type", "winback")].models == ("ecommerce",) or "order_completed" in events:
         data["business_model"] = "ecommerce"
+    elif data.get("flow_type") == "welcome" and not re.search(saas_words, low):
+        assume("business_model", "ecommerce", "business model not stated; a welcome series is read as a store's, aiming at the first order. "
+                                              "Set business_model: saas to aim it at activation instead")
 
     if product_name:
         data["product_name"] = product_name

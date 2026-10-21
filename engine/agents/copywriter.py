@@ -148,6 +148,9 @@ def address_html(d: str, brief: Brief) -> str:
 def _tokens(text: str, d: str, brief: Brief, escape: bool = True, inline: bool = False) -> str:
     out = html.escape(text, quote=False) if escape else text
     out = out.replace("{product_name}", html.escape(brief.product_name) if escape else brief.product_name)
+    if "{item_name}" in out:
+        from engine.render.product_blocks import item_name
+        out = out.replace("{item_name}", item_name(brief, d))
     return out.replace("{first_name}", INLINE_AMPSCRIPT_NAME if (inline and d == "ampscript") else FIRST_NAME[d])
 
 
@@ -197,9 +200,15 @@ def render_email_mjml(f: Dict[str, Any], brief: Brief, step_id: str, brand: Opti
     # the title is also the wrapper's aria-label, so quotes in the words are escaped as well (template tags stay as written)
     title = _tokens(html.escape(f["subject"], quote=True).replace("{product_name}", html.escape(brief.product_name, quote=True)),
                     d, brief, escape=False)
+    from engine.render import product_blocks
+    paragraphs = [p for p in f["paragraphs"] if p.strip() != "{product_block}"]
+    wants_block = len(paragraphs) != len(f["paragraphs"])
+    block_mjml, block_text = product_blocks.block(brief, d) if wants_block else (None, "")
+    if product_items is None and block_mjml:
+        product_items = block_mjml
     content = mjml_render.EmailContent(
         dialect=d, title=title, preheader=_tokens(f["preheader"], d, brief), headline=_tokens(f["headline"], d, brief),
-        paragraphs=tuple(_tokens(p, d, brief) for p in f["paragraphs"]), cta_label=_tokens(f["cta_label"], d, brief),
+        paragraphs=tuple(_tokens(p, d, brief) for p in paragraphs), cta_label=_tokens(f["cta_label"], d, brief),
         cta_href=href, sender_line=html.escape(sender), address_line=address, unsubscribe=unsubscribe_html(d),
         extra_lines=tuple(extra), file_start=file_start, product_items=product_items)
     mjml_source, body = mjml_render.render(content, kit)
@@ -208,7 +217,8 @@ def render_email_mjml(f: Dict[str, Any], brief: Brief, step_id: str, brand: Opti
     footer = [sender, html.unescape(address)] + [_tokens(x, d, brief, escape=False) for x in kit.footer.extra_lines]
     footer += [f"{s.label}: {s.url}" for s in kit.social] + [f"Unsubscribe: {unsub_text}"]
     text = head + "\n\n".join(
-        [_tokens(f["headline"], d, brief, escape=False)] + [_tokens(p, d, brief, escape=False) for p in f["paragraphs"]]
+        [_tokens(f["headline"], d, brief, escape=False)] + [_tokens(p, d, brief, escape=False) for p in paragraphs]
+        + ([block_text] if block_text else [])
         + [f"{_tokens(f['cta_label'], d, brief, escape=False)}: {html.unescape(href)}", "\n".join(footer)]) + "\n"
     return mjml_source, body, text
 
@@ -723,10 +733,12 @@ def _short_lib(brief: Brief) -> Dict[str, Dict[str, List[Any]]]:
 
 
 def offline_drafts(t: Touch, brief: Brief) -> List[Dict[str, Any]]:
-    emails = _lib(brief)[t.role][: brief.copy_variants]
+    from engine.agents import copy_library
+    lib = {**_lib(brief), **copy_library.email_library(brief)}
+    emails = lib[t.role][: brief.copy_variants]
     if t.channel == "email":
         return [dict(e) for e in emails]
-    short = _short_lib(brief)[t.role][t.channel]
+    short = {**_short_lib(brief), **copy_library.short_library(brief)}[t.role][t.channel]
     out = []
     for e, s in zip(emails, short):
         meta = {"framework": e["framework"], "hypothesis": e["hypothesis"]}
