@@ -1,0 +1,11 @@
+id,cio_id,email,created_at,unsubscribed,plan,country
+u_0001,cio_0001,u_0001@example.test,1766239200,false,free,DE
+u_0002,cio_0002,u_0002@example.test,1765166400,false,growth,US
+u_0003,cio_0003,u_0003@example.test,1776736800,false,starter,US
+u_0004,cio_0004,u_0004@example.test,1765220400,false,starter,DE
+u_0005,cio_0005,u_0005@example.test,1768219200,false,starter,US
+u_0006,cio_0006,u_0006@example.test,1773000000,true,starter,US
+u_0007,cio_0007,u_0007@example.test,1767297600,false,scale,CA
+u_0008,cio_0008,u_0008@example.test,1772967600,false,free,US
+u_0009,cio_0009,u_0009@example.test,1787806800,false,starter,CA
+u_0010,cio_0010,u_0010@example.test,1791518400,false,starter,US

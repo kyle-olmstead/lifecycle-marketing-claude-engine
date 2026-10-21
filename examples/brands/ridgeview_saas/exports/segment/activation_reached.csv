@@ -1,0 +1,2 @@
+id,anonymous_id,user_id,received_at,sent_at,original_timestamp,timestamp,context_library_name,context_library_version,context_ip,event,event_text,days_since_signup,definition,uuid,uuid_ts
+ev_000027,anon_0005,u_0005,2026-01-22T17:00:02.000Z,2026-01-22T17:00:01.000Z,2026-01-22T17:00:00.000Z,2026-01-22T17:00:00.000Z,analytics.js,5.2.0,203.0.113.10,activation_reached,Activation Reached,10,first_report_shared,uuid-ev_000027,2026-01-22T17:05:00.000Z
