@@ -1,0 +1,42 @@
+From: Outlook.com Junk Email Reporting Program <jmrp@example.invalid>
+To: fbl@example.com
+Subject: complaint about message from 192.0.2.10
+Date: Tue, 06 Oct 2026 03:05:44 +0000
+Message-ID: <example-jmrp-0001@example.invalid>
+MIME-Version: 1.0
+Content-Type: multipart/report; report-type=feedback-report; boundary="jmrp_boundary_0001"
+X-Example-Note: Synthetic report for the LMM Engine examples. Shaped by RFC 5965 and Postmastery's description of JMRP's ARF format (June 2026): no recipient address, the original To replaced with Undisclosed Recipients, X-headers and Message-ID kept. Microsoft's real sender address and field values are not documented on a page we could read, so these are illustrative.
+
+--jmrp_boundary_0001
+Content-Type: text/plain; charset="US-ASCII"
+
+This is a complaint about a message that an Outlook.com user marked as junk.
+
+--jmrp_boundary_0001
+Content-Type: message/feedback-report
+
+Feedback-Type: abuse
+User-Agent: Microsoft JMRP example
+Version: 1
+Original-Mail-From: <bounce@em.example.com>
+Arrival-Date: Tue, 06 Oct 2026 02:58:10 +0000
+Source-IP: 192.0.2.10
+
+--jmrp_boundary_0001
+Content-Type: message/rfc822
+
+Return-Path: <bounce@em.example.com>
+From: Example News <news@example.com>
+To: Undisclosed Recipients <X>
+Subject: Your October update
+Date: Tue, 06 Oct 2026 02:57:59 +0000
+Message-ID: <m_20261006.u_0019@em.example.com>
+X-LCM-User-Id: u_0019
+X-LCM-Campaign: warmup_newsletter
+X-LCM-Message-Id: m_20261006
+MIME-Version: 1.0
+Content-Type: text/plain; charset="US-ASCII"
+
+Hello from Example News.
+
+--jmrp_boundary_0001--

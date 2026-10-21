@@ -1,0 +1,45 @@
+From: Yahoo! Mail AntiSpam Feedback <feedback@arf.mail.yahoo.com>
+Return-Path: <feedback@arf.mail.yahoo.com>
+To: fbl@example.com
+Subject: Yahoo! Mail Abuse Report
+Date: Mon, 05 Oct 2026 14:12:09 +0000
+Message-ID: <example-cfl-0001@example.invalid>
+MIME-Version: 1.0
+Content-Type: multipart/report; report-type=feedback-report; boundary="cfl_boundary_0001"
+X-Example-Note: Synthetic report for the LMM Engine examples, shaped by RFC 5965 and Yahoo's CFL FAQ (sender feedback@arf.mail.yahoo.com, full original headers). Field values such as User-Agent are illustrative. Addresses use example domains.
+
+--cfl_boundary_0001
+Content-Type: text/plain; charset="US-ASCII"
+Content-Transfer-Encoding: 7bit
+
+This is an email abuse report for an email message received from IP 192.0.2.10 on Mon, 05 Oct 2026 09:41:00 +0000.
+
+--cfl_boundary_0001
+Content-Type: message/feedback-report
+
+Feedback-Type: abuse
+User-Agent: Yahoo!-Mail-Feedback/2.0
+Version: 1
+Original-Mail-From: <bounce@em.example.com>
+Arrival-Date: Mon, 05 Oct 2026 09:41:00 +0000
+Source-IP: 192.0.2.10
+Reported-Domain: example.com
+Authentication-Results: mta1.example.net; dkim=pass header.d=example.com
+
+--cfl_boundary_0001
+Content-Type: text/rfc822-headers
+
+Return-Path: <bounce@em.example.com>
+DKIM-Signature: v=1; a=rsa-sha256; d=example.com; s=s1; h=from:to:subject:date:message-id:list-unsubscribe; bh=AAAA; b=BBBB
+From: Example News <news@example.com>
+To: <u_0007@example.test>
+Subject: Your October update
+Date: Mon, 05 Oct 2026 09:40:55 +0000
+Message-ID: <m_20261005.u_0007@em.example.com>
+List-Unsubscribe: <https://example.com/u/tok_7a1f>, <mailto:unsubscribe@example.com?subject=u_0007>
+List-Unsubscribe-Post: List-Unsubscribe=One-Click
+X-LCM-User-Id: u_0007
+X-LCM-Campaign: warmup_newsletter
+X-LCM-Message-Id: m_20261005
+
+--cfl_boundary_0001--

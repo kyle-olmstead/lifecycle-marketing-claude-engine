@@ -11,7 +11,8 @@ that breaks them:
   * Volume roughly doubles every 2 days while it fits inside the most-engaged tier and every 3
     days once the ladder reaches older tiers, because risk rises as engagement falls.
   * Every step ends at a checkpoint. Advance only if all abort criteria are clear; otherwise hold,
-    or drop back one step.
+    or drop back one step. The criteria are also machine-readable (ABORT_RULES), and
+    engine/deliverability/monitor.py evaluates them against message_events every day.
   * Capacity is honest: a tier of N people mailed at most F times a week supports N x F / 7 sends a
     day. If the target exceeds what the engaged audience supports, the schedule says so instead of
     padding the ladder with people who will not engage.
@@ -36,8 +37,50 @@ ABORT_CRITERIA = [
     "hard bounce rate above 2% on any day",
     "Gmail Postmaster spam rate above 0.1%, or any reputation-class (DOMAIN_REPUTATION) or FILTERED bounces at a provider",
     "deferrals (4xx) climbing at one provider for two consecutive days",
+    "authentication failures at any provider (SPF, DKIM, DMARC, reverse DNS or TLS rejections such as Gmail 550 5.7.26 or Outlook.com 550 5.7.515)",
 ]
 ON_ABORT = "Halt the ladder, drop back one step, hold until two clean days, then resume at that step."
+
+# The same criteria in a form code evaluates every day (engine/deliverability/monitor.py). ABORT_CRITERIA above stays the
+# display text; each rule points at its line with "criterion". Verdicts, mildest first: CONTINUE, HOLD (stay at today's step),
+# DROP BACK (one step, then ON_ABORT), STOP (the sending gate goes RED). Kinds:
+#   rate_above      metric = numerator / denominator ("per"); judged only when the denominator reaches the minimum sample
+#                   (MIN_SAMPLE, and never less than 1 / the lowest threshold, so one event alone cannot cross the line)
+#   count_at_least  a count of events that is a fact, not a rate (a provider said the sender failed authentication)
+#   rising          the rate went up day over day for `days` consecutive days, with at least `min_events` events today
+MIN_SAMPLE = 200   # engine default, not a provider rule: below 200 messages one event moves a rate by half a point
+ABORT_RULES: List[Dict[str, Any]] = [
+    {"id": "complaint_rate", "criterion": 0, "kind": "rate_above", "metric": "complaint_rate", "per": "delivered",
+     "above": 0.001, "verdict": "DROP BACK", "escalate_above": 0.003, "escalate_verdict": "STOP", "scope": ["day", "provider"],
+     # Google: keep the spam rate "below 0.1%" and never let it reach "0.3% or higher" (https://support.google.com/a/answer/14229414);
+     # Yahoo: "Keep your spam rate below 0.3%" (https://senders.yahooinc.com/best-practices). Both read October 2026.
+     "source": "https://support.google.com/a/answer/14229414; https://senders.yahooinc.com/best-practices"},
+    {"id": "hard_bounce_rate", "criterion": 1, "kind": "rate_above", "metric": "hard_bounce_rate", "per": "sent",
+     "above": 0.02, "verdict": "STOP", "hold_above": 0.01, "hold_verdict": "HOLD", "scope": ["day", "provider"],
+     # the sending gate's bands (engine/deliverability/analyze.py sending_gate: AMBER 1 to 2%, RED above 2%), from the
+     # deliverability-engineer method. No mailbox provider publishes a hard-bounce threshold.
+     "source": "engine/deliverability/analyze.py sending_gate (deliverability-engineer method; not a provider-published number)"},
+    {"id": "postmaster_spam_rate", "criterion": 2, "kind": "rate_above", "metric": "postmaster_spam_rate", "per": "Gmail Postmaster Tools",
+     "above": 0.001, "verdict": "DROP BACK", "escalate_above": 0.003, "escalate_verdict": "STOP", "scope": ["provider"],
+     "providers": ["google"], "needs": "postmaster",
+     "source": "https://support.google.com/a/answer/14229414 (read in Postmaster Tools: https://support.google.com/mail/answer/14668346)"},
+    {"id": "reputation_blocks", "criterion": 2, "kind": "count_at_least", "metric": "reputation_blocks", "at_least": 1,
+     "verdict": "DROP BACK", "escalate": "rising", "escalate_verdict": "STOP", "scope": ["provider"],
+     # any reputation-class or content (FILTERED) rejection is an abort in the warm-up method; a rising trend is RED on the gate
+     # (analyze.py: domain_reputation_bounces "RED rising trend")
+     "source": "warm-up method; engine/deliverability/analyze.py sending_gate domain_reputation_bounces"},
+    {"id": "deferrals_climbing", "criterion": 3, "kind": "rising", "metric": "deferral_rate", "per": "attempts", "days": 2,
+     "min_events": 10, "verdict": "DROP BACK", "scope": ["provider"],
+     # min_events is an engine default so that 1 then 2 then 3 deferrals is not read as a climb
+     "source": "warm-up method (deliverability-engineer); min_events is an engine default"},
+    {"id": "auth_failures", "criterion": 4, "kind": "count_at_least", "metric": "auth_failures", "at_least": 1,
+     "verdict": "STOP", "scope": ["provider"],
+     # failing authentication is RED on the sending gate (analyze.py); Gmail rejects unauthenticated mail with 550 5.7.26
+     # (https://knowledge.workspace.google.com/admin/support/troubleshooting/gmail-smtp-errors-and-codes) and Outlook.com with
+     # 550 5.7.515 (https://support.microsoft.com/en-us/outlook/fix-ndr-error-550-5-7-515-in-outlook-com)
+     "source": "engine/deliverability/analyze.py sending_gate authentication_state; Gmail SMTP error reference; Microsoft 5.7.515 help page"},
+]
+VERDICTS = ("CONTINUE", "HOLD", "DROP BACK", "STOP")
 
 
 def _split(volume: int, mix: Dict[str, float]) -> Dict[str, int]:
@@ -69,7 +112,7 @@ def plan(target: int, tiers: Dict[str, int], gate: str, days: int = 30, max_per_
         "tier_daily_capacity": cap, "engaged_daily_capacity": engaged_capacity,
         "excluded": {"unengaged": tiers.get("unengaged", 0),
                      "reason": "never used to warm; route to a single re-permission send from a separate subdomain if volume warrants (expect 1 to 5% opt-in)"},
-        "abort_criteria": ABORT_CRITERIA, "on_abort": ON_ABORT,
+        "abort_criteria": ABORT_CRITERIA, "abort_rules": ABORT_RULES, "on_abort": ON_ABORT,
     }
     if gate == "RED":
         return {**base, "schedule": [], "summary": "Gate is RED. No warming ladder is permitted. Stop bulk sending; remediation and re-permission only."}

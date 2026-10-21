@@ -58,3 +58,11 @@ def test_amber_on_existing_infrastructure_asks_for_todays_volume():
     p = plan(40000, TIERS, "AMBER", new_infrastructure=False)
     assert p["schedule"] == [] and "--current" in p["summary"]
     assert {r["volume"] for r in plan(40000, TIERS, "AMBER", current=7000, new_infrastructure=False)["schedule"]} == {7000}
+
+
+def test_every_plan_carries_the_machine_readable_abort_rules():
+    from engine.deliverability.warmup import ABORT_CRITERIA, ABORT_RULES
+    for gate in ("GREEN", "AMBER", "RED"):
+        p = plan(40000, TIERS, gate, current=9000)
+        assert p["abort_rules"] == ABORT_RULES and p["abort_criteria"] == ABORT_CRITERIA
+    assert all(0 <= r["criterion"] < len(ABORT_CRITERIA) for r in ABORT_RULES)
