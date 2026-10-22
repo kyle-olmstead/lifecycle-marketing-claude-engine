@@ -95,7 +95,13 @@ def brief_defaults(ws: Optional[Workspace] = None) -> Dict[str, Any]:
     gate = cfg.get("sending_gate")
     if isinstance(gate, str) and gate.lower().endswith(".json"):
         path = (ws.root / gate) if not Path(gate).is_absolute() else Path(gate)
-        out["sending_gate"] = json.loads(path.read_text(encoding="utf-8")) if path.exists() else "UNKNOWN"
+        if not path.exists():
+            out["sending_gate"] = "UNKNOWN"
+        else:
+            try:
+                out["sending_gate"] = json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as e:
+                raise ValueError(f"{path}: not a gate record ({e.msg}); write one with lcm deliverability check DOMAIN --write-gate {gate}") from None
     elif gate not in (None, ""):
         out["sending_gate"] = gate
     if cfg.get("brand_kit"):
@@ -123,7 +129,8 @@ def init(folder: Path, name: str, platform: Optional[str] = None, business_model
     if (folder / WORKSPACE_FILE).exists():
         raise FileExistsError(f"{folder / WORKSPACE_FILE} already exists; edit it instead")
     folder.mkdir(parents=True, exist_ok=True)
-    text = (TEMPLATES / "workspace" / "lmm.yaml").read_text(encoding="utf-8").replace("name: Acme", f"name: {name}", 1)
+    quoted = json.dumps(name, ensure_ascii=False)          # a YAML double-quoted scalar: safe for "Acme: Co" or "#1 Coffee"
+    text = (TEMPLATES / "workspace" / "lmm.yaml").read_text(encoding="utf-8").replace("name: Acme", f"name: {quoted}", 1)
     if platform:
         text = text.replace("platform: klaviyo ", f"platform: {platform} ", 1)
     if business_model:
@@ -131,7 +138,7 @@ def init(folder: Path, name: str, platform: Optional[str] = None, business_model
     created = [folder / WORKSPACE_FILE]
     (folder / WORKSPACE_FILE).write_text(text, encoding="utf-8")
     brand_t = (TEMPLATES / "brand" / "brand.yaml").read_text(encoding="utf-8")
-    brand_t = re.sub(r"^brand_name:.*$", f"brand_name: {name}", brand_t, count=1, flags=re.M)
+    brand_t = re.sub(r"^brand_name:.*$", lambda m: f"brand_name: {quoted}", brand_t, count=1, flags=re.M)
     (folder / "brand.yaml").write_text(brand_t, encoding="utf-8")
     created.append(folder / "brand.yaml")
     for sub, readme in (("data", "Put your canonical tables here (users.csv, track_events.csv, orders.csv, ...; see "

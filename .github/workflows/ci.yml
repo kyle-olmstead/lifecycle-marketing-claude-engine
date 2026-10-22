@@ -67,9 +67,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
-      - run: uv venv && uv pip install -e .
+      - run: uv sync --locked
       - run: uv run lcm doctor
-      - run: uv run lcm plan --text "a 3-touch abandoned cart flow" --product Acme --copy-mode offline --out out
+      - name: The QUICKSTART's sample-brand steps, as written
+        working-directory: examples/brands/northfield_dtc
+        run: |
+          uv run lcm plan --text "a 3-touch abandoned cart flow with email and SMS" --data data --copy-mode offline
+          uv run lcm "make it 4 touches"
+          uv run lcm simulate --program
+          uv run lcm size --baseline 0.31 --mde-rel 0.15 --holdout 0.10 --entries-per-month 350
+          uv run lcm workflow run morning_check || [ $? -eq 1 ]
 
   postgres:
     # Runs the PostgreSQL-dialect cohort queries on a real PostgreSQL and compares them with DuckDB.

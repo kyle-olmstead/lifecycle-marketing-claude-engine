@@ -25,7 +25,7 @@ from typing import Callable, Dict, List
 from engine.paths import COMPLIANCE_RULES, ROOT, TEMPLATES
 
 BLOCK = re.compile(r"(<!-- generated: (\w+) -->\n)(.*?)(<!-- end generated -->)", re.S)
-DOC_GLOBS = ("README.md", "CONNECTORS.md", "docs/*.md", "skills/*/SKILL.md")
+DOC_GLOBS = ("README.md", "CONNECTORS.md", "QUICKSTART.md", "docs/*.md", "skills/*/SKILL.md", "templates/*/README.md")
 
 
 def _hours(h: float) -> str:
@@ -107,7 +107,30 @@ def commands() -> str:
     return "\n".join(L).rstrip()
 
 
-GENERATORS: Dict[str, Callable[[], str]] = {"flows": flows, "platforms": platforms, "windows": windows, "commands": commands}
+def sms() -> str:
+    """The starter texts the offline library writes, rendered and counted the way QA counts them."""
+    from engine.brief import parse_text
+    from engine.pipeline import orchestrator
+    from engine.render.sms import analyze
+    rows = ["| Flow | Touch | Text as sent (preview, with a shortened link) | Encoding | Segments |", "|---|---|---|---|---:|"]
+    cases = (("cart_abandon", "an abandoned cart flow with email and sms"), ("browse_abandon", "a browse abandonment flow with email and sms"),
+             ("winback", "a 5-touch win-back with email and sms for users inactive 14 days"),
+             ("activation", "a 5-touch activation flow with email and sms for users who signed up but have not created a report"))
+    for flow, sentence in cases:
+        b = parse_text(sentence, "Acme", defaults={}, overrides={"platform": "klaviyo", "postal_address": "1 Example Way, Springfield, OR 97477",
+                                                                  "cta_url": "https://app.acme.example/start"})
+        p = orchestrator.run(b, None, copy_mode="offline")
+        for tc in p.copy_plan:
+            if tc.channel != "sms":
+                continue
+            for v in tc.variants:
+                prev = json.loads(next(iter(v.rendered.values())))["preview"]
+                a = analyze(prev)
+                rows.append(f"| {flow} | {tc.step_id} {v.variant_id} | {prev.replace('|', '/')} | {a['encoding']} | {a['segments']} |")
+    return "\n".join(rows)
+
+
+GENERATORS: Dict[str, Callable[[], str]] = {"flows": flows, "platforms": platforms, "windows": windows, "commands": commands, "sms": sms}
 
 
 def files() -> List[Path]:

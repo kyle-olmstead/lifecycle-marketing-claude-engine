@@ -129,12 +129,12 @@ You need a paid Claude plan. It works best in **Claude Code** or the **Claude de
 
 Then, in any conversation: **"set up the lifecycle engine."** Setup looks at which platforms you have connected, records each one's template language and SQL dialect, and writes the context file everything else reads. Then describe a campaign.
 
-**From a terminal** (Python 3.12 or later), the same engine is one command, `lcm`:
+**From a terminal** (Python 3.12 or later), the same engine is one command, `lcm`. Step by step, with what to expect at each step: [`QUICKSTART.md`](QUICKSTART.md).
 
 ```text
 git clone https://github.com/kyle-olmstead/lifecycle-marketing-claude-engine.git
 cd lifecycle-marketing-claude-engine
-uv venv && uv pip install -e .            # or: python3 -m venv .venv && . .venv/bin/activate && pip install -e .
+uv sync && . .venv/bin/activate           # or: python3 -m venv .venv && . .venv/bin/activate && pip install -e .
 lcm doctor                                # checks Python, packages, the email compiler, and what is set up
 ```
 
@@ -203,6 +203,9 @@ Details, and the path for every tool without a connector: [`CONNECTORS.md`](CONN
 | "did the win-back flow actually work?" | Credited versus true lift, with the read labeled honestly |
 | "how many people do we need to test this?" | Test and holdout sizing, and how long the test must run |
 | "write the welcome email for Klaviyo" | Copy in Klaviyo's template language, checked |
+| "is our data ready to plan on?" | Every table and column checked: missing, late, malformed, future-dated or orphaned rows, each with a fix |
+| "do our flows collide, or could one person get too many emails a week?" | Every live flow simulated together against your one frequency policy, with the rule that would hold the cap |
+| "plan an abandoned cart flow with email and SMS" | The cart shown from your platform's own event, a link back to that checkout, an SMS answer for people with consent |
 
 These are a sample. The [question bank](docs/QUESTION_BANK.md) lists 27 questions by cadence (daily, weekly, monthly, quarterly, annual), each with what you get, the data it needs, and what it cannot answer. Every one ends the same way: it shows what it found and what it would build. Nothing is sent or changed until you say yes: `lcm send` and `lcm build --create` print what they would do unless you add `--approve` and your platform's key is set, and what `lcm build --create` makes is a draft that a person turns on.
 
@@ -269,8 +272,8 @@ lifecycle-marketing-claude-engine/
 │                    GA4, Segment, RudderStack) and the webhook receiver; destinations: ESP request bodies, Sheets
 ├── prompts/         the method as prompts: core principles, template syntax, diagnostics, one prompt per job, examples
 ├── skills/          the Claude plugin skills; each calls lcm for the deterministic work
-├── schemas/         machine-readable contracts: flow spec, trigger, sending gate, frequency and offer policy, consent,
-│                    workspace, brand kit, experiment, and every tool input
+├── schemas/         machine-readable contracts: brief, flow spec, trigger, sending gate, frequency and offer policy, consent,
+│                    event envelope, workspace, brand kit, experiment, and every tool input
 ├── templates/       the workspace (lmm.yaml), brief and brand kit templates, MJML email components
 ├── workflows/       named job graphs: morning_check, new_flow, quarterly_review
 ├── config/          compliance rules (each with its source), the tracking plan, ESP request schemas, the question bank
