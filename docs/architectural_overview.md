@@ -180,7 +180,7 @@ Ranking is mid-range monthly value x confidence weight (high 1.0, medium 0.7, lo
 a ready brief carrying today's sending gate (the worst of the domains and the list checked), so the next step is one
 command; two core actions for one product get briefs named by their core action, so neither overwrites the other.
 
-`config/question_bank.yaml` lists 25 questions by cadence; each names the `lcm` job or skill that answers it and
+`config/question_bank.yaml` lists 27 questions by cadence; each names the `lcm` job or skill that answers it and
 what it cannot answer. `engine/questions.py` checks that every routed question reaches its job and writes
 `docs/QUESTION_BANK.md`. Two jobs exist mainly for it. `engine/agents/tracking.py` reads the week to yesterday (so a dead
 feed reads as stale, not as last week's numbers), calls an event stopped only when a silence that long would happen

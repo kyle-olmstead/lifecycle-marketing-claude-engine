@@ -94,3 +94,11 @@ def test_doctor_checks_the_credential_names_the_code_reads():
                      if p.name != "commands.py")
     missing = [name for name, _ in KEY_NAMES if name not in code]
     assert not missing, f"lcm doctor checks names no code reads: {missing}"
+
+
+def test_the_question_count_in_prose_matches_the_bank():
+    from engine import questions
+    n = sum(len(v) for v in questions.load().values())
+    for p in PROSE:
+        for m in re.finditer(r"\b(\d+) questions\b", p.read_text(encoding="utf-8")):
+            assert int(m.group(1)) == n, f"{_rel(p)}: says {m.group(0)}, the bank has {n}"
