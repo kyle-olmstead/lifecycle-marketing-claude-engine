@@ -16,7 +16,7 @@ so one welcome-code first purchase does not mark someone dependent for life; pas
 order history. With fewer than 3 orders the share is over the orders they have.
 
 The Python functions work on plain rows (dicts), so they run on any export; the SQL functions write the same
-logic for a warehouse (postgres, snowflake, bigquery, duckdb), and tests/test_discounts.py checks that the two
+logic for a warehouse (postgres, snowflake, bigquery, duckdb), and tests/unit/test_discounts.py checks that the two
 agree on the demo data.
 
     python3 engine/measurement/discounts.py report --data examples/brands/ridgeview_saas/data

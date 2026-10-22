@@ -280,8 +280,9 @@ lifecycle-marketing-claude-engine/
 ├── examples/        two complete workspaces (examples/brands/ridgeview_saas, examples/brands/northfield_dtc) and sample inputs
 ├── docs/            commands, the flow library, importing data, measurement, deliverability operations, the brand kit,
 │                    the question bank, the business case (ROI memo), architecture, SQL conventions
-└── tests/           900+ checks CI runs on every change: unit, contracts (schema against model), drift (prose against
-                     code), golden runs, SQL on DuckDB and a real PostgreSQL 16, planted data defects
+└── tests/           1,300 checks CI runs on every change, by kind: unit/, contracts/ (each schema against its model),
+                     drift/ (prose against code), golden/ (the finished runs), sql/ (DuckDB and a real PostgreSQL 16),
+                     planted_defects/ (one broken artifact per checker, each must fail)
 ```
 
 | Tool | What it computes |

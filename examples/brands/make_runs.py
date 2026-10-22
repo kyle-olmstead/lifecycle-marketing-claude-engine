@@ -1,4 +1,4 @@
-"""Regenerate the finished runs in each demo workspace, the way tests/test_golden_runs.py checks them.
+"""Regenerate the finished runs in each demo workspace, the way tests/golden/test_golden_runs.py checks them.
 
     python3 examples/brands/make_runs.py
 

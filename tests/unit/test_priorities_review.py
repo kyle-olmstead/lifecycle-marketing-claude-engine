@@ -296,7 +296,7 @@ def test_m11_flat_curves_rarely_show_a_cliff():
 
 
 def test_l8_a_steady_decline_or_one_small_last_step_is_not_a_floor():
-    from tests.test_priorities_and_questions import _steps
+    from tests.unit.test_priorities_and_questions import _steps
     assert retention._shape(_steps([-0.015] * 8))["floor_week"] is None
     assert retention._shape(_steps([-0.2, -0.1, -0.08, -0.01]))["floor_week"] is None
     assert retention._shape(_steps([-0.2, -0.1, 0.005, -0.005, 0.0]))["floor_week"] == 2

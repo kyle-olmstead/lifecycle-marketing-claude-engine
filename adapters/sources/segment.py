@@ -14,7 +14,7 @@ What it reads
   loaded_at column, or a users.csv, and not RudderStack's (rudderstack.py covers that).
 
   In the warehouse, run the SQL in adapters/sources/sql/segment/ (track_events and users, BigQuery and Snowflake)
-  instead; tests/test_mappers_billing_crm_events.py runs it on the Ridgeview sample and requires the same rows as this mapper.
+  instead; tests/unit/test_mappers_billing_crm_events.py runs it on the Ridgeview sample and requires the same rows as this mapper.
 
 What it writes
   track_events  event_id = the message id; event_name = the slug (Application Opened -> session_started);

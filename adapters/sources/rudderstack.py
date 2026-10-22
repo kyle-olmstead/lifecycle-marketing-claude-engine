@@ -14,7 +14,7 @@ What it reads
   or its context_source_id, context_destination_id and context_request_ip columns.
 
   In the warehouse, run the SQL in adapters/sources/sql/rudderstack/ (track_events and users, BigQuery and
-  Snowflake) instead; tests/test_mappers_billing_crm_events.py runs it on the Ridgeview sample and requires the same rows.
+  Snowflake) instead; tests/unit/test_mappers_billing_crm_events.py runs it on the Ridgeview sample and requires the same rows.
 
 What it writes
   track_events  event_id = the message id; event_name = the event slug (application_opened -> session_started);

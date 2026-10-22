@@ -3,7 +3,7 @@
 Skipped unless LCM_PG holds a libpq connection string and psql is installed. CI runs it against a
 postgres:16 service container (.github/workflows/ci.yml, job postgres). Locally:
 
-    LCM_PG="host=localhost port=5432 user=postgres dbname=postgres" pytest -q tests/test_postgres.py
+    LCM_PG="host=localhost port=5432 user=postgres dbname=postgres" pytest -q tests/sql/test_postgres.py
 """
 import json
 import os

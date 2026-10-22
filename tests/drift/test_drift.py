@@ -119,3 +119,9 @@ def test_no_file_carries_a_path_from_the_authors_machine():
         if re.search(r"/home/[a-z]|/Users/[A-Za-z]|C:\\\\Users\\\\", text):
             leaks.append(name)
     assert not leaks, leaks
+
+
+@pytest.mark.parametrize("path", PROSE, ids=_rel)
+def test_every_test_file_named_exists(path):
+    named = set(re.findall(r"\btests/[\w/]+\.py", path.read_text(encoding="utf-8")))
+    assert all((ROOT / n).exists() for n in named), sorted(n for n in named if not (ROOT / n).exists())

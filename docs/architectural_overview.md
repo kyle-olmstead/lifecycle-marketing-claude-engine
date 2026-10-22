@@ -203,14 +203,14 @@ subdomains).
 
 | Claim | Verified by | Not verified |
 |---|---|---|
-| The entry query selects the right people | `tests/test_agents.py` recomputes entrants from the CSVs in plain Python on 40 dates and compares; a simulated season of daily jobs with skipped runs and failed pushes shows every lapse pushed exactly once, and a late-loaded event is queued later rather than lost | behavior on warehouse data shapes the fixtures do not cover |
+| The entry query selects the right people | `tests/unit/test_agents.py` recomputes entrants from the CSVs in plain Python on 40 dates and compares; a simulated season of daily jobs with skipped runs and failed pushes shows every lapse pushed exactly once, and a late-loaded event is queued later rather than lost | behavior on warehouse data shapes the fixtures do not cover |
 | Snowflake and BigQuery versions match | transpiled to DuckDB and compared on entry, history and audit queries; the Snowflake VARIANT path and hex parse, which sqlglot does not translate faithfully, are substituted in the test and the hex parse is checked against Snowflake's documented `TO_DECIMAL('ae5', 'XXX')` form | execution on a live Snowflake or BigQuery account |
-| The PostgreSQL version is correct | executed on PostgreSQL 16 in CI (`tests/test_postgres.py`, a service container) and compared with DuckDB and Python, including the queue, pending and mark round trip | other PostgreSQL versions |
+| The PostgreSQL version is correct | executed on PostgreSQL 16 in CI (`tests/sql/test_postgres.py`, a service container) and compared with DuckDB and Python, including the queue, pending and mark round trip | other PostgreSQL versions |
 | Payloads match vendor APIs | JSON Schemas written from vendor documentation read on 2026-10-20 | a live request to each vendor |
 | The Claude copy path works | a stub client exercises structured output parsing, the repair round, drop and block rules, and API failure fallback | a live API call in CI (no key in CI); the call uses the SDK's documented `messages.parse(output_format=...)` |
 | Sheets sync is idempotent | an in-memory worksheet; retry on a synthetic 429 | a live Google Sheet |
 | The MCP server works | tools listed and called in-process | a Claude Desktop session |
-| Runs survive failure and change | `tests/test_pipeline_and_agents.py`: a failed analyst stage, then resume; a transient error retried once; a revision that reuses all copy and keeps an approval; a resume on new data that drops stale estimates and an approval whose words changed; a failed revision resumed with its parent; refusal of unknown fields, steps and variants | concurrent writers to one run folder |
+| Runs survive failure and change | `tests/unit/test_pipeline_and_agents.py`: a failed analyst stage, then resume; a transient error retried once; a revision that reuses all copy and keeps an approval; a resume on new data that drops stale estimates and an approval whose words changed; a failed revision resumed with its parent; refusal of unknown fields, steps and variants | concurrent writers to one run folder |
 | Compliance applies the right rules | every rule names a check that exists and a source; jurisdictions from countries; the SMS window at four send hours | the law itself, which changes |
 | The daily job holds up | demo mode end to end with one domain failing; BigQuery mode with its SQL transpiled to DuckDB; a dataset without message events | a live BigQuery or live DNS run in CI |
 
@@ -228,7 +228,7 @@ instead, so it reuses the engine's method and tools rather than restating them.
 | `skills/dma_compliance_and_deliverability.md` | `prompts/jobs/deliverability/`, `engine/deliverability/` and `engine/policy/guardrails.py` |
 | `config/mcp_server_config.json`, `config/esp_payload_schemas.json` | same paths |
 | `adapters/destinations/sheets.py`, `adapters/sources/webhooks.py` | same paths |
-| `test_campaign_simulator.py` | `engine/policy/simulator.py` (a `test_` prefix would make pytest collect it as a test module); its tests are in `tests/test_teammate_pipeline.py` |
+| `test_campaign_simulator.py` | `engine/policy/simulator.py` (a `test_` prefix would make pytest collect it as a test module); its tests are in `tests/golden/test_teammate_pipeline.py` |
 | `brief_template.yaml` | `templates/brief.yaml`, with worked examples in `examples/brands/*/briefs/` |
 | `docs/quickstart_for_marketers.md`, `docs/architectural_overview.md` | same paths |
 | `.github/workflows/daily_cohort_audit.yml` | same path |
@@ -258,7 +258,7 @@ instead, so it reuses the engine's method and tools rather than restating them.
 - **A pipeline stage:** add it to `STAGES` and `OUTPUT_TYPES` in `engine/pipeline/core.py` and its function
   to `engine/pipeline/stages.FUNCS`; persistence, retries, resume and the status view pick it up.
 - **An lcm command:** add a `Command` to `COMMANDS` in `engine/cli/commands.py` pointing at the module's `_cli`; give
-  every flag a help string (tests/test_cli.py checks), and the generated command table in `docs/COMMANDS.md` updates.
+  every flag a help string (tests/unit/test_cli.py checks), and the generated command table in `docs/COMMANDS.md` updates.
   For a plain-English route, add a pattern to `engine/cli/main.INTENTS`, its arguments in `route`, and its call in `run`.
 - **A workflow:** add `workflows/<name>.yaml` (or the workspace's own `workflows/`); `engine/workflows/runner.py`
   documents the format.

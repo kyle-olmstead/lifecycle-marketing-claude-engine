@@ -7,7 +7,7 @@ date arithmetic, JSON property access, the current date and the holdout bucket.
 The holdout bucket is the important one. The same person must land in the same arm in the
 warehouse, in the ESP and in the readout, whichever engine computes it. Every dialect here takes
 the first 7 hex digits of md5(user_id || ':' || salt) as an integer and keeps it modulo 100, which
-is exactly what holdout_bucket() computes in Python. tests/test_agents.py checks that DuckDB and
+is exactly what holdout_bucket() computes in Python. tests/unit/test_agents.py checks that DuckDB and
 Python agree on every fixture user.
 """
 from __future__ import annotations

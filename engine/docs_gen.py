@@ -6,7 +6,7 @@ A generated block in any Markdown file looks like this; everything between the t
     ...
     <!-- end generated -->
 
-    python3 -m engine.docs_gen --check     # exit 1 and name the stale blocks (CI runs this through tests/test_drift.py)
+    python3 -m engine.docs_gen --check     # exit 1 and name the stale blocks (CI runs this through tests/drift/test_drift.py)
     python3 -m engine.docs_gen --write     # rewrite every block from the code
 
 Blocks: flows (engine/flows/library.py), platforms (engine/agents/campaign_architect.py VOCAB, the linter's unsubscribe

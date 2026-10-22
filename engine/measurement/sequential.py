@@ -47,7 +47,7 @@ Other sources: Lan and DeMets (1983), "Discrete sequential boundaries for clinic
 repeated confidence intervals, Jennison and Turnbull (2000), Group Sequential Methods with Applications to
 Clinical Trials, ch. 9.
 
-Checks performed in tests/test_sequential.py: K = 5 equally spaced looks at two-sided alpha 0.05 give the
+Checks performed in tests/unit/test_sequential.py: K = 5 equally spaced looks at two-sided alpha 0.05 give the
 published Lan-DeMets O'Brien-Fleming boundaries (4.877, 3.357, 2.680, 2.290, 2.031) and Pocock-type
 boundaries near 2.41 to 2.44; the classic constant Pocock and O'Brien-Fleming constants and inflation factors
 match Jennison and Turnbull's Tables 2.1 to 2.4; seeded Monte Carlo confirms the overall type I error; and the

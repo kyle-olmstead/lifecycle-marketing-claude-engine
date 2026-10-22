@@ -16,7 +16,7 @@ identifies.csv, users.csv, order_completed.csv), in one folder per source. The f
 recursively for folders holding tracks.csv or identifies.csv, and each mapper takes the folders whose calls came
 from its own vendor's libraries, so `lcm import auto exports/` can hold a Segment and a RudderStack dump side by
 side. The SQL under adapters/sources/sql/<source>/ does the same in the warehouse;
-tests/test_mappers_billing_crm_events.py proves the two agree on the Ridgeview sample.
+tests/unit/test_mappers_billing_crm_events.py proves the two agree on the Ridgeview sample.
 
 Rules shared by both mappers and their SQL
   track_events  event_id = tracks.id (duplicates by id: the earliest received_at is kept); user_id and

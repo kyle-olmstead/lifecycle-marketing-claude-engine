@@ -57,7 +57,7 @@ Audit (v2.3); every quick win and systemic enhancement in its roadmap is in here
 - Product blocks show the cart or product from each platform's own event fields (Klaviyo's Shopify events,
   Customer.io and Braze event items, HubSpot and Marketing Cloud contact or entry data), and the button goes back to
   that checkout or product. The offline copy library covers every flow's roles with no bracketed fill-ins, and
-  `tests/test_flow_library.py` plans all ten flows on all six platforms with no copy warning.
+  `tests/unit/test_flow_library.py` plans all ten flows on all six platforms with no copy warning.
 - Templates read only the event fields the tracking plan gives the trigger event (`engine/render/fields.py`); the
   check found and closed three gaps (item names, item links and images, and the browse event's single product).
 
@@ -119,14 +119,14 @@ Audit (v2.3); every quick win and systemic enhancement in its roadmap is in here
   newest run. `--value-per-conversion` is accepted wherever `--value` is. Every run keeps its own copy of its outputs.
 - `lcm workflow run morning_check | new_flow | quarterly_review`: named graphs of commands in `workflows/`.
 
-**Docs that cannot drift** (`engine/docs_gen.py`, `tests/test_drift.py`)
+**Docs that cannot drift** (`engine/docs_gen.py`, `tests/drift/test_drift.py`)
 - The flow library, platform, send-window and command tables are generated from the code; CI fails when they are
   stale, when prose names a command or file that does not exist, says "quiet hours", states a single default holdout,
   or gets the SMS window wrong.
 
 **Finished examples**: Ridgeview (SaaS win-back on Customer.io) and Northfield Coffee Roasters (Shopify and Klaviyo,
 from raw exports to an abandoned cart plan with two live flows) are complete workspaces, planned from written copy
-with no fill-ins, and held to what the engine writes by `tests/test_golden_runs.py`.
+with no fill-ins, and held to what the engine writes by `tests/golden/test_golden_runs.py`.
 
 ### Upgrading from 2.x
 

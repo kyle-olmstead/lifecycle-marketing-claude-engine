@@ -10,7 +10,7 @@ What it reads
   (https://docs.cloud.google.com/bigquery/docs/exporting-data); both strings and numbers are read.
 
   In the warehouse, run adapters/sources/sql/ga4/track_events_bigquery.sql instead: it applies the same rules in
-  BigQuery SQL, and tests/test_mappers_billing_crm_events.py proves the two produce identical rows on the same sample.
+  BigQuery SQL, and tests/unit/test_mappers_billing_crm_events.py proves the two produce identical rows on the same sample.
 
 What it writes (track_events)
   event_id      purchase:<transaction_id> for a purchase carrying a transaction id (GA4 logs a purchase again when
