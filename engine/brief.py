@@ -13,6 +13,8 @@ and the plan prints those first under "Confirm before you build". Nothing is sil
 """
 from __future__ import annotations
 
+import json
+
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -312,6 +314,12 @@ def load_brief(path: Path, defaults: Optional[Dict[str, Any]] = None) -> Brief:
     if not isinstance(raw, dict):
         raise ValueError(f"{path}: a brief is a set of 'field: value' lines")
     raw = {k: v for k, v in raw.items() if v is not None and v != ""}
+    gate = raw.get("sending_gate")
+    if isinstance(gate, str) and gate.lower().endswith(".json"):        # a gate record written by lcm deliverability check
+        gp = Path(gate) if Path(gate).is_absolute() else Path(path).parent / gate
+        if not gp.exists():
+            raise ValueError(f"{path}: sending_gate names {gate}, which does not exist (run lcm deliverability check DOMAIN --write-gate {gate})")
+        raw["sending_gate"] = json.loads(gp.read_text(encoding="utf-8"))
     from engine import workspace
     workspace.apply_defaults(raw, set(), defaults)
     missing = [k for k in REQUIRED_YAML if k not in raw and not (k == "churn_threshold_days" and raw.get("flow_type") == "activation")]

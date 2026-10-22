@@ -163,7 +163,7 @@ This engine has **not** been run in a production deployment yet. Here is the hon
 | It cannot send a message | There is no code path that sends email or text; it writes plans, copy and request files |
 | The audience SQL selects the right people | Recomputed independently on 40 dates, and run on a real PostgreSQL database |
 | Templates will not break on send | Every message is parsed in its platform's own template language |
-| Every flow respects the rules | Simulated customers walk every generated flow: the holdout gets nothing, no send without consent, nothing after the goal, frequency caps and quiet hours hold |
+| Every flow respects the rules | Simulated customers walk every generated flow: the holdout gets nothing, no send without consent, nothing after the goal, frequency caps and permitted send windows hold |
 | Compliance rules are traceable | Every rule names its source and a check that exists |
 | A failed or changed plan resumes cleanly | A failure resumes at the failed step; a change keeps approved copy only while its words are unchanged |
 

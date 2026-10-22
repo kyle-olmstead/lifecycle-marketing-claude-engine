@@ -270,7 +270,7 @@ lifecycle-marketing-claude-engine/
 | every SQL example parses in its dialect; PostgreSQL examples run on fixtures and on a real PostgreSQL 16; Snowflake and BigQuery versions reproduce the PostgreSQL results | execution on a live Snowflake or BigQuery account |
 | every template parses in its dialect; every rendered email passes the email checks | rendering inside each email platform |
 | statistics match the standard formulas and reference values | |
-| every generated flow passes the simulator: the holdout gets nothing, no send without consent, nothing after the goal, frequency cap, quiet hours; injected defects are caught | your platform's own flow engine |
+| every generated flow passes the simulator: the holdout gets nothing, no send without consent, nothing after the goal, frequency caps, permitted send windows; injected defects are caught | your platform's own flow engine |
 | a run that fails at any stage resumes there; a revision keeps only copy whose job, audience and voice are unchanged, and an approval only while its words are | a long-running production deployment |
 | every compliance rule names a check and a source; the SMS send hour is held to the strictest state window the rules track | legal advice: it tracks some states and not all, and laws change |
 | the DNS collector and the daily job, end to end, against a fake resolver and a transpiled warehouse | live DNS and a live BigQuery run in CI |

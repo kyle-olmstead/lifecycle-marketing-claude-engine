@@ -36,11 +36,11 @@ min_detectable_lift: 0.20              # the smallest relative lift worth acting
 outcome_window_days:                   # how long to watch each entrant for the core action (default: the whole flow plus a week)
 
 # ---------------------------------------------------------------- SENDING RULES
-sending_gate:                          # GREEN, AMBER or RED from the deliverability check; blank means engaged-only
-offer_policy: no discounts or offers   # what the copy may offer; anything else is blocked
-frequency_cap_per_week: 3              # lifecycle messages per person per week, across flows
-send_hour_local: 10                    # hour of day to send, recipient local time (must be outside quiet hours)
-quiet_hours: 21:00 to 08:00            # never send between these hours, recipient local time
+# Left blank, each of these comes from the workspace's lmm.yaml (lcm init writes one); a value here wins for this flow.
+sending_gate:                          # GREEN, AMBER or RED, or the gate.json `lcm deliverability check --write-gate` writes; blank: AMBER
+offer_policy:                          # in words ("10% off the second order, expires in 3 days") or blank for the workspace's; none means none
+frequency:                             # blank: the workspace's one policy (caps across flows, permitted send windows, flow priority)
+send_hour_local: 10                    # hour of day to send, recipient local time (must fall inside every channel's permitted send window)
 sender_name: Dana at Acme              # a person usually beats a brand name
 postal_address:                        # printed in every email footer where the platform has no address token
 brand_voice: plain, specific, second person, no exclamation marks

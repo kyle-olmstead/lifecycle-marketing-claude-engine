@@ -26,7 +26,7 @@ label how each is known.
 | your own benchmarks with their basis (period, bot-excluded or not, attribution model and window) | industry averages | the comparison that matters is against your own history |
 | a voice module: register, vocabulary inversion, forbidden phrases, sender identities | a brand book PDF | the copy prompts need rules they can apply, not inspiration |
 | live flows with entry volume and holdout share | a flow diagram screenshot | volume decides what can be measured |
-| constraints: caps, quiet hours, approvals, do-not-contact lists | none | these are the rules the engine must not break |
+| constraints: caps, permitted send windows, approvals, do-not-contact lists | none | these are the rules the engine must not break |
 
 **Labels.** Mark each element LIVE PULL (with `observed_at`), SUPPLIED, or ESTIMATE. The engine
 lets a SUPPLIED claim lower a verdict but never raise one: a gate can only read GREEN on observed

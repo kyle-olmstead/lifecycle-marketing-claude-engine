@@ -134,7 +134,7 @@ newsletter slot for a trigger, computed on their own data.
 | Data dependencies | with `--data`: every event exists, property filters match rows, fill rates; a missing qualifying or core event blocks |
 | Cohort SQL | entry and history queries parse in PostgreSQL, Snowflake and BigQuery (sqlglot); the DuckDB version runs on the data |
 | Flow structure | `engine/policy/simulator.py`: schema, unique ids, branch targets, reachability, holdout before the first message, weekly cap on every route |
-| Journeys | synthetic people walk the flow hour by hour: holdout gets nothing, no send without consent, nothing after the core action, cap, send hour, the brief's quiet hours, touch count, sunset only for non-clickers |
+| Journeys | synthetic people walk the flow hour by hour: holdout gets nothing, no send without consent, nothing after the core action, caps, each channel's permitted send window, touch count, sunset only for non-clickers |
 | Trigger payload | the example request validates against `config/esp_payload_schemas.json` |
 | Copy | every variant: dialect lint (`engine/render/template_lint.py`), unsubscribe and address present, SMS segments and opt-out (`engine/render/sms.py`), offer policy, fake urgency, deceptive subjects, unknown tokens, text-to-image |
 | Holdout read | causal, causal and slow, directional only, or not readable (`engine/measurement/stats.py feasible`) |
