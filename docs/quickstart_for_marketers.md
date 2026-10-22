@@ -11,7 +11,7 @@
 |---|---|---|
 | Claude with the LMM Engine plugin | Type your brief into Claude (section 2) | Install once: see the README, section 4 |
 | Claude Desktop without the plugin | Add the teammate as a local tool (section 6), then type your brief | 10 minutes, once |
-| A terminal | Type what you want after `lcm` (section 3) | `pip install -r requirements.txt && pip install -e . --no-deps`, once |
+| A terminal | Make a workspace, then type what you want after `lcm` (section 3) | the install block in the README, section 5, once |
 
 ## 2. Say what you want
 
@@ -51,40 +51,56 @@ example `feature_used` with `feature = reports`). Then it builds the plan.
 
 ## 3. Or use the terminal
 
-Type what you want, the way you would say it:
+Start with a workspace: one folder per brand that remembers your platform, sending gate, frequency policy, offers
+and brand kit, so you never type them again.
 
 ```text
-lcm "what are my top 3 priority builds today and why?" --data exports/
-lcm "plan a 5-touch win-back for users who completed onboarding but haven't created a report in 14 days" --product Acme
-lcm "check deliverability for example.com"
-lcm "build the engagement tiers and the sunset list" --data exports/ --platform klaviyo
-lcm "compare our monthly newsletter with the win-back trigger" --brief briefs/active/winback.yaml --data exports/
-lcm "audit the cohort" --data exports/
-lcm "how many people do we need to detect a 20% lift on a 10% baseline with a 15% holdout"
+lcm init ~/acme --name Acme --platform klaviyo      # writes lmm.yaml and brand.yaml; open both and fill in the blanks
+cd ~/acme
+lcm doctor                                          # says what is set up and what is missing
+lcm import shopify ~/Downloads/shopify --out data   # or klaviyo, stripe, hubspot, customerio, ga4, segment, rudderstack, or auto
+lcm check-data data                                 # anything missing, late, malformed or in the future, with the fix
+lcm deliverability check acme.com --write-gate gate.json   # then set sending_gate: gate.json in lmm.yaml
 ```
 
-If `lcm` needs something it cannot work out (the product name, the data folder, a domain), it says
-exactly what, and runs nothing. Add `--dry-run` to see which job it would run first. Anything you
-would rather keep in a file can be a short YAML job instead of a sentence:
+Then type what you want, the way you would say it:
+
+```text
+lcm "what are my top 3 priority builds today and why?" --data data
+lcm plan --text "a 5-touch win-back for customers who have not ordered in 60 days" --data data
+lcm "make it 4 touches"                            # revises the plan you just made
+lcm "check deliverability for example.com"
+lcm "build the engagement tiers and the sunset list" --data data
+lcm "how many people do we need to detect a 20% lift on a 10% baseline with a 15% holdout"
+lcm workflow run morning_check                     # the daily check, every step's output kept
+```
+
+`lcm --help` lists every command, and `lcm COMMAND --help` explains every option. If `lcm` needs something it cannot
+work out (the data folder, a domain), it says exactly what, and runs nothing. Add `--dry-run` to see which job a
+sentence would run. Anything you would rather keep in a file can be a short YAML job instead of a sentence:
 
 ```yaml
 # jobs/tiers.yaml, run with: lcm jobs/tiers.yaml
 kind: engagement
-data: exports/
+data: data/
 platform: braze
 ```
 
 ### Fill in the brief yourself
 
-Copy `templates/brief.yaml`, fill in the three required lines, and run:
+Copy `templates/brief.yaml`, fill in what it asks, and run:
 
 ```text
-lcm briefs/my_brief.yaml
+lcm plan --brief briefs/my_brief.yaml --data data
 ```
+
+Inside a workspace, a brief needs only what is particular to the flow; the platform, gate, policies and brand come
+from `lmm.yaml`. For a win-back these three lines matter most (other flows need only `flow_type`, see
+[the flow library](FLOW_LIBRARY.md)):
 
 | Field | What to put | Example |
 |---|---|---|
-| `product_name` | what customers call your product | `Acme` |
+| `product_name` | what customers call your product (default: `brand.name` in `lmm.yaml`) | `Acme` |
 | `core_conversion_event` | the one action that means someone is getting value: the event name in your data, and optionally a property to narrow it | `event: feature_used`, `where: {feature: reports}` |
 | `churn_threshold_days` | days without that action before someone enters a win-back flow | `14` |
 
@@ -95,24 +111,26 @@ optional lines change the plan the most:
   and how many come back on their own. Without them the plan cannot say when you will know whether
   the flow works. If you have exports of your users and events, add `--data <folder>` and the
   teammate measures both for you.
-- `sending_gate`: GREEN, AMBER or RED from your deliverability check. Left blank, the plan mails
-  engaged people only (anyone who clicked or replied in the last 90 days). Run the
-  deliverability check first if you want the full audience.
+- `sending_gate`: the gate record your deliverability check wrote (`gate.json`), usually set once in `lmm.yaml`.
+  Without one, or with one older than 30 days, the plan runs as AMBER and mails engaged people only (anyone who
+  clicked or replied in the last 90 days; new subscribers in a welcome flow are exempt). Typing GREEN by hand also
+  runs as AMBER: only an observed check can open the full audience.
 
 Or start from a sentence and let it write the brief, setting anything you already know:
 
 ```text
-python3 -m engine.pipeline.orchestrator brief --text "5-touch win-back for users inactive 14 days" --product Acme \
-  --set postal_address="100 Main St, Springfield, IL 62701" --out briefs/acme.yaml
+lcm brief --text "5-touch win-back for users inactive 14 days" --set churn_threshold_days=21 --out briefs/winback.yaml
 ```
 
-When a flow goes live, copy its brief into `briefs/active/`: the daily health check (section 7)
-audits every brief there.
+When a flow goes live, copy its brief into `briefs/active/`: the daily health check (section 7) audits every brief
+there, and `lcm simulate --program` checks every live flow together against your frequency policy.
 
 ## 4. Read the plan
 
-The plan lands in `out/<your flow>/plan.md`. A worked example for a fictional company is in
-`examples/brands/ridgeview_saas/runs/winback_14d/plan.md`. Read it top to bottom:
+The plan lands in `runs/<your flow>/plan.md` inside your workspace (`out/<your flow>/` outside one), and each run
+also keeps its own copy in `runs/<your flow>/runs/<run id>/outputs/`. Worked examples for two fictional companies:
+`examples/brands/ridgeview_saas/runs/winback_14d/plan.md` and `examples/brands/northfield_dtc/runs/cart_abandon/plan.md`.
+Read it top to bottom:
 
 | Section | What it tells you | What to do |
 |---|---|---|
@@ -122,7 +140,7 @@ The plan lands in `out/<your flow>/plan.md`. A worked example for a fictional co
 | **Who enters** | the entry rule, the exit, the trigger, the data it depends on, and the daily queries (who to push, then a record of who was pushed, so nobody enters twice) | check the event names are yours |
 | **The flow** | a diagram and a day-by-day table: channel, job, conditions | sanity-check timing against your other flows |
 | **Build it in your platform** | numbered build steps in your platform's own words | hand to whoever builds it |
-| **The copy** | two variants per message, each with a hypothesis; files are in `copy/` | replace any `[bracketed]` text with real specifics |
+| **The copy** | two variants per message, each with a hypothesis; files are in `copy/` | approve one per message, or edit and re-run |
 | **Measurement** | the holdout, when you can read the result, and the decision rule | put the read date in your calendar |
 | **Deliverability guardrails** | who is suppressed and the re-permission and sunset rules | nothing; they are built in |
 | **Compliance** | the laws that apply to where your audience lives (US, Canada, UK, EU, Germany, Australia), each with its source | WARN lines are questions for you or your counsel; FAIL blocks the plan |
@@ -133,19 +151,20 @@ The plan lands in `out/<your flow>/plan.md`. A worked example for a fictional co
 Every plan is saved as a run. To change it without starting over:
 
 ```text
-python3 -m engine.pipeline.orchestrator revise --run out/acme_winback_14d --set touches=4
-python3 -m engine.pipeline.orchestrator revise --run out/acme_winback_14d --set channels=[email,sms] --set holdout_pct=20
-python3 -m engine.pipeline.orchestrator approve --run out/acme_winback_14d --step t1_email --variant B
-python3 -m engine.pipeline.orchestrator status --run out/acme_winback_14d
+lcm "make it 4 touches"                                     # the newest run; or name one with --run
+lcm "add SMS and use a 20% holdout"
+lcm revise --run runs/acme_winback_14d --set touches=4      # the same, with the fields named
+lcm approve --run runs/acme_winback_14d --step t1_email --variant B
+lcm status --run runs/acme_winback_14d
 ```
 
 A revision keeps the copy of every message whose job did not change, and keeps the variants you
 approved. If a run stops part way (a data export was missing, the API timed out), `resume` picks up
-where it stopped: `python3 -m engine.pipeline.orchestrator resume --run out/acme_winback_14d --data exports/`.
+where it stopped: `lcm resume --run runs/acme_winback_14d --data data`.
 
 ### Four things that surprise people
 
-1. **15% of entrants get nothing.** That is the holdout. Without it you will see revenue credited to
+1. **10 to 15% of entrants get nothing.** That is the holdout (each flow has its default; see the flow library). Without it you will see revenue credited to
    the flow but never know how much of it would have happened anyway. Win-back flows are the most
    over-credited flows in lifecycle marketing.
 2. **"Directional only" or "not readable".** Your entry volume is too small to prove a lift inside a
@@ -164,7 +183,8 @@ where it stopped: `python3 -m engine.pipeline.orchestrator resume --run out/acme
 |---|---|---|
 | Claude in the conversation (plugin) | default with the plugin | Claude writes from each message's brief; the teammate renders and checks it |
 | `--copy-mode claude` | terminal, with an `ANTHROPIC_API_KEY` | the Claude API writes; failures get one automatic repair round |
-| `--copy-mode offline` | no key | starter drafts with `[bracketed]` gaps for you to fill |
+| `--copy-mode handoff` | you or a Claude chat write the words | `copy_briefs.md` for each message; save the words as `drafts.json` and run `lcm plan ... --drafts drafts.json` |
+| `--copy-mode offline` | no key, no writer | finished starter copy from the built-in library, in your brand kit's voice rules; edit before sending |
 
 Whatever writes the words, the teammate adds the unsubscribe link and postal address your platform
 requires, SMS opt-out text, a preview line and dark-mode support, then lints every template. Copy
