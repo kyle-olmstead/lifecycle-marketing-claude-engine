@@ -221,34 +221,44 @@ instead, so it reuses the engine's method and tools rather than restating them.
 
 | Specified | Here |
 |---|---|
-| `engine/pipeline/orchestrator.py`, `cohort_analyst.py`, `campaign_architect.py`, `experimentation_agent.py` | same paths; plus `engine/agents/copywriter.py` (the copywriter agent the pipeline names), `models.py`, `brief.py`, `guardrails.py`, `sql_dialects.py` |
-| `skills/behavioral_triggers.md` | `modules/02_behavioral_triggers_and_flows/` (the absence patterns per platform) and `engine/agents/campaign_architect.py` |
+| `engine/pipeline/orchestrator.py`, `cohort_analyst.py`, `campaign_architect.py`, `experimentation_agent.py` | `engine/pipeline/orchestrator.py` and `engine/agents/`; plus `engine/agents/copywriter.py` (the copywriter agent the pipeline names), `engine/models.py`, `engine/brief.py`, `engine/policy/guardrails.py`, `engine/sql/dialects.py` |
+| `skills/behavioral_triggers.md` | `prompts/jobs/flows/` (the absence patterns per platform), `engine/flows/library.py` and `engine/agents/campaign_architect.py` |
 | `skills/direct_response_copy.md` | `prompts/jobs/copy/email_writer.md` and the copywriter's system prompt |
 | `skills/retention_matrices.md` | `prompts/jobs/sql/rfm_segmentation.md`, the win-back module, and the audit's risk bands |
-| `skills/dma_compliance_and_deliverability.md` | `modules/01_deliverability_and_infrastructure/` and `engine/policy/guardrails.py` |
+| `skills/dma_compliance_and_deliverability.md` | `prompts/jobs/deliverability/`, `engine/deliverability/` and `engine/policy/guardrails.py` |
 | `config/mcp_server_config.json`, `config/esp_payload_schemas.json` | same paths |
 | `adapters/destinations/sheets.py`, `adapters/sources/webhooks.py` | same paths |
-| `scripts/test_campaign_simulator.py` | `engine/policy/simulator.py` (a `test_` prefix would make pytest collect it as a test module); its tests are in `tests/test_teammate_pipeline.py` |
-| `brief_template.yaml` | `templates/brief.yaml`, with a worked example in `briefs/examples/` |
+| `test_campaign_simulator.py` | `engine/policy/simulator.py` (a `test_` prefix would make pytest collect it as a test module); its tests are in `tests/test_teammate_pipeline.py` |
+| `brief_template.yaml` | `templates/brief.yaml`, with worked examples in `examples/brands/*/briefs/` |
 | `docs/quickstart_for_marketers.md`, `docs/architectural_overview.md` | same paths |
 | `.github/workflows/daily_cohort_audit.yml` | same path |
 
 ## 7. Extending it
 
-- **A platform:** add its dialect to `PLATFORM_DIALECT`, its vocabulary to `campaign_architect.VOCAB`,
+- **A flow:** add a `FlowDef` to `engine/flows/library.py` (trigger, goal, roles per touch count, schedule, gate
+  class, re-entry, dedupe key, holdout default, native build steps per platform), its SQL builder to
+  `engine/flows/sql.py` when it runs from the warehouse, and starter copy for any new role to
+  `engine/agents/copy_library.py`. The every-flow tests and `docs/FLOW_LIBRARY.md` (generated) pick it up.
+- **A platform:** add its dialect to `engine/models.py`, its vocabulary to `campaign_architect.VOCAB`,
   its absence pattern to `cohort_analyst.PLATFORM_PATTERNS`, its request to `adapters/destinations/event_payloads.py`
-  with a `$defs` entry in `config/esp_payload_schemas.json`, and its unsubscribe, address and
-  first-name tokens to `engine/agents/copywriter.py`. The parametrized platform test picks it up.
+  with a `$defs` entry in `config/esp_payload_schemas.json`, its product block to `engine/render/product_blocks.py`,
+  and its unsubscribe, address and first-name tokens to `engine/agents/copywriter.py`. The parametrized platform
+  tests pick it up.
+- **A data source:** add `adapters/sources/<name>.py` with `NAME`, `DESCRIPTION`, `detect(folder)` and
+  `map(folder, out_dir)`; the registry finds it, `lcm import` merges it, and `lcm check-data` checks its output.
 - **A touch role:** add it to `campaign_architect.ROLES` and the ordering tables, and a starter pair to
   the copywriter's offline library.
-- **A warehouse:** add a `Dialect` branch for date arithmetic, JSON access and the bucket, then add it
-  to the dialect-equivalence test.
+- **A warehouse:** add a `Dialect` branch in `engine/sql/dialects.py` for date arithmetic, JSON access and the bucket,
+  then add it to the dialect-equivalence test.
 - **A webhook source:** add a `from_<source>` normalizer that returns canonical rows and route it in
   `create_app`; reuse `_common` so it gets the tracking-plan validation and quarantine.
 - **A compliance rule:** append it to `config/compliance_rules.json` with a `check` from
-  `agents/compliance.CHECKS` (or add a check function), a jurisdiction, and a `source`; the
+  `engine/policy/compliance.CHECKS` (or add a check function), a jurisdiction, and a `source`; the
   rules-have-sources test keeps it honest.
 - **A pipeline stage:** add it to `STAGES` and `OUTPUT_TYPES` in `engine/pipeline/core.py` and its function
-  to `agents/stages.FUNCS`; persistence, retries, resume and the status view pick it up.
-- **An lcm job:** add a pattern to `agents/cli.INTENTS`, its arguments in `route`, and its call in
-  `run`.
+  to `engine/pipeline/stages.FUNCS`; persistence, retries, resume and the status view pick it up.
+- **An lcm command:** add a `Command` to `COMMANDS` in `engine/cli/commands.py` pointing at the module's `_cli`; give
+  every flag a help string (tests/test_cli.py checks), and the generated command table in `docs/COMMANDS.md` updates.
+  For a plain-English route, add a pattern to `engine/cli/main.INTENTS`, its arguments in `route`, and its call in `run`.
+- **A workflow:** add `workflows/<name>.yaml` (or the workspace's own `workflows/`); `engine/workflows/runner.py`
+  documents the format.
