@@ -14,7 +14,7 @@ from engine.models import sms_window_from_rules
 from tests.conftest import ROOT
 
 HISTORY = {"CHANGELOG.md", "AUDIT.md"}          # records of what was true then
-PROSE = [p for p in [ROOT / "README.md", ROOT / "CONNECTORS.md", *sorted((ROOT / "docs").glob("*.md")),
+PROSE = [p for p in [ROOT / "README.md", ROOT / "CONNECTORS.md", ROOT / "QUICKSTART.md", *sorted((ROOT / "docs").glob("*.md")),
                      *sorted((ROOT / "skills").glob("*/SKILL.md")), *sorted((ROOT / "prompts").rglob("*.md")),
                      *sorted((ROOT / "templates").rglob("*.yaml"))] if p.name not in HISTORY]
 

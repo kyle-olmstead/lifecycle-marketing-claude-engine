@@ -129,12 +129,12 @@ You need a paid Claude plan. It works best in **Claude Code** or the **Claude de
 
 Then, in any conversation: **"set up the lifecycle engine."** Setup looks at which platforms you have connected, records each one's template language and SQL dialect, and writes the context file everything else reads. Then describe a campaign.
 
-**From a terminal** (Python 3.12 or later), the same engine is one command, `lcm`:
+**From a terminal** (Python 3.12 or later), the same engine is one command, `lcm`. Step by step, with what to expect at each step: [`QUICKSTART.md`](QUICKSTART.md).
 
 ```text
 git clone https://github.com/kyle-olmstead/lifecycle-marketing-claude-engine.git
 cd lifecycle-marketing-claude-engine
-uv venv && uv pip install -e .            # or: python3 -m venv .venv && . .venv/bin/activate && pip install -e .
+uv sync && . .venv/bin/activate           # or: python3 -m venv .venv && . .venv/bin/activate && pip install -e .
 lcm doctor                                # checks Python, packages, the email compiler, and what is set up
 ```
 

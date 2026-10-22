@@ -8,3 +8,8 @@ __pycache__/
 /out/
 /context/
 *.egg-info/
+
+# runs made by trying the demo workspaces (the committed finished runs are winback_14d and cart_abandon)
+examples/brands/northfield_dtc/runs/northfield_*/
+examples/brands/ridgeview_saas/runs/ridgeview_*/
+examples/brands/*/runs/workflows/
