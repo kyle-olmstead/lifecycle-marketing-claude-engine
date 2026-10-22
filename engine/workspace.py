@@ -95,7 +95,13 @@ def brief_defaults(ws: Optional[Workspace] = None) -> Dict[str, Any]:
     gate = cfg.get("sending_gate")
     if isinstance(gate, str) and gate.lower().endswith(".json"):
         path = (ws.root / gate) if not Path(gate).is_absolute() else Path(gate)
-        out["sending_gate"] = json.loads(path.read_text(encoding="utf-8")) if path.exists() else "UNKNOWN"
+        if not path.exists():
+            out["sending_gate"] = "UNKNOWN"
+        else:
+            try:
+                out["sending_gate"] = json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as e:
+                raise ValueError(f"{path}: not a gate record ({e.msg}); write one with lcm deliverability check DOMAIN --write-gate {gate}") from None
     elif gate not in (None, ""):
         out["sending_gate"] = gate
     if cfg.get("brand_kit"):
