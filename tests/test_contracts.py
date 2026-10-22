@@ -140,3 +140,10 @@ def test_the_workspace_template_holds_valid_policies():
     assert _schema_ok("workspace.schema.json", cfg), schemas.errors("workspace.schema.json", cfg)
     assert _schema_ok("frequency_policy.schema.json", cfg["frequency"]) and _model_ok(FrequencyPolicy, cfg["frequency"])
     assert _schema_ok("offer_policy.schema.json", cfg["offer_policy"]) and _model_ok(OfferPolicy, cfg["offer_policy"])
+
+
+def test_each_cap_phrase_keeps_its_own_channel():
+    from engine.policy.contracts import parse_cap_text
+    caps = parse_cap_text("no more than 2 texts a day and 6 emails a month")
+    assert [(c.channels, c.max, c.window) for c in caps] == [(["sms"], 2, "P1D"), (["email"], 6, "P30D")]
+    assert parse_cap_text("three messages a week")[0].channels == ["email", "sms", "push"]
