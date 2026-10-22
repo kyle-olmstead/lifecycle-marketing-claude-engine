@@ -51,6 +51,11 @@ INTENTS = (
                    r"(next|best) (\w+ )?(flow|campaign|build)s? to (build|launch)|what('s| is) (the )?next (best )?(build|flow|campaign)\b|"
                    r"biggest (\w+ )?opportunit|(best|biggest|top) opportunities|where .*(leaving|losing) (money|revenue)|money on the table"),
     ("daily", r"what broke|overnight|anything break|morning (check|brief|summary|report)|daily (check|summary|health|report)"),
+    ("check_data", r"\bis (our|my|the) data (ready|ok|okay|good|complete|clean|trustworthy)|check (our|my|the) (data|exports)|"
+                   r"data (quality|check)|(missing|bad|broken) data\b|can (i|we) trust (our|my|the) data"),
+    ("program", r"\b(flows?|campaigns?|journeys?) (collide|overlap|clash|step on each other)|(collide|overlap|clash) (with|across)|"
+                r"(too many|how many) (emails|messages|texts) .*(a|per) (week|day)|all (our |my |the )?(live )?flows together|"
+                r"across (all )?(our |my )?flows|frequency (cap|policy) across"),
     ("tracking", r"events? (are |is )?firing|event (stream|tracking|taxonomy|schema)|tracking plan|tracking (health|break|broke)|"
                  r"schema (drift|fidelity)|data (has )?drift|has the data drifted|webhook|null values|break a trigger|broke a trigger|"
                  r"triggers? (stopped|broke|breaking)|break (our |the )?tracking|still (coming|arriving)|\bnull\b"),
@@ -88,6 +93,7 @@ PLATFORM_WORDS = (("klaviyo", "klaviyo"), ("braze", "braze"), ("hubspot", "hubsp
                   ("salesforce", "sfmc"), ("sfmc", "sfmc"), ("iterable", "iterable"))
 # what each job needs, and how to ask for it
 NEEDS: Dict[str, List[Tuple[str, str]]] = {
+    "check_data": [("data", "--data (the folder of exports to check)")],
     "deliverability": [("domain", "the sending domain (for example: check deliverability for example.com)")],
     "audit": [("brief", "--brief (which flow's cohort)"), ("data", "--data (a folder or URL prefix with users, orders, track_events exports)")],
     "blast": [("brief", "--brief (which flow's cohort)"), ("data", "--data (a folder or URL prefix with users, orders, track_events exports)")],
@@ -180,6 +186,12 @@ def route(text: str, opts: Dict[str, Any]) -> Job:
         job.args = {"data": a.get("data"), "brief": brief, "by": by, "out": a.get("out", "out")}
     elif kind == "roi":
         job.args = {}
+    elif kind == "check_data":
+        from engine import workspace
+        ws = workspace.find()
+        job.args = {"data": a.get("data") or (str(ws.data_dir) if not ws.fallback else None)}
+    elif kind == "program":
+        job.args = {"add": [brief] if brief else []}
     elif kind == "priorities":
         n = re.search(r"\btop\s+(\d+)", low)
         job.args = {"data": a.get("data"), "brief": a.get("brief"), "top": int(n.group(1)) if n else 3, "value": a.get("value"),
@@ -321,6 +333,12 @@ def run(job: Job) -> int:
     if job.kind == "roi":
         from engine.measurement import roi as roi_model
         return roi_model._cli([])
+    if job.kind == "check_data":
+        from engine.data import check
+        return check._cli([a["data"]])
+    if job.kind == "program":
+        from engine.policy import program
+        return program._cli([x for b in a.get("add", []) for x in ("--add", b)])
     if job.kind == "priorities":
         from engine.agents import priorities
         argv = ["--data", a["data"], "--top", str(a.get("top", 3)), "--out", str(a.get("out", "out"))]

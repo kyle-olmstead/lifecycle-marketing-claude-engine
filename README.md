@@ -204,7 +204,7 @@ Details, and the path for every tool without a connector: [`CONNECTORS.md`](CONN
 | "how many people do we need to test this?" | Test and holdout sizing, and how long the test must run |
 | "write the welcome email for Klaviyo" | Copy in Klaviyo's template language, checked |
 
-These are a sample. The [question bank](docs/QUESTION_BANK.md) lists 25 questions by cadence (daily, weekly, monthly, quarterly, annual), each with what you get, the data it needs, and what it cannot answer. Every one ends the same way: it shows what it found and what it would build. Nothing is sent or changed until you say yes, and even then the engine hands you files and instructions; it has no way to send a message.
+These are a sample. The [question bank](docs/QUESTION_BANK.md) lists 27 questions by cadence (daily, weekly, monthly, quarterly, annual), each with what you get, the data it needs, and what it cannot answer. Every one ends the same way: it shows what it found and what it would build. Nothing is sent or changed until you say yes, and even then the engine hands you files and instructions; it has no way to send a message.
 
 ---
 
