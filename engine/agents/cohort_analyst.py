@@ -13,9 +13,11 @@ audit    The daily health check (.github/workflows/daily_cohort_audit.yml, 05:00
          the qualified base by risk band (active, at risk, lapsed); the onboarding leak map; robust
          anomaly detection on the latest complete day; and a data-freshness check.
 
-Absence is invisible to most ESPs, so the recommended trigger is a warehouse job that runs the entry
-query daily and pushes one event per entrant (adapters/destinations/event_payloads.py builds the request bodies).
-The holdout bucket is computed in the same query, so the warehouse records both arms.
+For an absence trigger the plan writes a warehouse job that runs the entry query daily and pushes one event per
+entrant (adapters/destinations/event_payloads.py builds the request bodies, adapters/destinations/send.py sends them).
+The holdout bucket is computed in the same query, so the warehouse records both arms. Where the ESP can see the absence
+itself (a segment, or a daily scheduled audience), the build pack (adapters/destinations/build) triggers it natively
+instead and keeps this job as the alternative.
 
     python3 -m engine.agents.cohort_analyst define --brief examples/brands/ridgeview_saas/briefs/winback_14d.yaml --data examples/brands/ridgeview_saas/data
     python3 -m engine.agents.cohort_analyst audit --brief examples/brands/ridgeview_saas/briefs/winback_14d.yaml --data examples/brands/ridgeview_saas/data --out out/audit
@@ -133,8 +135,13 @@ def _source(D: Dialect, m: EventMatch, alias: str) -> str:
     if m.event == "order_completed":
         return (f"SELECT {alias}.user_id, {alias}.order_at AS event_at FROM orders {alias} "
                 f"WHERE {alias}.status = 'completed' AND {alias}.user_id IS NOT NULL")
-    return (f"SELECT {alias}.user_id, {alias}.event_at FROM track_events {alias} "
-            f"WHERE {D.event_filter(alias + '.', m.event, m.where)} AND {alias}.user_id IS NOT NULL")
+    stream = (f"SELECT {alias}.user_id, {alias}.event_at FROM track_events {alias} "
+              f"WHERE {D.event_filter(alias + '.', m.event, m.where)} AND {alias}.user_id IS NOT NULL")
+    if m.event == "signed_up" and not m.where:
+        # users.created_at is when each person signed up (engine/data/schema.py), so a store whose exports carry no
+        # signed_up event (Shopify customers, Klaviyo profiles) still has its sign-ups; the earliest of the two wins
+        return stream + f" UNION ALL SELECT {alias}u.user_id, {alias}u.created_at AS event_at FROM users {alias}u WHERE {alias}u.created_at IS NOT NULL"
+    return stream
 
 
 def _as_of_expr(D: Dialect, as_of: Optional[str]) -> str:
@@ -558,6 +565,9 @@ def check_sql(sql_by_dialect: Dict[str, str]) -> Dict[str, str]:
 # define
 # ----------------------------------------------------------------------------------------------
 
+MESSAGE_EVENTS = {"message_delivered": "delivered", "message_opened": "opened", "message_clicked": "clicked"}
+
+
 def _dependencies(brief: Brief, con) -> List[DataDependency]:
     deps: List[DataDependency] = []
 
@@ -569,7 +579,16 @@ def _dependencies(brief: Brief, con) -> List[DataDependency]:
             n = con.execute("SELECT COUNT(*), COUNT(DISTINCT user_id) FROM orders WHERE status = 'completed'").fetchone()
             return DataDependency(name=name, kind="object" if n[0] else "event", status="verified" if n[0] else "blocked",
                                   note=f"{role}; orders table (the transaction object): {n[0]} completed orders, {n[1]} people")
+        if m.event in MESSAGE_EVENTS:       # engagement flows read the ESP's message events, not the product event stream
+            rows, users = con.execute("SELECT COUNT(*), COUNT(DISTINCT user_id) FROM message_events WHERE event_name = ?",
+                                      [MESSAGE_EVENTS[m.event]]).fetchone()
+            return DataDependency(name=name, kind="event", status="verified" if rows else "blocked",
+                                  note=f"{role}; message_events {MESSAGE_EVENTS[m.event]}: {rows} rows from {users} people")
         rows, users = con.execute("SELECT COUNT(*), COUNT(DISTINCT user_id) FROM track_events WHERE event_name = ?", [m.event]).fetchone()
+        if rows == 0 and m.event == "signed_up" and not m.where:
+            n = con.execute("SELECT COUNT(created_at) FROM users").fetchone()[0]
+            return DataDependency(name=name, kind="attribute" if n else "event", status="verified" if n else "blocked",
+                                  note=f"{role}; no signed_up events, so sign-ups are read from users.created_at ({n} people)")
         if rows == 0:
             return DataDependency(name=name, kind="event", status="blocked", note=f"{role}; no {m.event} rows in track_events")
         fill = None
@@ -1030,30 +1049,34 @@ def render_audit(r: Dict[str, Any]) -> str:
 def _cli(argv: Optional[List[str]] = None) -> int:
     from engine.brief import load_brief
     ap = argparse.ArgumentParser(description="Cohort Analyst: define the entry cohort, or audit cohort health")
-    sub = ap.add_subparsers(dest="cmd", required=True)
-    d = sub.add_parser("define")
-    d.add_argument("--brief", required=True)
+    sub = ap.add_subparsers(dest="cmd", required=True, help="what to do with the flow's cohort")
+    d = sub.add_parser("define", help="print who enters the flow, on which events, and the data it depends on",
+                       description="Define the flow's entry cohort from its brief and your data")
+    d.add_argument("--brief", required=True, help="the flow's brief (a YAML file)")
     d.add_argument("--data", help="folder or URL prefix with users, orders, track_events (.csv or .parquet)")
-    d.add_argument("--as-of")
-    a = sub.add_parser("audit")
-    a.add_argument("--brief", required=True)
+    d.add_argument("--as-of", help="the run date, YYYY-MM-DD (default: the latest complete day in track_events)")
+    a = sub.add_parser("audit", prog="lcm audit", help="audit the cohort's health against the data and flag anomalies",
+                       description="Audit a flow's entry cohort against the data: daily entries, snapshot and funnel")
+    a.add_argument("--brief", required=True, help="the flow's brief (a YAML file)")
     g = a.add_mutually_exclusive_group(required=True)
-    g.add_argument("--data")
+    g.add_argument("--data", help="folder of exports with users, orders, track_events (.csv or .parquet)")
     g.add_argument("--from-results", help="folder with daily.json, snapshot.json, funnel.json from a warehouse run of audit-sql")
-    a.add_argument("--as-of")
-    a.add_argument("--out", required=True)
-    a.add_argument("--fail-on-anomaly", action="store_true")
-    bl = sub.add_parser("blast-vs-trigger", help="compare calendar blasts with the behavioral trigger on your data")
-    bl.add_argument("--brief", required=True)
-    bl.add_argument("--data", required=True)
+    a.add_argument("--as-of", help="the audit date, YYYY-MM-DD (default: the latest complete day in the data)")
+    a.add_argument("--out", required=True, help="folder to write audit.json and audit.md into")
+    a.add_argument("--fail-on-anomaly", action="store_true", help="exit with code 1 when the audit finds an anomaly (for schedulers)")
+    bl = sub.add_parser("blast-vs-trigger", prog="lcm blast", help="compare calendar blasts with the behavioral trigger on your data",
+                        description="Compare a newsletter or calendar blast with the flow's behavioral trigger on your data")
+    bl.add_argument("--brief", required=True, help="the triggered flow's brief (a YAML file)")
+    bl.add_argument("--data", required=True, help="folder of exports with users, orders, track_events (and message_events, if you have it)")
     bl.add_argument("--dates", help="comma-separated blast dates (default: your recurring campaign's last three sends in "
                                     "message_events, else the first of each of the last three months, labeled simulated)")
-    bl.add_argument("--as-of")
-    bl.add_argument("--out")
-    s = sub.add_parser("audit-sql")
-    s.add_argument("--brief", required=True)
-    s.add_argument("--dialect", required=True, choices=["postgres", "snowflake", "bigquery"])
-    s.add_argument("--out", required=True)
+    bl.add_argument("--as-of", help="the date the data runs to, YYYY-MM-DD (default: the latest complete day in the data)")
+    bl.add_argument("--out", help="folder to also write blast_vs_trigger.json and .md into (default: print only)")
+    s = sub.add_parser("audit-sql", help="write the audit queries (daily, snapshot, funnel) to run in your warehouse",
+                       description="Write the audit's daily, snapshot and funnel SQL for your warehouse")
+    s.add_argument("--brief", required=True, help="the flow's brief (a YAML file)")
+    s.add_argument("--dialect", required=True, choices=["postgres", "snowflake", "bigquery"], help="your warehouse's SQL dialect")
+    s.add_argument("--out", required=True, help="folder to write daily.sql, snapshot.sql and funnel.sql into")
     args = ap.parse_args(argv)
     brief = load_brief(Path(args.brief))
     if args.cmd == "define":

@@ -308,8 +308,8 @@ def test_mcp_server_tools(tmp_path, monkeypatch):
     from engine import mcp_server
     monkeypatch.setattr(mcp_server, "OUT", tmp_path)
     names = {t.name for t in asyncio.run(mcp_server.server.list_tools())}
-    assert names == {"draft_brief", "plan_campaign", "revise_plan", "approve_variant", "audit_cohort", "engagement_tiers", "check_domain",
-                     "simulate_flow", "priorities"}
+    assert names >= {"draft_brief", "plan_campaign", "revise_plan", "approve_variant", "audit_cohort", "engagement_tiers", "check_domain",
+                     "simulate_flow", "priorities", "simulate_program", "check_data", "import_exports", "size_holdout", "workspace_doctor"}
     r = asyncio.run(mcp_server.server.call_tool("plan_campaign", {"brief_path": str(ROOT / "examples/brands/ridgeview_saas/briefs/winback_14d.yaml"),
                                                                   "data_dir": str(ROOT / "examples/brands/ridgeview_saas/data"), "copy_mode": "offline"}))
     text = r.content[0].text

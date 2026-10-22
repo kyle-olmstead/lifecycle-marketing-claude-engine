@@ -1,11 +1,16 @@
-Start from a template
+Tell me what you track
 
-Hi {{ customer.first_name | default: "there" }}, starting from a blank page is the slowest part.
+Hi {{ customer.first_name | default: "there" }}, setting up the first report is where a lot of people get stuck, usually because it is not clear which numbers belong on it.
 
-[Name the template or starter that fits their use case] is ready in your account. Open it, change two things, and you are done.
+Reply to this email with the two or three numbers you check every week, and I will set up a report in your Ridgeview account that shows them.
 
-Open the template: https://app.ridgeview.example/reports/new?utm_source=lifecycle&utm_medium=email&utm_campaign=ridgeview_winback_14d&utm_content=t2_email
+No call needed. You will get an email when it is ready.
+
+Or build it yourself: https://app.ridgeview.example/reports/new?utm_source=lifecycle&utm_medium=email&utm_campaign=ridgeview_winback_14d&utm_content=t2_email
 
 Dana Ortiz at Ridgeview
-100 Example Way, Suite 400, Springfield, OR 97477
+Ridgeview Analytics, Inc. (fictional), 100 Example Way, Suite 400, Springfield, OR 97477
+You are getting this because you have a Ridgeview account.
+Questions? Reply to this email and a person on our team will answer.
+LinkedIn: https://www.linkedin.example/company/ridgeview
 Unsubscribe: {% unsubscribe_url %}

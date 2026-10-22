@@ -1,0 +1,10 @@
+id,Description,Email,Name,Created (UTC),Delinquent,Currency,Address Country,user_id (metadata),account_id (metadata),account_name (metadata)
+cus_0001,Ridgeview free user,u_0001@example.test,User 0001,2025-12-20 14:00,false,,DE,u_0001,,
+cus_0002,Ridgeview workspace owner,u_0002@example.test,User 0002,2025-12-08 04:00,false,,US,u_0002,acc_0002,Workspace 0002
+cus_0003,Ridgeview workspace owner,u_0003@example.test,User 0003,2026-04-21 02:00,true,,US,u_0003,acc_0003,Workspace 0003
+cus_0004,Ridgeview workspace owner,u_0004@example.test,User 0004,2025-12-08 19:00,false,,DE,u_0004,acc_0004,Workspace 0004
+cus_0005,Ridgeview workspace owner,u_0005@example.test,User 0005,2026-01-12 12:00,false,,US,u_0005,acc_0005,Workspace 0005
+cus_0006,Ridgeview workspace owner,u_0006@example.test,User 0006,2026-03-08 20:00,false,,US,u_0006,acc_0006,Workspace 0006
+cus_0007,Ridgeview workspace owner,u_0007@example.test,User 0007,2026-01-01 20:00,false,,CA,u_0007,acc_0007,Workspace 0007
+cus_0009,Ridgeview workspace owner,u_0009@example.test,User 0009,2026-08-27 05:00,true,,CA,u_0009,acc_0009,Workspace 0009
+cus_0010,Ridgeview workspace owner,u_0010@example.test,User 0010,2026-10-09 04:00,false,,US,u_0010,acc_0010,Workspace 0010

@@ -432,32 +432,37 @@ def _load_clusters(path: str) -> Dict[str, List[Cluster]]:
 
 
 def _cli(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Clustered (account-randomized) experiments: ICC, design effect, sizing and readout")
-    sub = ap.add_subparsers(dest="cmd", required=True)
-    i = sub.add_parser("icc", help="estimate the ICC from users.account_id and a per-user 0/1 outcome")
+    ap = argparse.ArgumentParser(prog="lcm cluster",
+                                 description="Clustered (account-randomized) experiments: ICC, design effect, sizing and readout")
+    sub = ap.add_subparsers(dest="cmd", required=True, help="what to compute")
+    i = sub.add_parser("icc", help="estimate the ICC from users.account_id and a per-user 0/1 outcome",
+                       description="Estimate how alike people in the same account are (the ICC) on a 0/1 outcome")
     i.add_argument("--data", required=True, help="a data folder with users (account_id) and track_events")
     i.add_argument("--event", required=True, help="the outcome: did the person fire this event")
-    i.add_argument("--start")
-    i.add_argument("--end")
-    d = sub.add_parser("deff", help="design effect from ICC and account sizes")
-    d.add_argument("--icc", type=float, required=True)
-    d.add_argument("--mean-size", type=float, required=True)
+    i.add_argument("--start", help="count events from this date on, YYYY-MM-DD (default: all history)")
+    i.add_argument("--end", help="count events before this date, YYYY-MM-DD, not included (default: all history)")
+    d = sub.add_parser("deff", help="design effect from ICC and account sizes",
+                       description="How much randomizing whole accounts inflates the sample you need (the design effect)")
+    d.add_argument("--icc", type=float, required=True, help="intra-account correlation, 0 to 1 (from `lcm cluster icc`)")
+    d.add_argument("--mean-size", type=float, required=True, help="average number of people per account")
     d.add_argument("--cv", type=float, default=0.0, help="coefficient of variation of account size (sd / mean)")
-    s = sub.add_parser("size", help="accounts and entrants per arm")
-    s.add_argument("--baseline", type=float, required=True)
+    s = sub.add_parser("size", help="accounts and entrants per arm",
+                       description="Accounts and entrants each arm needs when whole accounts are randomized")
+    s.add_argument("--baseline", type=float, required=True, help="the holdout's expected conversion rate, 0.10 = 10%%")
     g = s.add_mutually_exclusive_group(required=True)
-    g.add_argument("--mde-abs", type=float)
-    g.add_argument("--mde-rel", type=float)
-    s.add_argument("--icc", type=float, required=True)
-    s.add_argument("--mean-size", type=float, required=True)
-    s.add_argument("--cv", type=float, default=0.0)
-    s.add_argument("--holdout", type=float, help="holdout share of accounts, e.g. 0.20")
-    s.add_argument("--alpha", type=float, default=0.05)
-    s.add_argument("--power", type=float, default=0.80)
-    r = sub.add_parser("readout", help="treatment vs holdout from account-level totals")
+    g.add_argument("--mde-abs", type=float, help="smallest lift worth detecting, in rate points (0.02 = 2 points)")
+    g.add_argument("--mde-rel", type=float, help="smallest lift worth detecting, relative to baseline (0.20 = 20%% lift)")
+    s.add_argument("--icc", type=float, required=True, help="intra-account correlation, 0 to 1 (from `lcm cluster icc`)")
+    s.add_argument("--mean-size", type=float, required=True, help="average number of people per account")
+    s.add_argument("--cv", type=float, default=0.0, help="coefficient of variation of account size (sd / mean; default 0, equal sizes)")
+    s.add_argument("--holdout", type=float, help="holdout share of accounts, e.g. 0.20 (default: an even 50/50 split)")
+    s.add_argument("--alpha", type=float, default=0.05, help="false positive rate, two-sided (default 0.05)")
+    s.add_argument("--power", type=float, default=0.80, help="chance of detecting a real lift of the MDE (default 0.80)")
+    r = sub.add_parser("readout", help="treatment vs holdout from account-level totals",
+                       description="Read an account-randomized test from per-account entrants and conversions")
     r.add_argument("input", help='JSON: {"treatment": [[entrants, conversions], ...], "holdout": [...]}')
-    r.add_argument("--expected-holdout", type=float)
-    r.add_argument("--alpha", type=float, default=0.05)
+    r.add_argument("--expected-holdout", type=float, help="planned holdout share of accounts, e.g. 0.20, to check the split (default: no check)")
+    r.add_argument("--alpha", type=float, default=0.05, help="false positive rate for the interval (default 0.05)")
     a = ap.parse_args(argv)
     try:
         if a.cmd == "icc":

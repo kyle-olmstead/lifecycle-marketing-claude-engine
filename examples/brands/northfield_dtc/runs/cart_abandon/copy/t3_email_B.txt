@@ -1,0 +1,15 @@
+Your cart is still here
+
+Hi {{ first_name|default:'there' }}, we will not keep reminding you, but your cart is still saved at Northfield Coffee Roasters if you want it.
+
+If you have a question before you order, reply and a person on our team will answer.
+
+Return to my cart: {{ event.extra.checkout_url|default:organization.url }}
+
+Sam at Northfield
+{{ organization.name }}, {{ organization.full_address }}
+You are getting this because you bought from us or joined the roast list.
+Questions about an order? Reply to this email and a person on our team will answer.
+Instagram: https://www.instagram.example/northfieldcoffee
+Brew guides: https://www.northfieldcoffee.example/brew
+Unsubscribe: {% unsubscribe_link %}

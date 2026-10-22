@@ -1,0 +1,47 @@
+# The LMM Engine workspace file: everything the engine should remember about this brand, in one place code reads.
+# Every brief planned in this folder starts from these values; a brief can still override any of them.
+# Leave a value blank rather than guess: blank means UNKNOWN, and the plan says so. Never put API keys here.
+# Validated against schemas/workspace.schema.json (lcm doctor checks it).
+
+brand:
+  name: Acme                          # what customers call you
+  business_model: ecommerce           # ecommerce, subscription, saas, marketplace, services or sales_led_b2b
+  postal_address:                     # printed in every email footer (CAN-SPAM); the brand kit's footer address works too
+  sender_name:                        # a person usually beats a brand name: "Dana at Acme"
+  recipient_countries: [US]           # where your customers are, when the data has no country column
+
+brand_kit: brand.yaml                 # logo, colors, footer and voice (lcm brand check validates it)
+
+platform: klaviyo                     # klaviyo, hubspot, braze, customerio, iterable or sfmc
+esp:
+  tier:                               # your plan on that platform, for capability checks (for example "Professional")
+warehouse_dialect: postgres           # postgres, snowflake or bigquery: the SQL the plans write for you
+
+# The sending gate: run `lcm deliverability check <your domain> --write-gate gate.json` and point here.
+# A bare GREEN typed by hand runs as AMBER: an unobserved claim can lower the gate, never raise it.
+sending_gate:
+
+# One frequency policy across every flow. Send windows are when each channel MAY send, recipient local time.
+frequency:
+  caps:
+    - {channels: [email, sms, push], max: 3, window: P7D}
+    - {channels: [sms], max: 1, window: P1D}
+  send_windows:
+    - {channel: email, allowed_from: "08:00", allowed_until: "21:00"}
+    - {channel: sms, allowed_from: "09:00", allowed_until: "20:00"}   # the narrowest US state window the rules file tracks
+    - {channel: push, allowed_from: "09:00", allowed_until: "21:00"}
+  flow_priority: [dunning, cart_abandon, browse_abandon, post_purchase, replenishment, welcome, trial_convert, activation, winback, sunset]
+  collision_rule: higher_priority_preempts
+
+# What copy may offer. No offers listed means none. An offer without expires_after has no deadline, so no urgency copy.
+offer_policy:
+  offers: []
+  never_in_first_touch: true
+  exclude_if: [discount_share_over_50pct_last_3_orders]
+
+measurement:
+  randomization_unit: user            # account when several people share one buying account (B2B)
+  global_holdout_pct: 0               # a program-wide holdout every flow excludes, so total lifecycle lift can be read (5 is common)
+  stopping_rule: fixed_horizon        # fixed_horizon, group_sequential or always_valid
+
+data: data                            # canonical tables (lcm check-data), or raw exports to map with lcm import

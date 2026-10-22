@@ -544,10 +544,11 @@ def __getattr__(name: str):  # lazily build the ASGI app for `uvicorn adapters.s
 
 
 def _cli(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Normalize Segment or GA4 payloads to canonical track_events")
-    sub = ap.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("parse")
-    p.add_argument("--source", required=True, choices=["segment", "ga4"])
+    ap = argparse.ArgumentParser(prog="lcm webhooks", description="Normalize Segment or GA4 payloads to canonical track_events")
+    sub = ap.add_subparsers(dest="cmd", required=True, help="what to do with the payloads")
+    p = sub.add_parser("parse", help="normalize saved payloads to track_events; exits 1 if any are quarantined",
+                       description="Normalize saved Segment or GA4 payloads to canonical track_events and users")
+    p.add_argument("--source", required=True, choices=["segment", "ga4"], help="where the payloads came from")
     p.add_argument("payload", help="a JSON file: one payload, or a list of payloads")
     p.add_argument("--to-csv", help="append accepted events to <folder>/track_events.csv")
     a = ap.parse_args(argv)

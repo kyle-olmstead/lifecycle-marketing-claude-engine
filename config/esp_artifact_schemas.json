@@ -1,0 +1,2295 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kyle-olmstead/lifecycle-marketing-claude-engine/config/esp_artifact_schemas.json",
+  "title": "LMM Engine ESP build-pack artifacts",
+  "description": "JSON Schemas for every artifact adapters/destinations/build writes: create-API request bodies (Klaviyo flow, segment and template; HubSpot automation v4 workflow; Salesforce Marketing Cloud journey), the Braze /canvas/duplicate request, and the build sheet for platforms without a create API. Each is written from the vendor's documented shape (Klaviyo's from its official OpenAPI spec, revision 2026-10-15). x-endpoint records the endpoint, the documentation and its confidence; x-unverified names every field the docs do not confirm. Placeholders <<kind:key>> are strings until lcm build --create resolves them.",
+  "type": "object",
+  "$defs": {
+    "klaviyo_flow_create": {
+      "x-endpoint": {
+        "method": "POST",
+        "url": "https://a.klaviyo.com/api/flows",
+        "headers": {
+          "revision": "2026-10-15"
+        },
+        "scope": "flows:write",
+        "rate_limits": "1/s burst, 15/m steady, 100/day",
+        "creates": "a Draft flow; the definition cannot be edited through the API afterwards",
+        "docs": [
+          "https://raw.githubusercontent.com/klaviyo/openapi/main/openapi/stable.json",
+          "https://developers.klaviyo.com/en/reference/flows_api_overview",
+          "https://developers.klaviyo.com/en/reference/create_flow"
+        ],
+        "confidence": "VERIFIED",
+        "checked": "2026-10-21"
+      },
+      "x-unverified": [
+        {
+          "path": "data.attributes.definition.actions[type=update-profile].data.profile_operations[].operator",
+          "why": "the difference between create and update is not described in the spec",
+          "confidence": "LIKELY"
+        },
+        {
+          "path": "data.attributes.definition.reentry_criteria",
+          "why": "alltime 0 is read as 'Re-enter whenever they re-qualify' from the field description",
+          "confidence": "LIKELY"
+        }
+      ],
+      "type": "object",
+      "required": [
+        "data"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "type": "object",
+          "required": [
+            "type",
+            "attributes"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "flow"
+            },
+            "attributes": {
+              "type": "object",
+              "required": [
+                "name",
+                "definition"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "definition": {
+                  "type": "object",
+                  "required": [
+                    "triggers",
+                    "actions",
+                    "entry_action_id"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "triggers": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 1,
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "type",
+                              "id"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "type": {
+                                "const": "metric"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "trigger_filter": {
+                                "$ref": "#/$defs/klaviyo_trigger_filter"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "type",
+                              "id"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "type": {
+                                "const": "segment"
+                              },
+                              "id": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "type",
+                              "id"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "type": {
+                                "const": "list"
+                              },
+                              "id": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "profile_filter": {
+                      "$ref": "#/$defs/klaviyo_profile_filter"
+                    },
+                    "actions": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "temporary_id",
+                              "type",
+                              "links",
+                              "data"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "temporary_id": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "type": {
+                                "const": "time-delay"
+                              },
+                              "links": {
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "next": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  }
+                                }
+                              },
+                              "data": {
+                                "type": "object",
+                                "required": [
+                                  "unit",
+                                  "value"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "unit": {
+                                    "enum": [
+                                      "days",
+                                      "hours",
+                                      "minutes"
+                                    ]
+                                  },
+                                  "value": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                  },
+                                  "secondary_value": {
+                                    "type": [
+                                      "integer",
+                                      "null"
+                                    ]
+                                  },
+                                  "timezone": {
+                                    "type": "string"
+                                  },
+                                  "delay_until_time": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ],
+                                    "pattern": "^([01]\\d|2[0-3]):[0-5]\\d(:[0-5]\\d)?$"
+                                  },
+                                  "delay_until_weekdays": {
+                                    "type": [
+                                      "array",
+                                      "null"
+                                    ],
+                                    "items": {
+                                      "enum": [
+                                        "monday",
+                                        "tuesday",
+                                        "wednesday",
+                                        "thursday",
+                                        "friday",
+                                        "saturday",
+                                        "sunday"
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "temporary_id",
+                              "type",
+                              "links",
+                              "data"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "temporary_id": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "type": {
+                                "const": "trigger-split"
+                              },
+                              "links": {
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "next_if_true": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "next_if_false": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  }
+                                }
+                              },
+                              "data": {
+                                "type": "object",
+                                "required": [
+                                  "trigger_filter",
+                                  "trigger_id",
+                                  "trigger_type"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "trigger_filter": {
+                                    "$ref": "#/$defs/klaviyo_trigger_filter"
+                                  },
+                                  "trigger_id": {
+                                    "type": "string"
+                                  },
+                                  "trigger_type": {
+                                    "enum": [
+                                      "date",
+                                      "list",
+                                      "low-inventory",
+                                      "metric",
+                                      "price-drop",
+                                      "scheduled",
+                                      "segment"
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "temporary_id",
+                              "type",
+                              "links",
+                              "data"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "temporary_id": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "type": {
+                                "const": "conditional-split"
+                              },
+                              "links": {
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "next_if_true": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "next_if_false": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  }
+                                }
+                              },
+                              "data": {
+                                "type": "object",
+                                "required": [
+                                  "profile_filter"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "profile_filter": {
+                                    "$ref": "#/$defs/klaviyo_profile_filter"
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "temporary_id",
+                              "type",
+                              "links",
+                              "data"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "temporary_id": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "type": {
+                                "const": "send-email"
+                              },
+                              "links": {
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "next": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  }
+                                }
+                              },
+                              "data": {
+                                "type": "object",
+                                "required": [
+                                  "message"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "status": {
+                                    "enum": [
+                                      "disabled",
+                                      "draft",
+                                      "live",
+                                      "manual"
+                                    ]
+                                  },
+                                  "message": {
+                                    "type": "object",
+                                    "required": [
+                                      "template_id",
+                                      "subject_line"
+                                    ],
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "from_email": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "from_label": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "reply_to_email": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "subject_line": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      },
+                                      "preview_text": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "template_id": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      },
+                                      "smart_sending_enabled": {
+                                        "type": "boolean"
+                                      },
+                                      "transactional": {
+                                        "type": "boolean"
+                                      },
+                                      "add_tracking_params": {
+                                        "type": "boolean"
+                                      },
+                                      "additional_filters": {
+                                        "$ref": "#/$defs/klaviyo_profile_filter"
+                                      },
+                                      "name": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "temporary_id",
+                              "type",
+                              "links",
+                              "data"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "temporary_id": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "type": {
+                                "const": "send-sms"
+                              },
+                              "links": {
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "next": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  }
+                                }
+                              },
+                              "data": {
+                                "type": "object",
+                                "required": [
+                                  "message"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "status": {
+                                    "enum": [
+                                      "disabled",
+                                      "draft",
+                                      "live",
+                                      "manual"
+                                    ]
+                                  },
+                                  "message": {
+                                    "type": "object",
+                                    "required": [
+                                      "body"
+                                    ],
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "body": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      },
+                                      "smart_sending_enabled": {
+                                        "type": "boolean"
+                                      },
+                                      "sms_quiet_hours_enabled": {
+                                        "type": "boolean"
+                                      },
+                                      "transactional": {
+                                        "type": "boolean"
+                                      },
+                                      "add_opt_out_language": {
+                                        "type": "boolean"
+                                      },
+                                      "add_tracking_params": {
+                                        "type": "boolean"
+                                      },
+                                      "additional_filters": {
+                                        "$ref": "#/$defs/klaviyo_profile_filter"
+                                      },
+                                      "name": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "temporary_id",
+                              "type",
+                              "links",
+                              "data"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "temporary_id": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "type": {
+                                "const": "send-mobile-push"
+                              },
+                              "links": {
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "next": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  }
+                                }
+                              },
+                              "data": {
+                                "type": "object",
+                                "required": [
+                                  "message"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "status": {
+                                    "enum": [
+                                      "disabled",
+                                      "draft",
+                                      "live",
+                                      "manual"
+                                    ]
+                                  },
+                                  "message": {
+                                    "type": "object",
+                                    "required": [
+                                      "body"
+                                    ],
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "title": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "body": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      },
+                                      "on_open": {
+                                        "enum": [
+                                          "home",
+                                          "link",
+                                          "open_url"
+                                        ]
+                                      },
+                                      "smart_sending_enabled": {
+                                        "type": "boolean"
+                                      },
+                                      "additional_filters": {
+                                        "$ref": "#/$defs/klaviyo_profile_filter"
+                                      },
+                                      "name": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "temporary_id",
+                              "type",
+                              "links",
+                              "data"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "temporary_id": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "type": {
+                                "const": "update-profile"
+                              },
+                              "links": {
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "next": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  }
+                                }
+                              },
+                              "data": {
+                                "type": "object",
+                                "required": [
+                                  "profile_operations"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "status": {
+                                    "enum": [
+                                      "disabled",
+                                      "draft",
+                                      "live",
+                                      "manual"
+                                    ]
+                                  },
+                                  "profile_operations": {
+                                    "type": "array",
+                                    "minItems": 1,
+                                    "items": {
+                                      "type": "object",
+                                      "required": [
+                                        "operator",
+                                        "property_key"
+                                      ],
+                                      "properties": {
+                                        "operator": {
+                                          "enum": [
+                                            "create",
+                                            "update",
+                                            "delete"
+                                          ]
+                                        },
+                                        "property_type": {
+                                          "enum": [
+                                            "string",
+                                            "boolean",
+                                            "numeric",
+                                            "date",
+                                            "list"
+                                          ]
+                                        },
+                                        "property_key": {
+                                          "type": "string"
+                                        },
+                                        "property_value": {}
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "entry_action_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "reentry_criteria": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "required": [
+                        "duration",
+                        "unit"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "duration": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "unit": {
+                          "enum": [
+                            "day",
+                            "hour",
+                            "week",
+                            "alltime"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "klaviyo_segment_create": {
+      "x-endpoint": {
+        "method": "POST",
+        "url": "https://a.klaviyo.com/api/segments",
+        "headers": {
+          "revision": "2026-10-15"
+        },
+        "scope": "segments:write",
+        "rate_limits": "1/s burst, 15/m steady, 100/day",
+        "docs": [
+          "https://raw.githubusercontent.com/klaviyo/openapi/main/openapi/stable.json"
+        ],
+        "confidence": "VERIFIED",
+        "checked": "2026-10-21"
+      },
+      "x-unverified": [
+        {
+          "path": "data.attributes.definition.condition_groups",
+          "why": "groups are read as AND and conditions inside a group as OR, as in the segment builder",
+          "confidence": "LIKELY"
+        },
+        {
+          "path": "data.attributes.definition.condition_groups[].conditions[].metric_id",
+          "why": "metric ids are looked up by name when the segment is created; Klaviyo's built-in names (Received Email, Clicked Email) are LIKELY",
+          "confidence": "LIKELY"
+        }
+      ],
+      "type": "object",
+      "required": [
+        "data"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "type": "object",
+          "required": [
+            "type",
+            "attributes"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "segment"
+            },
+            "attributes": {
+              "type": "object",
+              "required": [
+                "name",
+                "definition"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "is_starred": {
+                  "type": "boolean"
+                },
+                "definition": {
+                  "type": "object",
+                  "required": [
+                    "condition_groups"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "condition_groups": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "conditions"
+                        ],
+                        "properties": {
+                          "conditions": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                              "$ref": "#/$defs/klaviyo_profile_condition"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "klaviyo_template_create": {
+      "x-endpoint": {
+        "method": "POST",
+        "url": "https://a.klaviyo.com/api/templates",
+        "headers": {
+          "revision": "2026-10-15"
+        },
+        "scope": "templates:write",
+        "rate_limits": "75/s burst, 750/m steady",
+        "docs": [
+          "https://raw.githubusercontent.com/klaviyo/openapi/main/openapi/stable.json"
+        ],
+        "confidence": "VERIFIED",
+        "checked": "2026-10-21"
+      },
+      "x-unverified": [],
+      "type": "object",
+      "required": [
+        "data"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "type": "object",
+          "required": [
+            "type",
+            "attributes"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "template"
+            },
+            "attributes": {
+              "type": "object",
+              "required": [
+                "name",
+                "editor_type",
+                "html"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "editor_type": {
+                  "const": "CODE"
+                },
+                "html": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "text": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "hubspot_flow_create": {
+      "x-endpoint": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/automation/v4/flows",
+        "beta": true,
+        "scope": "automation",
+        "pinned": "/automation/v4/flows (the legacy beta path); the dated beta pages show /automation/2026-09-beta/flows and /automation/v4/2027-03-beta/flows",
+        "creates": "a workflow that is off (isEnabled: false)",
+        "docs": [
+          "https://developers.hubspot.com/docs/api-reference/legacy/automation/workflows/guide",
+          "https://developers.hubspot.com/docs/api-reference/2027-03-beta/automation/workflows/guide.md",
+          "https://developers.hubspot.com/docs/api-reference/2027-03-beta/automation/workflows/action-enrollment-reference.md",
+          "https://developers.hubspot.com/docs/api-reference/2026-03/crm/lists/list-filters.md"
+        ],
+        "confidence": "VERIFIED",
+        "checked": "2026-10-21"
+      },
+      "x-unverified": [
+        {
+          "path": "actions[type=LIST_BRANCH].type",
+          "why": "the reference describes list branches (listBranches, defaultBranch) without naming the type value",
+          "confidence": "UNVERIFIED"
+        },
+        {
+          "path": "actions[type=LIST_BRANCH].listBranches[].filterBranch.filters[].operation",
+          "why": "filter shapes are from the Lists API filter guide (propertyType bool, datetime-rolling); that workflow branches accept them is LIKELY",
+          "confidence": "LIKELY"
+        },
+        {
+          "path": "enrollmentCriteria.listFilterBranch.filterBranches[].filters[].operation",
+          "why": "the datetime-rolling filter is from the Lists API guide; its use in list-based enrollment is LIKELY",
+          "confidence": "LIKELY"
+        },
+        {
+          "path": "actions[].actionTypeVersion",
+          "why": "0 in the examples; other versions are not described",
+          "confidence": "LIKELY"
+        },
+        {
+          "path": "enrollmentCriteria.eventFilterBranches[].eventTypeId",
+          "why": "custom event ids have the form 6-<n>; a full custom-event enrollment example is not documented",
+          "confidence": "LIKELY"
+        }
+      ],
+      "type": "object",
+      "required": [
+        "isEnabled",
+        "flowType",
+        "name",
+        "type",
+        "objectTypeId",
+        "startActionId",
+        "nextAvailableActionId",
+        "actions",
+        "enrollmentCriteria"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "isEnabled": {
+          "const": false
+        },
+        "flowType": {
+          "const": "WORKFLOW"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "type": {
+          "const": "CONTACT_FLOW"
+        },
+        "objectTypeId": {
+          "const": "0-1"
+        },
+        "startActionId": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "nextAvailableActionId": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "actions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "actionId",
+                  "actionTypeId",
+                  "actionTypeVersion",
+                  "fields"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "type": {
+                    "const": "SINGLE_CONNECTION"
+                  },
+                  "actionId": {
+                    "type": "string",
+                    "pattern": "^[0-9]+$"
+                  },
+                  "actionTypeId": {
+                    "enum": [
+                      "0-1",
+                      "0-4",
+                      "0-5"
+                    ]
+                  },
+                  "actionTypeVersion": {
+                    "type": "integer"
+                  },
+                  "fields": {
+                    "type": "object"
+                  },
+                  "connection": {
+                    "type": "object",
+                    "required": [
+                      "edgeType",
+                      "nextActionId"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "edgeType": {
+                        "const": "STANDARD"
+                      },
+                      "nextActionId": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "actionTypeId": {
+                          "const": "0-1"
+                        }
+                      }
+                    },
+                    "then": {
+                      "properties": {
+                        "fields": {
+                          "required": [
+                            "delta",
+                            "time_unit"
+                          ],
+                          "additionalProperties": false,
+                          "properties": {
+                            "delta": {
+                              "type": "string",
+                              "pattern": "^[0-9]+$"
+                            },
+                            "time_unit": {
+                              "enum": [
+                                "MINUTES",
+                                "HOURS",
+                                "DAYS"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "if": {
+                      "properties": {
+                        "actionTypeId": {
+                          "const": "0-4"
+                        }
+                      }
+                    },
+                    "then": {
+                      "properties": {
+                        "fields": {
+                          "required": [
+                            "content_id"
+                          ],
+                          "additionalProperties": false,
+                          "properties": {
+                            "content_id": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "if": {
+                      "properties": {
+                        "actionTypeId": {
+                          "const": "0-5"
+                        }
+                      }
+                    },
+                    "then": {
+                      "properties": {
+                        "fields": {
+                          "required": [
+                            "property_name",
+                            "value"
+                          ],
+                          "properties": {
+                            "property_name": {
+                              "type": "string"
+                            },
+                            "value": {
+                              "type": "object",
+                              "required": [
+                                "staticValue"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "actionId",
+                  "listBranches",
+                  "defaultBranch"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "type": {
+                    "const": "LIST_BRANCH"
+                  },
+                  "actionId": {
+                    "type": "string",
+                    "pattern": "^[0-9]+$"
+                  },
+                  "listBranches": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "filterBranch"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "branchName": {
+                          "type": "string"
+                        },
+                        "filterBranch": {
+                          "$ref": "#/$defs/hubspot_filter_branch"
+                        },
+                        "connection": {
+                          "type": "object",
+                          "required": [
+                            "edgeType",
+                            "nextActionId"
+                          ],
+                          "additionalProperties": false,
+                          "properties": {
+                            "edgeType": {
+                              "const": "STANDARD"
+                            },
+                            "nextActionId": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "defaultBranchName": {
+                    "type": "string"
+                  },
+                  "defaultBranch": {
+                    "type": "object",
+                    "required": [
+                      "edgeType",
+                      "nextActionId"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "edgeType": {
+                        "const": "STANDARD"
+                      },
+                      "nextActionId": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "enrollmentCriteria": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": [
+                "type",
+                "shouldReEnroll",
+                "eventFilterBranches"
+              ],
+              "properties": {
+                "type": {
+                  "const": "EVENT_BASED"
+                },
+                "shouldReEnroll": {
+                  "type": "boolean"
+                },
+                "eventFilterBranches": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "$ref": "#/$defs/hubspot_filter_branch"
+                  }
+                },
+                "listMembershipFilterBranches": {
+                  "type": "array"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "type",
+                "shouldReEnroll",
+                "listFilterBranch"
+              ],
+              "properties": {
+                "type": {
+                  "const": "LIST_BASED"
+                },
+                "shouldReEnroll": {
+                  "type": "boolean"
+                },
+                "listFilterBranch": {
+                  "$ref": "#/$defs/hubspot_filter_branch"
+                },
+                "unEnrollObjectsNotMeetingCriteria": {
+                  "type": "boolean"
+                },
+                "reEnrollmentTriggersFilterBranches": {
+                  "type": "array"
+                }
+              }
+            }
+          ]
+        },
+        "timeWindows": {
+          "type": "array"
+        },
+        "blockedDates": {
+          "type": "array"
+        },
+        "suppressionListIds": {
+          "type": "array"
+        },
+        "customProperties": {
+          "type": "object"
+        }
+      }
+    },
+    "sfmc_interaction_create": {
+      "x-endpoint": {
+        "method": "POST",
+        "url": "https://YOUR_SUBDOMAIN.rest.marketingcloudapis.com/interaction/v1/interactions",
+        "creates": "a Draft journey (status is assigned by Journey Builder, never sent); publishing is a separate call",
+        "docs": [
+          "https://developer.salesforce.com/docs/marketing/marketing-cloud/guide/postCreateInteraction.html",
+          "https://developer.salesforce.com/docs/marketing/marketing-cloud/guide/getting-started-spec.html",
+          "https://developer.salesforce.com/docs/marketing/marketing-cloud/guide/wait.html",
+          "https://developer.salesforce.com/docs/marketing/marketing-cloud/guide/send-email.html"
+        ],
+        "confidence": "VERIFIED",
+        "checked": "2026-10-21"
+      },
+      "x-unverified": [
+        {
+          "path": "activities[type=MULTICRITERIADECISION]",
+          "why": "the Multi-Criteria Decision Split format page could not be read: the type string and the Filter XML criteria are guesses",
+          "confidence": "UNVERIFIED"
+        },
+        {
+          "path": "activities[type=Wait].configurationArguments.specifiedTime",
+          "why": "the Wait Format sample uses specifiedTime while its compatibility table maps the field to specificTime",
+          "confidence": "UNVERIFIED"
+        },
+        {
+          "path": "triggers[].type",
+          "why": "the spec page's example says Event while its text says the only value is event; a scheduled Data Extension entry's type is not documented there",
+          "confidence": "LIKELY"
+        },
+        {
+          "path": "activities[type=EMAILV2].configurationArguments.triggeredSend.emailId",
+          "why": "the Content Builder email id; whether a string id is accepted is not stated",
+          "confidence": "LIKELY"
+        }
+      ],
+      "type": "object",
+      "required": [
+        "key",
+        "name",
+        "workflowApiVersion",
+        "triggers",
+        "activities"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "workflowApiVersion": {
+          "const": 1.0
+        },
+        "triggers": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "key",
+              "type",
+              "eventDefinitionKey"
+            ],
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "eventDefinitionKey": {
+                "type": "string",
+                "pattern": "^[^.]+$"
+              },
+              "arguments": {
+                "type": "object"
+              },
+              "configurationArguments": {
+                "type": "object"
+              },
+              "metaData": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "goals": {
+          "type": "array",
+          "maxItems": 1
+        },
+        "defaults": {
+          "type": "object"
+        },
+        "activities": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "key",
+                  "type",
+                  "outcomes",
+                  "configurationArguments"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "outcomes": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "key",
+                        "next"
+                      ],
+                      "properties": {
+                        "key": {
+                          "type": "string"
+                        },
+                        "next": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "arguments": {
+                          "type": "object"
+                        },
+                        "metaData": {
+                          "type": "object"
+                        }
+                      }
+                    }
+                  },
+                  "arguments": {
+                    "type": "object"
+                  },
+                  "metaData": {
+                    "type": "object"
+                  },
+                  "type": {
+                    "const": "Wait"
+                  },
+                  "configurationArguments": {
+                    "type": "object",
+                    "required": [
+                      "waitDuration",
+                      "waitUnit"
+                    ],
+                    "properties": {
+                      "waitDuration": {
+                        "type": "string",
+                        "pattern": "^[0-9]+$"
+                      },
+                      "waitUnit": {
+                        "enum": [
+                          "minutes",
+                          "hours",
+                          "days",
+                          "weeks",
+                          "months"
+                        ]
+                      },
+                      "specifiedTime": {
+                        "type": "string"
+                      },
+                      "timeZoneId": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "key",
+                  "type",
+                  "outcomes",
+                  "configurationArguments"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "outcomes": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "key",
+                        "next"
+                      ],
+                      "properties": {
+                        "key": {
+                          "type": "string"
+                        },
+                        "next": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "arguments": {
+                          "type": "object"
+                        },
+                        "metaData": {
+                          "type": "object"
+                        }
+                      }
+                    }
+                  },
+                  "arguments": {
+                    "type": "object"
+                  },
+                  "metaData": {
+                    "type": "object"
+                  },
+                  "type": {
+                    "const": "EMAILV2"
+                  },
+                  "configurationArguments": {
+                    "type": "object",
+                    "required": [
+                      "triggeredSend"
+                    ],
+                    "properties": {
+                      "triggeredSend": {
+                        "type": "object",
+                        "required": [
+                          "emailId"
+                        ],
+                        "properties": {
+                          "emailId": {
+                            "type": [
+                              "string",
+                              "integer"
+                            ]
+                          },
+                          "emailSubject": {
+                            "type": "string"
+                          },
+                          "isMultipart": {
+                            "type": "boolean"
+                          },
+                          "sendClassificationId": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "key",
+                  "type",
+                  "outcomes",
+                  "configurationArguments"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "outcomes": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "key",
+                        "next"
+                      ],
+                      "properties": {
+                        "key": {
+                          "type": "string"
+                        },
+                        "next": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "arguments": {
+                          "type": "object"
+                        },
+                        "metaData": {
+                          "type": "object"
+                        }
+                      }
+                    }
+                  },
+                  "arguments": {
+                    "type": "object"
+                  },
+                  "metaData": {
+                    "type": "object"
+                  },
+                  "type": {
+                    "const": "MULTICRITERIADECISION"
+                  },
+                  "configurationArguments": {
+                    "type": "object",
+                    "required": [
+                      "criteria"
+                    ],
+                    "properties": {
+                      "criteria": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "braze_canvas_duplicate": {
+      "x-endpoint": {
+        "method": "POST",
+        "url": "https://rest.<instance>.braze.com/canvas/duplicate",
+        "docs": [
+          "https://www.braze.com/docs/api/endpoints/messaging/duplicate_messages/post_duplicate_canvases"
+        ],
+        "confidence": "UNVERIFIED",
+        "checked": "2026-10-21",
+        "note": "the endpoint exists; its body fields, the duplicate's status and the limits are not documented on the page read"
+      },
+      "x-unverified": [
+        {
+          "path": "(body)",
+          "why": "every field of this body is a guess",
+          "confidence": "UNVERIFIED"
+        }
+      ],
+      "type": "object",
+      "required": [
+        "canvas_id",
+        "name"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "canvas_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "build_sheet": {
+      "x-endpoint": {
+        "method": null,
+        "url": null,
+        "docs": [
+          "config/esp_capabilities.json"
+        ],
+        "confidence": "VERIFIED",
+        "checked": "2026-10-21",
+        "note": "the click-by-click sheet for platforms without a create API (Braze, Customer.io, Iterable); BUILD.md renders it"
+      },
+      "x-unverified": [],
+      "type": "object",
+      "required": [
+        "platform",
+        "flow",
+        "slug",
+        "mode",
+        "trigger",
+        "steps",
+        "settings",
+        "status_on_create"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "platform": {
+          "enum": [
+            "braze",
+            "customerio",
+            "iterable",
+            "klaviyo",
+            "hubspot",
+            "sfmc"
+          ]
+        },
+        "flow": {
+          "type": "string"
+        },
+        "slug": {
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "native_event",
+            "native_segment",
+            "scheduled_segment",
+            "api_event",
+            "warehouse_job"
+          ]
+        },
+        "status_on_create": {
+          "type": "string"
+        },
+        "trigger": {
+          "type": "object",
+          "required": [
+            "type",
+            "summary",
+            "re_entry",
+            "holdout",
+            "exit_criteria"
+          ],
+          "properties": {
+            "type": {
+              "type": "string"
+            },
+            "event": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "summary": {
+              "type": "string"
+            },
+            "filters": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "flow_filters": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "exit_criteria": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string"
+              }
+            },
+            "re_entry": {
+              "type": "object"
+            },
+            "holdout": {
+              "type": "string"
+            },
+            "segment": {
+              "type": [
+                "object",
+                "null"
+              ]
+            }
+          }
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "n",
+              "id",
+              "action",
+              "kind"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "n": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "split",
+                  "send",
+                  "update_profile"
+                ]
+              },
+              "action": {
+                "type": "string"
+              },
+              "wait": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "required": [
+                  "seconds",
+                  "value",
+                  "unit",
+                  "label"
+                ],
+                "properties": {
+                  "seconds": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "value": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "unit": {
+                    "enum": [
+                      "seconds",
+                      "minutes",
+                      "hours"
+                    ]
+                  },
+                  "label": {
+                    "type": "string"
+                  }
+                }
+              },
+              "channel": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "content": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "condition": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "split": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "window": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "manual": {
+                "type": "boolean"
+              },
+              "note": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "settings": {
+          "type": "object",
+          "required": [
+            "goal",
+            "re_entry"
+          ],
+          "properties": {
+            "goal": {
+              "type": "string"
+            },
+            "re_entry": {
+              "type": "string"
+            },
+            "send_windows": {
+              "type": "array"
+            },
+            "frequency": {
+              "type": "array"
+            }
+          }
+        },
+        "manual_steps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "klaviyo_filter": {
+      "type": "object",
+      "required": [
+        "type",
+        "operator"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "string",
+            "numeric",
+            "boolean",
+            "date",
+            "list"
+          ]
+        },
+        "operator": {
+          "type": "string"
+        }
+      }
+    },
+    "klaviyo_metric_property_condition": {
+      "type": "object",
+      "required": [
+        "type",
+        "metric_id",
+        "field",
+        "filter"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "metric-property"
+        },
+        "metric_id": {
+          "type": "string"
+        },
+        "field": {
+          "type": "string"
+        },
+        "filter": {
+          "$ref": "#/$defs/klaviyo_filter"
+        }
+      }
+    },
+    "klaviyo_trigger_filter": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "condition_groups"
+      ],
+      "properties": {
+        "condition_groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "conditions"
+            ],
+            "properties": {
+              "conditions": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "$ref": "#/$defs/klaviyo_metric_property_condition"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "klaviyo_timeframe": {
+      "type": "object",
+      "required": [
+        "type",
+        "operator"
+      ],
+      "properties": {
+        "type": {
+          "const": "date"
+        },
+        "operator": {
+          "enum": [
+            "alltime",
+            "in-the-last",
+            "flow-start",
+            "at-least",
+            "in-the-next",
+            "after",
+            "before",
+            "between",
+            "between-static"
+          ]
+        },
+        "unit": {
+          "enum": [
+            "day",
+            "hour",
+            "week"
+          ]
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "klaviyo_profile_metric_condition": {
+      "type": "object",
+      "required": [
+        "type",
+        "metric_id",
+        "measurement",
+        "measurement_filter",
+        "timeframe_filter"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "profile-metric"
+        },
+        "metric_id": {
+          "type": "string"
+        },
+        "measurement": {
+          "enum": [
+            "count",
+            "sum"
+          ]
+        },
+        "measurement_filter": {
+          "type": "object",
+          "required": [
+            "type",
+            "operator",
+            "value"
+          ],
+          "properties": {
+            "type": {
+              "const": "numeric"
+            },
+            "operator": {
+              "enum": [
+                "equals",
+                "greater-than",
+                "greater-than-or-equal",
+                "less-than",
+                "less-than-or-equal",
+                "not-equals"
+              ]
+            },
+            "value": {
+              "type": "number"
+            }
+          }
+        },
+        "timeframe_filter": {
+          "$ref": "#/$defs/klaviyo_timeframe"
+        },
+        "metric_filters": {
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      }
+    },
+    "klaviyo_profile_property_condition": {
+      "type": "object",
+      "required": [
+        "type",
+        "property",
+        "filter"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "profile-property"
+        },
+        "property": {
+          "type": "string"
+        },
+        "filter": {
+          "$ref": "#/$defs/klaviyo_filter"
+        }
+      }
+    },
+    "klaviyo_consent_condition": {
+      "type": "object",
+      "required": [
+        "type",
+        "consent"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "profile-marketing-consent"
+        },
+        "consent": {
+          "type": "object",
+          "required": [
+            "channel",
+            "can_receive_marketing",
+            "consent_status"
+          ],
+          "properties": {
+            "channel": {
+              "enum": [
+                "email",
+                "sms",
+                "push"
+              ]
+            },
+            "can_receive_marketing": {
+              "type": "boolean"
+            },
+            "consent_status": {
+              "type": "object",
+              "required": [
+                "subscription"
+              ],
+              "properties": {
+                "subscription": {
+                  "enum": [
+                    "any",
+                    "subscribed",
+                    "unsubscribed",
+                    "never_subscribed"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "klaviyo_profile_condition": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/klaviyo_profile_metric_condition"
+        },
+        {
+          "$ref": "#/$defs/klaviyo_profile_property_condition"
+        },
+        {
+          "$ref": "#/$defs/klaviyo_consent_condition"
+        }
+      ]
+    },
+    "klaviyo_profile_filter": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "condition_groups"
+      ],
+      "properties": {
+        "condition_groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "conditions"
+            ],
+            "properties": {
+              "conditions": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "$ref": "#/$defs/klaviyo_profile_condition"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "hubspot_filter_branch": {
+      "type": "object",
+      "required": [
+        "filterBranchType",
+        "filters",
+        "filterBranches"
+      ],
+      "properties": {
+        "filterBranchType": {
+          "enum": [
+            "OR",
+            "AND",
+            "UNIFIED_EVENTS"
+          ]
+        },
+        "filterBranchOperator": {
+          "type": "string"
+        },
+        "filters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hubspot_property_filter"
+          }
+        },
+        "filterBranches": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hubspot_filter_branch"
+          }
+        },
+        "eventTypeId": {
+          "type": "string"
+        },
+        "operator": {
+          "enum": [
+            "HAS_COMPLETED",
+            "HAS_NOT_COMPLETED"
+          ]
+        }
+      }
+    },
+    "hubspot_property_filter": {
+      "type": "object",
+      "required": [
+        "filterType",
+        "property",
+        "operation"
+      ],
+      "properties": {
+        "filterType": {
+          "const": "PROPERTY"
+        },
+        "property": {
+          "type": "string"
+        },
+        "operation": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  "anyOf": [
+    {
+      "$ref": "#/$defs/klaviyo_flow_create"
+    },
+    {
+      "$ref": "#/$defs/klaviyo_segment_create"
+    },
+    {
+      "$ref": "#/$defs/klaviyo_template_create"
+    },
+    {
+      "$ref": "#/$defs/hubspot_flow_create"
+    },
+    {
+      "$ref": "#/$defs/sfmc_interaction_create"
+    },
+    {
+      "$ref": "#/$defs/braze_canvas_duplicate"
+    },
+    {
+      "$ref": "#/$defs/build_sheet"
+    }
+  ]
+}

@@ -16,8 +16,8 @@ everything that must never be guessed:
 
 Modes:
   claude    Claude API (needs ANTHROPIC_API_KEY; model from LCM_COPY_MODEL, default claude-sonnet-5-5)
-  offline   a starter library of role-based drafts; specifics the library cannot know are left as
-            [bracketed] fill-ins and flagged
+  offline   a starter library of role-based drafts for every flow, written so nothing needs filling in: it names
+            only what the brief knows (the product, the core action, the item) and invents no customer, number or feature
   handoff   writes copy_briefs.md for Claude in the desktop app or Claude Code to answer with a
             drafts JSON, then re-run the plan with --drafts
   auto      claude when a key is set, otherwise offline
@@ -168,6 +168,9 @@ def subject_lines(f: Dict[str, Any], brief: Brief) -> str:
             f"Preview text: {_tokens(f['preheader'], d, brief, escape=False, inline=True)}\n")
 
 
+SMS_LINK_PREVIEW = "https://ex.co/a1B2c3d"   # what a platform-shortened link costs in the segment count (21 characters)
+
+
 def _preview(text: str, brief: Brief) -> str:
     return text.replace("{first_name}", PREVIEW_NAME).replace("{product_name}", brief.product_name)
 
@@ -190,9 +193,16 @@ def render_email_mjml(f: Dict[str, Any], brief: Brief, step_id: str, brand: Opti
     from engine.render.brand import DEFAULT_BRAND
     kit = brand or DEFAULT_BRAND
     d = brief.template_dialect
-    url = brief.cta_url or PLACEHOLDER_CTA
-    sep = "&" if "?" in url else "?"
-    href = html.escape(f"{url}{sep}utm_source=lifecycle&utm_medium=email&utm_campaign={brief.slug}&utm_content={step_id}")
+    from engine.render import product_blocks
+    back = None if brief.cta_url else product_blocks.return_url(brief, d, kit.website)
+    if back:
+        # a link built from the trigger event (that checkout, that product) already carries the platform's own query string,
+        # so no UTM is appended here; turn on the platform's UTM tracking for the flow instead
+        href = back
+    else:
+        url = brief.cta_url or PLACEHOLDER_CTA
+        sep = "&" if "?" in url else "?"
+        href = html.escape(f"{url}{sep}utm_source=lifecycle&utm_medium=email&utm_campaign={brief.slug}&utm_content={step_id}")
     head = AMPSCRIPT_HEAD if d == "ampscript" else ""   # declared before first use, including the <title>
     file_start = (f"<!-- dialect: {d} -->\n"
                   f"<!-- {brief.slug} / {step_id}. Rendered by engine/agents/copywriter.py through MJML (engine/render/mjml_render.py); "
@@ -210,7 +220,7 @@ def render_email_mjml(f: Dict[str, Any], brief: Brief, step_id: str, brand: Opti
     from engine.render import product_blocks
     paragraphs = [p for p in f["paragraphs"] if p.strip() != "{product_block}"]
     wants_block = len(paragraphs) != len(f["paragraphs"])
-    block_mjml, block_text = product_blocks.block(brief, d) if wants_block else (None, "")
+    block_mjml, block_text = product_blocks.block(brief, d, kit.website) if wants_block else (None, "")
     if product_items is None and block_mjml:
         product_items = block_mjml
     content = mjml_render.EmailContent(
@@ -240,12 +250,19 @@ def render_email(f: Dict[str, Any], brief: Brief, step_id: str, brand: Optional[
 def render_short(channel: str, f: Dict[str, Any], brief: Brief) -> Dict[str, Any]:
     d = brief.template_dialect
     if channel == "sms":
+        from engine.render import product_blocks
         text = f["text"].strip().replace("{product_name}", brief.product_name)
         if not text.lower().startswith(brief.product_name.lower()):
             text = f"{brief.product_name}: {text}"
-        if not has_opt_out(text):
-            text = f"{text} Reply STOP to opt out."
-        return {"text": _tokens(text, d, brief, escape=False, inline=True), "preview": _preview(text, brief)}
+        # cart and browse texts always carry the way back (the checkout or product); others carry cta_url where the copy
+        # asks for {link}. The platform shortens the link, so the preview counts a shortened one.
+        wants_link = "{link}" in text
+        text = re.sub(r"\s*\{link\}", "", text).strip()
+        url = product_blocks.return_url(brief, d, brand_for(brief).website) or (
+            (brief.cta_url or PLACEHOLDER_CTA) if wants_link else None)
+        tail = "" if has_opt_out(text) else " Reply STOP to opt out."
+        rendered = _tokens(text, d, brief, escape=False, inline=True) + (f" {url}" if url else "") + tail
+        return {"text": rendered, "preview": _preview(text + (f" {SMS_LINK_PREVIEW}" if url else "") + tail, brief)}
     keys = ("title", "body") if channel == "push" else ("headline", "body", "cta_label")
     return ({k: _tokens(f[k], d, brief, escape=False, inline=True) for k in keys}
             | {"preview": {k: _preview(f[k], brief) for k in keys}})
@@ -332,11 +349,13 @@ def check_variant(channel: str, f: Dict[str, Any], brief: Brief, step_id: str, v
     elif channel == "sms":
         r = render_short("sms", f, brief)
         e, w, _report = guardrails.check_sms(r["preview"], brief.product_name, first_message=False)
-        e2, w2 = guardrails.check_text(f["text"], brief.offer, "sms", tokens, offer_ok)
+        e2, w2 = guardrails.check_text(f["text"], brief.offer, "sms", set(tokens) | {"link"}, offer_ok)   # {link}: the way back
         errors += e + e2
         warnings += w + w2
         lint = template_lint.lint(r["text"], brief.template_dialect)
         errors += [f"template: {x}" for x in lint["errors"]]
+        if PLACEHOLDER_CTA in r["text"]:
+            warnings.append("the text links to a placeholder; set cta_url in the brief to a deep link on your own domain")
         rendered = {f"{step_id}_{vid}.json": json.dumps(r, indent=2, ensure_ascii=False)}
     else:
         r = render_short(channel, f, brief)
@@ -362,7 +381,7 @@ def copy_brief(t: Touch, brief: Brief, plan: FlowPlan) -> str:
     core = brief.core_conversion_event
     lines = [
         f"Product: {brief.product_name}. Flow: {brief.flow_type}, touch {t.index} of {brief.touches}, day {t.day}, channel {t.channel}.",
-        f"Who: {('people who ' + brief.qualifying_event.describe() + ' and then went ' + str(brief.churn_threshold_days) + ' days without ' + (core.label or core.event)) if brief.flow_type == 'winback' else ('new users who ' + brief.qualifying_event.describe() + ' and have not yet ' + (core.label or core.event))}.",
+        f"Who: {_who(brief, core)}.",
         f"This message's job ({t.role.replace('_', ' ')}): {t.job}",
         f"Framework: {t.framework}. The single goal: {t.goal}.",
         f"Before this: " + ("; ".join(f"day {x.day} {x.channel} ({x.role.replace('_', ' ')})" for x in prior) if prior else "nothing; this is the first message") + ".",
@@ -370,13 +389,16 @@ def copy_brief(t: Touch, brief: Brief, plan: FlowPlan) -> str:
         f"Offer policy (binding): {brief.offer.describe()}"
         + ("" if _offer_allowed(brief, t.role, t.index) or not brief.offer.allows_offers else "; no offer in this touch") +
         ". Never invent a deadline, scarcity, a statistic, a customer or a feature.",
-        "Personalization: only {first_name} and {product_name} are available; write the template code nowhere, words only.",
+        "Personalization: " + _tokens_line(brief) + "; write the template code nowhere, words only."
+        + (" The cart or product itself is shown below the words by the product block, so do not list the items." if _has_items(brief) else ""),
     ]
     if t.channel == "email":
         lines.append("Email: subject carries the weight in the first 35 to 40 characters; preview text is a second, distinct promise; "
                      "one call to action; 2 to 4 short paragraphs; no images needed.")
     elif t.channel == "sms":
-        lines.append("SMS: one segment (160 GSM-7 characters) including the brand prefix and 'Reply STOP to opt out.', which are added for you; "
+        lines.append("SMS: one segment (160 GSM-7 characters) including the brand prefix and 'Reply STOP to opt out.'"
+                     + (", and the shortened link back (about 22 characters)" if _has_items(brief) and brief.flow_type in ("cart_abandon", "browse_abandon") else "")
+                     + ", which are added for you; "
                      "plain ASCII punctuation.")
     elif t.channel == "push":
         lines.append("Push: title up to about 50 characters, body up to about 150; one action.")
@@ -509,46 +531,46 @@ def _lib(brief: Brief) -> Dict[str, List[Dict[str, Any]]]:
              "hypothesis": "A factual, specific gap in the subject raises clicks more than a benefit line because it is concrete; falsified if A's click rate is equal or higher."},
         ],
         "friction_removal": [
-            {"subject": "The step most people get stuck on", "preheader": "And the two-minute way past it",
-             "headline": "If you got stuck, this is usually where", "paragraphs": [
-                 "Hi {first_name}, when people stop using " + p + " after the first few weeks, it is usually one step: [the most common blocker from support tickets or the leak map].",
-                 "[The shortest path past it, in one or two sentences]. If that is not it, reply to this email and a person will help."],
-             "cta_label": "Try the shortcut", "framework": "PAS: problem, agitation kept factual, solution",
-             "hypothesis": "Naming the blocker raises the core-action rate among lapsed users because it addresses the actual reason they left; falsified if B converts as well or better."},
-            {"subject": f"A template to {do} in two minutes", "preheader": "Start from something that already works",
-             "headline": "Start from a template", "paragraphs": [
-                 "Hi {first_name}, starting from a blank page is the slowest part.",
-                 "[Name the template or starter that fits their use case] is ready in your account. Open it, change two things, and you are done."],
-             "cta_label": "Open the template", "framework": "Solution first, problem implied",
-             "hypothesis": "Leading with a ready-made starting point raises the core-action rate more than naming the problem because it lowers effort at the moment of reading; falsified if A converts as well or better."},
+            {"subject": "The step most people get stuck on", "preheader": "Tell us which one and we will help",
+             "headline": "If you got stuck, tell us where", "paragraphs": [
+                 "Hi {first_name}, when people stop using " + p + " after the first few weeks, it is usually because one step took longer than it should have.",
+                 "Reply to this email with where you got stuck, and a person will walk you past it. If you would rather try again on your own, the button below takes you straight there."],
+             "cta_label": "Try again now", "framework": "PAS: problem, agitation kept factual, solution",
+             "hypothesis": "Naming the stall and offering a person raises the core-action rate among lapsed users because it addresses why they left; falsified if B converts as well or better."},
+            {"subject": f"The two-minute way to {do}", "preheader": "Start small with what is already there",
+             "headline": "Start small", "paragraphs": [
+                 "Hi {first_name}, the slowest part of starting again is deciding where to begin.",
+                 f"Begin with the smallest version: {do} once, using what is already in your account, and refine it later. Most of the setup is behind you."],
+             "cta_label": "Start small", "framework": "Solution first, problem implied",
+             "hypothesis": "Leading with the smallest next step raises the core-action rate more than naming the problem because it lowers effort at the moment of reading; falsified if A converts as well or better."},
         ],
         "whats_new": [
-            {"subject": f"New in {p} since you last visited", "preheader": "One change that saves time",
-             "headline": "One thing changed", "paragraphs": [
-                 "Hi {first_name}, since you were last in " + p + ", we shipped [one specific change since their last visit].",
-                 "[What it does for them in one sentence, with a concrete example]."],
-             "cta_label": "See it in your account", "framework": "AIDA: attention, interest, desire, action",
-             "hypothesis": "A single concrete change raises clicks more than a roundup because it is easy to evaluate; falsified if B's click rate is equal or higher."},
-            {"subject": f"You asked, we built it", "preheader": "[The change in five words]",
-             "headline": "[The change, as a benefit]", "paragraphs": [
-                 "Hi {first_name}, [the change] is live in " + p + ".",
-                 "It came from customer requests like yours. Try it on your own data; it takes about a minute."],
-             "cta_label": "Try it now", "framework": "Reciprocity framed around feedback",
-             "hypothesis": "Framing the change as a response to customer requests raises clicks because it signals the product is improving for them; falsified if A's click rate is equal or higher."},
+            {"subject": f"What has changed in {p}", "preheader": "Everything you set up is still there",
+             "headline": "A quick look at what is new", "paragraphs": [
+                 "Hi {first_name}, " + p + " has kept changing since you were last in, and everything you set up is where you left it.",
+                 f"The quickest way to see what is different is to {do} once. It takes a few minutes."],
+             "cta_label": "See what is new", "framework": "AIDA: attention, interest, desire, action",
+             "hypothesis": "Inviting a look at what changed raises clicks among lapsed users because it gives a new reason to return; falsified if B's click rate is equal or higher."},
+            {"subject": f"A fresh start in {p}", "preheader": "No setup to redo",
+             "headline": "Pick up with a fresh start", "paragraphs": [
+                 "Hi {first_name}, if " + p + " did not fit the way you work the first time, a lot may look different now.",
+                 f"Open it, {do} once, and see whether it fits better. If it still does not, reply and tell us why."],
+             "cta_label": f"Open {p}", "framework": "Reframe: a fresh start, not a reminder",
+             "hypothesis": "Framing the return as a fresh start raises clicks more than a what-changed note because it releases past friction; falsified if A's click rate is equal or higher."},
         ],
         "social_proof": [
-            {"subject": "How [customer type] use " + p + " each week", "preheader": "One routine, start to finish",
-             "headline": "A weekly routine that sticks", "paragraphs": [
-                 "Hi {first_name}, [a real customer or team like theirs] uses " + p + " every [day of week] to [specific outcome with a number].",
-                 f"The routine is short: they {do}, share it, and move on. You can copy it as is."],
-             "cta_label": "Copy the routine", "framework": "Social proof through one concrete case",
-             "hypothesis": "A single specific customer routine raises the core-action rate more than general benefits because it is easy to imitate; falsified if B converts as well or better."},
-            {"subject": "[Number] teams did this last week", "preheader": "A quick look at what is working",
-             "headline": "What active teams are doing", "paragraphs": [
-                 "Hi {first_name}, last week [number from your data] teams used " + p + " to " + do + ".",
-                 "The most common reason: [the outcome they get, in one sentence]."],
-             "cta_label": "Do it now", "framework": "Social proof through volume",
-             "hypothesis": "A volume number raises clicks less than one concrete case; falsified if B's click rate is higher than A's."},
+            {"subject": f"How people who stay with {p} use it", "preheader": "One small weekly habit",
+             "headline": "One habit that makes it stick", "paragraphs": [
+                 "Hi {first_name}, the people who get the most from " + p + f" tend to do one thing: they {do} on the same day each week, so it becomes a habit rather than a task.",
+                 f"Pick your day, {do} once now, and set a reminder for next week."],
+             "cta_label": "Start the habit", "framework": "Social proof through a common pattern",
+             "hypothesis": "Describing what retained users do raises the core-action rate because it is easy to imitate; falsified if B converts as well or better."},
+            {"subject": f"The weekly routine that makes {p} worth it", "preheader": "Ten minutes, once a week",
+             "headline": "Ten minutes, once a week", "paragraphs": [
+                 f"Hi {{first_name}}, a short weekly routine is how most people keep getting value from {p}: {do}, look at what changed, and share it with whoever needs it.",
+                 "Put ten minutes in your calendar on the same day each week and start this week."],
+             "cta_label": "Do it now", "framework": "Social proof through a routine",
+             "hypothesis": "A concrete routine with a time cost raises the core-action rate more than a habit framing; falsified if A converts as well or better."},
         ],
         "human_help": [
             {"subject": "Can I help?", "preheader": f"A note from {sender}",
@@ -565,18 +587,18 @@ def _lib(brief: Brief) -> Dict[str, List[Dict[str, Any]]]:
              "hypothesis": "Asking one question raises replies more than offering a call because replying is cheaper than booking; falsified if A gets as many replies or more."},
         ],
         "use_case": [
-            {"subject": "Another way to use " + p, "preheader": "Built for [their role]",
+            {"subject": "Another way to use " + p, "preheader": "Tell us what you are working on",
              "headline": "Something you have not tried", "paragraphs": [
-                 "Hi {first_name}, most people use " + p + " for [their primary use]. [Role] teams also use it for [second use case].",
-                 "The first step: [one concrete step]."],
-             "cta_label": "Try it", "framework": "Open loop closed in the body",
-             "hypothesis": "A new use case re-engages people who finished their first use; falsified if B converts as well or better."},
-            {"subject": "[Second use case] in " + p, "preheader": "Takes about five minutes",
-             "headline": "[Second use case], step by step", "paragraphs": [
-                 "Hi {first_name}, here is how to set up [second use case] in " + p + ".",
-                 "1. [Step one]. 2. [Step two]. That is all it takes."],
-             "cta_label": "Set it up", "framework": "How-to",
-             "hypothesis": "Step-by-step instructions raise completion more than a teaser because they remove uncertainty; falsified if A converts as well or better."},
+                 "Hi {first_name}, if your first use of " + p + " is done, the next one is often closer than it looks.",
+                 "Reply and tell us what you are working on this month, and we will suggest how " + p + " could help with it."],
+             "cta_label": f"Open {p}", "framework": "Open loop closed by a reply",
+             "hypothesis": "Inviting the next use case re-engages people who finished their first use; falsified if B converts as well or better."},
+            {"subject": "Five minutes to try something new in " + p, "preheader": "Takes about five minutes",
+             "headline": "Try one new thing", "paragraphs": [
+                 f"Hi {{first_name}}, set aside five minutes and {do} for something you have not tried before in {p}.",
+                 "If it does not fit, reply and tell us why. We read every answer."],
+             "cta_label": "Try it", "framework": "How-to: one small experiment",
+             "hypothesis": "A bounded five-minute experiment raises completion more than an open invitation because it removes uncertainty; falsified if A converts as well or better."},
         ],
         "check_in": [
             {"subject": "Quick question", "preheader": "One line is enough",
@@ -621,12 +643,12 @@ def _lib(brief: Brief) -> Dict[str, List[Dict[str, Any]]]:
              "hypothesis": "A warm welcome subject raises opens but not activation; falsified if B activates at a higher rate than A."},
         ],
         "unblock": [
-            {"subject": "Stuck on [the leak step]?", "preheader": "Here is the shortcut",
-             "headline": "The shortcut past [the leak step]", "paragraphs": [
-                 "Hi {first_name}, [the leak step] is where most new users pause.",
-                 "[The shortest way past it]. Or reply, and we will do it with you."],
-             "cta_label": "Take the shortcut", "framework": "PAS: problem, agitation kept factual, solution",
-             "hypothesis": "Naming the leak step raises completion of that step; falsified if B is as good or better."},
+            {"subject": "Stuck partway through setup?", "preheader": "Pick up at the step you stopped on",
+             "headline": "Pick up where you stopped", "paragraphs": [
+                 "Hi {first_name}, most new users pause at one step of setup, and the rest goes quickly once it is done.",
+                 "The button below takes you back to where you stopped. Or reply with what got in the way, and we will do it with you."],
+             "cta_label": "Pick up where I stopped", "framework": "PAS: problem, agitation kept factual, solution",
+             "hypothesis": "Naming the pause and the way back raises completion of setup; falsified if B is as good or better."},
             {"subject": "Need a hand getting set up?", "preheader": "Reply and a person will help",
              "headline": "We can do it with you", "paragraphs": [
                  "Hi {first_name}, setting up " + p + " is quicker with help.",
@@ -635,16 +657,16 @@ def _lib(brief: Brief) -> Dict[str, List[Dict[str, Any]]]:
              "hypothesis": "An offer of help raises activation among stalled users more than instructions; falsified if A activates at a higher rate."},
         ],
         "show_outcome": [
-            {"subject": "What [outcome] looks like", "preheader": "A real example",
+            {"subject": f"What you get when you {do}", "preheader": "The reason people sign up",
              "headline": "Here is what you get", "paragraphs": [
-                 "Hi {first_name}, here is a real example of what teams get when they " + do + ": [example].",
-                 "Yours takes about five minutes."],
+                 "Hi {first_name}, the moment " + p + " starts paying off is the first time you " + do + ".",
+                 "Most people get there in one sitting, using what they set up when they signed up."],
              "cta_label": "Make yours", "framework": "AIDA: attention, interest, desire, action",
              "hypothesis": "Showing the finished outcome raises activation because it makes the value concrete; falsified if B activates as well or better."},
-            {"subject": "Five minutes to your first [outcome]", "preheader": "Step by step",
-             "headline": "Your first [outcome]", "paragraphs": [
-                 "Hi {first_name}, here is the shortest path: [step one], then [step two].",
-                 "That is it."],
+            {"subject": f"The shortest way to {do}", "preheader": "One step at a time",
+             "headline": "One step at a time", "paragraphs": [
+                 "Hi {first_name}, the shortest path is to " + do + " once with what is already in your account, and refine it later.",
+                 "The button below takes you to the right place."],
              "cta_label": "Start now", "framework": "How-to",
              "hypothesis": "Instructions beat an example for people who already intend to start; falsified if A activates at a higher rate."},
         ],
@@ -666,47 +688,49 @@ def _lib(brief: Brief) -> Dict[str, List[Dict[str, Any]]]:
 
 
 def _short_lib(brief: Brief) -> Dict[str, Dict[str, List[Any]]]:
-    """Channel-native starter copy for SMS, push and in-app, per role: (A, B) pairs. Bracketed text is for the marketer."""
+    """Channel-native starter copy for SMS, push and in-app, per role: (A, B) pairs, with nothing for the marketer to fill
+    in. {link} in an SMS is replaced by the way back (the checkout or product for cart and browse flows, else cta_url)."""
     p = "{product_name}"
     core = brief.core_conversion_event
     act = core.label or core.event.replace("_", " ")
     do = base_form(act)
     Do = do[:1].upper() + do[1:]
     n = brief.churn_threshold_days
+    sender = (brief.sender_name or brief.product_name).split(" at ")[0]
     return {
         "value_reminder": {
-            "sms": [f"Your {p} setup is saved. Pick up where you left off: [link]", f"{n} days since you last {act}. Back in one tap: [link]"],
+            "sms": [f"Your {p} setup is saved. Pick up where you left off. {{link}}", f"{n} days since you last {act}. Back in one tap. {{link}}"],
             "push": [("Everything is still set up", f"Pick up where you left off in {p}."), (f"{n} days since your last visit", f"{Do} again in a few minutes.")],
             "in_app": [("Welcome back", f"Your setup is saved. The fastest way back in is to {do}.", "Continue"),
                        ("Pick up where you left off", f"It has been {n} days. {Do} from where you stopped.", f"{Do}"[:24])]},
         "friction_removal": {
-            "sms": ["Stuck on [the common blocker]? The 2-minute way past it: [link]", f"A ready-made template to {do} in two minutes: [link]"],
-            "push": [("Stuck? There is a shortcut", "[The shortest path past the most common blocker]."),
-                     ("Start from a template", f"A ready-made template gets you to {do} in two minutes.")],
-            "in_app": [("Stuck? Here is the shortcut", "[The shortest path past the most common blocker].", "Show me"),
-                       ("Start from a template", f"Skip the blank page: a template gets you to {do} in two minutes.", "Open a template")]},
+            "sms": [f"Stuck partway in {p}? Reply with where, and a person will help.", f"The two-minute way to {do}: start small with what is already there. {{link}}"],
+            "push": [("Stuck? We can help", "Reply to our email with where you got stuck."), ("Start small", f"{Do} once with what is already there.")],
+            "in_app": [("Stuck? We can help", "Tell us where you got stuck and a person will walk you past it.", "Get help"),
+                       ("Start small", f"{Do} once with what is already in your account, and refine it later.", "Start small")]},
         "whats_new": {
-            "sms": [f"New in {p}: [the change, in a few words]. See it: [link]", f"You asked, we built it: [the change]. Try it: [link]"],
-            "push": [(f"New in {p}", "[The change, and what it does for them, in one sentence]."),
-                     ("You asked, we built it", "[The change], live in your account now.")],
-            "in_app": [("One thing changed", "[What the change does for them, with a concrete example].", "See it"),
-                       ("[The change, as a benefit]", "It came from requests like yours. Try it on your own data.", "Try it now")]},
+            "sms": [f"{p} has changed since your last visit. See what is new. {{link}}", f"A fresh start in {p}: everything you set up is still there. {{link}}"],
+            "push": [(f"What is new in {p}", f"{Do} once to see what changed."), ("A fresh start", "Everything you set up is still there.")],
+            "in_app": [("Welcome back", f"A lot may look different. {Do} once to see what changed.", "See what is new"),
+                       ("A fresh start", "Everything you set up is still where you left it.", "Pick up again")]},
         "social_proof": {
-            "sms": [f"How [customer type] use {p} each week, in one short routine: [link]", f"[Number] teams used {p} to {do} last week. Your turn: [link]"],
-            "push": [("A weekly routine that sticks", f"[A team like theirs] uses {p} every [day] to [outcome]."),
-                     ("What active teams are doing", f"[Number] teams used {p} to {do} last week.")],
-            "in_app": [("A routine worth copying", f"[A team like theirs] uses {p} every [day] to [outcome].", "Copy the routine"),
-                       ("What active teams do", f"[Number] teams used {p} to {do} last week.", f"{Do}"[:24])]},
+            "sms": [f"People who stay with {p} {do} on the same day each week. Start yours. {{link}}",
+                    f"Ten minutes a week keeps {p} working for you. {{link}}"],
+            "push": [("One habit that sticks", f"{Do} on the same day each week."), ("Ten minutes a week", f"{Do} now and set a weekly reminder.")],
+            "in_app": [("One habit that sticks", f"People who get the most from {p} {do} on the same day each week.", "Start the habit"),
+                       ("Ten minutes a week", f"{Do}, see what changed, and share it, on the same day every week.", f"{Do}"[:24])]},
         "human_help": {
-            "sms": [f"Hi {{first_name}}, it's [name] at {p}. Anything I can help with? Just reply.", f"[Name] from {p}: want 15 minutes to get set up? Book here: [link]"],
-            "push": [("Need a hand?", "Book 15 minutes with [name] and get set up."), ("One question from [name]", f"What would make {p} worth coming back to?")],
-            "in_app": [("Need a hand?", "Book 15 minutes with [name] and we will set it up with you.", "Book a time"),
+            "sms": [f"Hi {{first_name}}, it's {sender} at {p}. Anything I can help with? Just reply.",
+                    f"{sender} from {p}: want a hand getting set up? Reply and I will help."],
+            "push": [("Need a hand?", f"Reply to {sender}'s email and get set up."), (f"One question from {sender}", f"What would make {p} worth coming back to?")],
+            "in_app": [("Need a hand?", f"Reply to {sender}'s email and we will set it up with you.", "Get help"),
                        ("Tell us what is missing", f"One line on what would make {p} worth coming back to.", "Answer")]},
         "use_case": {
-            "sms": [f"Another way to use {p}: [second use case]. Try it: [link]", f"[Second use case] in {p} takes about five minutes: [link]"],
-            "push": [(f"Another way to use {p}", "[Second use case], built for [their role]."), ("[Second use case]", "Set it up in about five minutes.")],
-            "in_app": [("Try something new", "[Second use case], built for [their role]. First step: [step].", "Try it"),
-                       ("[Second use case]", "Set it up in about five minutes, step by step.", "Set it up")]},
+            "sms": [f"Done with your first use of {p}? Reply with what you are working on and we will suggest the next.",
+                    f"Five minutes to try something new in {p}. {{link}}"],
+            "push": [(f"Another way to use {p}", "Tell us what you are working on this month."), ("Try one new thing", f"Five minutes to {do} for something new.")],
+            "in_app": [("Try something new", "Tell us what you are working on this month and we will suggest how it can help.", "Tell us"),
+                       ("Try one new thing", f"Set aside five minutes and {do} for something new.", "Try it")]},
         "check_in": {
             "sms": [f"{p}: what would make it worth coming back? Reply with one line.", f"{p} here. Was it something we did? A one-line reply helps."],
             "push": [("Quick question", f"What would make {p} worth coming back to?"), ("Help us get it right", "Tell us what we missed. One line is enough.")],
@@ -718,22 +742,22 @@ def _short_lib(brief: Brief) -> Dict[str, Dict[str, List[Any]]]:
             "in_app": [("Still want our emails?", "One click keeps them coming. Otherwise we will pause them in two weeks.", "Keep my emails"),
                        ("Pausing your emails", "We plan to stop marketing emails in two weeks. Want them?", "Keep them")]},
         "first_step": {
-            "sms": [f"Welcome to {p}. Your first step: {do}. About five minutes: [link]", f"Welcome to {p}, {{first_name}}. Start here: [link]"],
+            "sms": [f"Welcome to {p}. Your first step: {do}. About five minutes. {{link}}", f"Welcome to {p}, {{first_name}}. Start here. {{link}}"],
             "push": [("Your first step", f"{Do} in about five minutes."), (f"Welcome to {p}", "Here is where to start.")],
             "in_app": [("Start here", f"The fastest way to see what {p} does: {do}.", "Start"),
-                       (f"Welcome to {p}", f"Most teams start the same way: they {do} first.", "Get started")]},
+                       (f"Welcome to {p}", f"Most people start the same way: they {do} first.", "Get started")]},
         "unblock": {
-            "sms": ["Stuck on [the leak step]? Here is the shortcut: [link]", f"Need a hand getting set up in {p}? Reply and a person will help."],
-            "push": [("Stuck on [the leak step]?", "[The shortest way past it]."), ("Need a hand?", "Reply to our email and we will set it up with you.")],
-            "in_app": [("Stuck on [the leak step]?", "[The shortest way past it].", "Show me"),
-                       ("We can do it with you", "Book a short call and we will set it up together.", "Get help")]},
+            "sms": [f"Stuck partway through setup in {p}? Pick up where you stopped. {{link}}", f"Need a hand getting set up in {p}? Reply and a person will help."],
+            "push": [("Stuck partway?", "Pick up at the step you stopped on."), ("Need a hand?", "Reply to our email and we will set it up with you.")],
+            "in_app": [("Stuck partway?", "Pick up at the step you stopped on, or tell us what got in the way.", "Pick up"),
+                       ("We can do it with you", "Reply to our email and we will set it up together.", "Get help")]},
         "show_outcome": {
-            "sms": [f"See what teams get when they {do}: [link]", f"Five minutes to your first [outcome] in {p}: [link]"],
-            "push": [("Here is what you get", "[A real example of the outcome]."), ("Your first [outcome]", "[Step one], then [step two]. That is it.")],
-            "in_app": [("Here is what you get", "[A real example of the outcome].", "Make yours"),
-                       ("Your first [outcome]", "[Step one], then [step two]. That is it.", "Start now")]},
+            "sms": [f"{p} pays off the first time you {do}. {{link}}", f"The shortest way to {do}: start with what is already there. {{link}}"],
+            "push": [("Here is what you get", f"{p} pays off the first time you {do}."), ("One step at a time", f"{Do} once with what is already there.")],
+            "in_app": [("Here is what you get", f"{p} starts paying off the first time you {do}.", "Make yours"),
+                       ("One step at a time", f"{Do} once with what is already in your account.", "Start now")]},
         "last_nudge": {
-            "sms": [f"Still want to try {p}? Your first step: {do}. [link]", f"No rush. When you are ready, {p} starts here: [link]"],
+            "sms": [f"Still want to try {p}? Your first step: {do}. {{link}}", f"No rush. When you are ready, {p} starts here. {{link}}"],
             "push": [("Whenever you are ready", f"Your first step: {do}."), ("No rush", f"When you are ready, {p} starts with one step.")],
             "in_app": [("Whenever you are ready", f"Your first step is to {do}.", "Take the first step"),
                        ("No rush", f"When the time is right, the first step is to {do}.", f"Open {p}"[:24])]},
@@ -767,6 +791,34 @@ def _shorten(s: str, n: int) -> str:
     return cut + "..."
 
 
+def _has_items(brief: Brief) -> bool:
+    from engine.render.product_blocks import EVENT_FLOWS
+    return brief.flow_type in EVENT_FLOWS
+
+
+def _tokens_line(brief: Brief, short: bool = False) -> str:
+    """The merge fields a writer may use: the first item's name too when the trigger event carries items."""
+    if _has_items(brief):
+        return ("{first_name}, {product_name} and {item_name}" if short else
+                "{first_name}, {product_name} and {item_name} (the first item's name, from the trigger event) are available")
+    return "{first_name} and {product_name}" if short else "only {first_name} and {product_name} are available"
+
+
+def _who(brief: Brief, core: Any) -> str:
+    """Who receives the flow, in a sentence a copywriter can write to."""
+    did = core.label or core.event
+    if brief.flow_type == "winback":
+        return f"people who {brief.qualifying_event.describe()} and have not {did} in the last {brief.churn_threshold_days} days"
+    if brief.flow_type == "activation":
+        return f"new users who {brief.qualifying_event.describe()} and have not yet {did}"
+    from engine.flows.library import FLOWS
+    f = FLOWS[brief.flow_type]
+    trig, goal = f.trigger_event.get("*"), f.goal_event.get("*")
+    if trig and goal and trig != goal:
+        return f"people who {f.trigger_label.get('*', trig)} and have not {f.goal_label.get('*', goal)} since"
+    return f.summary
+
+
 def handoff_markdown(brief: Brief, copy_plan: List[TouchCopy]) -> str:
     shapes = {"email": {"subject": "", "preheader": "", "headline": "", "paragraphs": [""], "cta_label": "", "framework": "", "hypothesis": ""},
               "sms": {"text": "", "framework": "", "hypothesis": ""},
@@ -774,8 +826,8 @@ def handoff_markdown(brief: Brief, copy_plan: List[TouchCopy]) -> str:
               "in_app": {"headline": "", "body": "", "cta_label": "", "framework": "", "hypothesis": ""}}
     lines = [f"# Copy briefs: {brief.product_name} {brief.flow_type}", "",
              "Write the copy for each step below, then save it as drafts.json in this shape and re-run:",
-             "", "```text", f"python3 -m engine.pipeline.orchestrator plan --brief <brief> --drafts drafts.json", "```", "",
-             "Rules: words only; personalize only with {first_name} and {product_name}; no em dashes; follow the offer policy; "
+             "", "```text", f"lcm plan --brief <brief> --drafts drafts.json", "```", "",
+             f"Rules: words only; personalize only with {_tokens_line(brief, short=True)}; no em dashes; follow the offer policy; "
              "each variant gets a framework and a falsifiable hypothesis. The renderer adds the unsubscribe link, the address, "
              "SMS opt-out text and the template code.", ""]
     skeleton: Dict[str, Any] = {}

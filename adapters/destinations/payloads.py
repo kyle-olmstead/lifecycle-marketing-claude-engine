@@ -262,14 +262,14 @@ def attribute_sync(platform: str, rows: Iterable[Dict[str, Any]], id_column: str
 
 
 def _cli(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Segment rows to Klaviyo or HubSpot request bodies")
-    ap.add_argument("target", choices=["klaviyo", "hubspot"])
-    ap.add_argument("input")
-    ap.add_argument("--id-column", default="email")
+    ap = argparse.ArgumentParser(prog="lcm sync", description="Segment rows to Klaviyo or HubSpot request bodies (nothing is sent)")
+    ap.add_argument("target", choices=["klaviyo", "hubspot"], help="the platform to build requests for")
+    ap.add_argument("input", help="segment rows, one per person: a .csv, .json or .jsonl file")
+    ap.add_argument("--id-column", default="email", help="the input column that identifies each person (default: email)")
     ap.add_argument("--properties", required=True, help="comma list of column or column=destination_property")
     ap.add_argument("--list-id", help="Klaviyo list to add profiles to (optional)")
     ap.add_argument("--id-property", default="email", help="HubSpot unique property used as id")
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--out", required=True, help="folder to write one JSON file per batch request into")
     a = ap.parse_args(argv)
     rows = read_rows(Path(a.input))
     props = _mapping(a.properties)

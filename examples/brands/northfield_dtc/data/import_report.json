@@ -1,0 +1,162 @@
+{
+  "sources": [
+    {
+      "source": "shopify",
+      "tables": {
+        "users": 2000,
+        "track_events": 3753,
+        "orders": 1332,
+        "line_items": 2058,
+        "products": 9,
+        "discounts": 334,
+        "refunds": 66,
+        "consent_events": 1550
+      },
+      "unmapped_columns": {
+        "shopify/orders_export_1.csv": [
+          "Paid at",
+          "Fulfillment Status",
+          "Fulfilled at",
+          "Shipping Method",
+          "Lineitem compare-at price",
+          "Lineitem requires shipping",
+          "Lineitem taxable",
+          "Lineitem fulfillment status",
+          "Billing Name",
+          "Billing Street",
+          "Billing Address1",
+          "Billing Address2",
+          "Billing Company",
+          "Billing City",
+          "Billing Zip",
+          "Billing Province",
+          "Billing Province Name",
+          "Shipping Name",
+          "Shipping Street",
+          "Shipping Address1",
+          "Shipping Address2",
+          "Shipping Company",
+          "Shipping City",
+          "Shipping Zip",
+          "Shipping Province",
+          "Shipping Province Name",
+          "Shipping Country",
+          "Notes",
+          "Note Attributes",
+          "Payment Method",
+          "Payment Reference (deprecated)",
+          "Payment References",
+          "Vendor",
+          "Outstanding Balance",
+          "Employee",
+          "Location",
+          "Device ID",
+          "Tags",
+          "Risk Level",
+          "Source",
+          "Tax 1 Name",
+          "Tax 1 Value",
+          "Tax 2 Name",
+          "Tax 2 Value",
+          "Tax 3 Name",
+          "Tax 3 Value",
+          "Tax 4 Name",
+          "Tax 4 Value",
+          "Tax 5 Name",
+          "Tax 5 Value",
+          "Payment ID",
+          "Payment terms",
+          "Next payment due at"
+        ],
+        "shopify/abandoned_checkouts_export.csv": [
+          "Subtotal",
+          "Shipping",
+          "Taxes",
+          "Discount Code",
+          "Discount Amount",
+          "Billing Name",
+          "Billing Province",
+          "Shipping Name",
+          "Shipping Province",
+          "Shipping Country",
+          "Abandoned Checkout URL"
+        ],
+        "shopify/customers_export.csv": [
+          "First Name",
+          "Last Name",
+          "Default Address Company",
+          "Default Address Address1",
+          "Default Address Address2",
+          "Default Address City",
+          "Default Address Province Code",
+          "Default Address Zip",
+          "Accepts WhatsApp Marketing",
+          "Total Spent",
+          "Total Orders",
+          "Note",
+          "Tax Exempt",
+          "Tags"
+        ]
+      },
+      "assumptions": [
+        "Subtotal read as after discounts: on 334 of 334 discounted orders Subtotal + Shipping + Taxes equals Total. gross_amount = Subtotal + Discount Amount, net_amount = gross - discount - Refunded Amount (shipping and taxes excluded, floored at 0).",
+        "checkout_started comes from the abandoned checkouts export only, so it covers abandoned checkouts; a checkout that completed without being abandoned has no checkout_started from Shopify (import Klaviyo's Checkout Started with lcm import auto to cover them). The abandoned checkouts export columns are not documented by Shopify; they were read by their order-export names.",
+        "The customers export has no Customer ID column, so user_id is a stable hash of the lower-cased email (em_...), the same id the other mappers make for that address.",
+        "First Name, Last Name and the address lines are not imported: the engine needs none of them, and leaving them out keeps personal data out of the canonical tables.",
+        "ASSUMED: 719 customer(s) with no order or checkout have no date in any export; their created_at is the start of the export window (2026-01-19 09:53:33), so none of them looks newly signed up.",
+        "993 email consent grant(s) dated at the order or checkout whose Accepts Marketing was yes (source checkout), read as captured at that checkout: the earliest time the export shows the customer opted in. A later order with no is read as a revoke.",
+        "ASSUMED: 538 customer(s) have Accepts Email Marketing = yes with no dated evidence; consent is dated at their earliest known activity (source import_undated). Dating it early means any real, later unsubscribe from another source wins. Replace with real capture times when you have them.",
+        "ASSUMED: 16 customer(s) accepted marketing on an order but have Accepts Email Marketing = no now; the revoke is dated at the end of the export (2026-10-18 23:22:37, source import_undated) so it outranks the earlier grant.",
+        "discount_type is left blank: the orders export names the code but not whether it is a percentage, a fixed amount or free shipping.",
+        "ASSUMED: 66 refund(s) have an amount but no date in the orders export; each is dated at the order's Canceled at, else at the order time, so revenue is never counted in a period after its refund.",
+        "product_id is the Lineitem SKU (the orders export carries no product id), else the line item name; category, URL and image are not in these exports."
+      ],
+      "warnings": [
+        "331 customer(s) have Accepts SMS Marketing = yes, but the export does not say when they opted in. SMS consent needs a dated record (TCPA, 10DLC), so they were NOT marked SMS-consented. Import SMS consent with timestamps (Klaviyo's SMS Marketing Consent Timestamp, or your SMS tool) to enable SMS for them."
+      ]
+    },
+    {
+      "source": "klaviyo",
+      "tables": {
+        "users": 2000,
+        "track_events": 11972,
+        "products": 9,
+        "consent_events": 2890,
+        "message_events": 11738
+      },
+      "unmapped_columns": {
+        "klaviyo/profiles_all.csv": [
+          "First Name",
+          "Last Name",
+          "State / Region"
+        ]
+      },
+      "assumptions": [
+        "metrics with no canonical meaning were skipped: Fulfilled Order (1,308)",
+        "order_completed.net_amount is Placed Order's $value, which may include shipping and tax depending on the store integration; import the store's own orders (Shopify) for revenue.",
+        "product_id is the SKU: 9 Klaviyo ProductID(s) were matched to a SKU through orders and checkouts that carry both, so product events join Shopify line items.",
+        "Each profile's Marketing Consent Timestamp is read as the time its current consent status was set (source import). Suppressed is read as revoked: the address cannot be emailed.",
+        "ASSUMED: 26 profile(s) are Subscribed with no consent timestamp; consent is dated at the profile's creation (source import_undated), early, so any real later unsubscribe wins.",
+        "ASSUMED: 3,849 timestamp(s) carried no UTC offset and were read as UTC.",
+        "products: 9 product(s) described from Viewed Product and Added to Cart (newest name, category, URL, image and price seen); merged with a store's own catalog, they only fill blanks."
+      ],
+      "warnings": []
+    }
+  ],
+  "merge": [
+    "klaviyo: 2,000 user(s) already known, 0 new.",
+    "klaviyo: 3,753 order_completed or checkout_started event(s) were already reported by an earlier source (same order_id or checkout_id) and kept once, from the earlier source.",
+    "538 undated consent grant(s) (import_undated) were dropped because another source has dated consent records for the same person and channel."
+  ],
+  "tables": {
+    "users": 2000,
+    "track_events": 11972,
+    "orders": 1332,
+    "line_items": 2058,
+    "products": 9,
+    "discounts": 334,
+    "refunds": 66,
+    "consent_events": 3902,
+    "message_events": 11738
+  }
+}

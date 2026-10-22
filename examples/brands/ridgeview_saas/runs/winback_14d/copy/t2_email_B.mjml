@@ -1,0 +1,77 @@
+<!-- dialect: customerio. MJML source built by engine/render/mjml_render.py from templates/email/mjml/; compile it with: python3 engine/render/mjml_render.py compile FILE -->
+<mjml lang="en">
+  <mj-raw position="file-start"><!-- dialect: customerio -->
+<!-- ridgeview_winback_14d / t2_email. Rendered by engine/agents/copywriter.py through MJML (engine/render/mjml_render.py); lint: python3 engine/render/template_lint.py --dialect customerio --email <this file> -->
+</mj-raw>
+  <mj-head>
+    <mj-title>Want me to build your first report?</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Arial, Helvetica, sans-serif" />
+      <mj-section padding="0" />
+      <mj-text color="#1F2933" font-size="16px" line-height="1.5" padding="0 24px 16px 24px" />
+      <mj-image padding="0 24px" />
+    </mj-attributes>
+    <mj-raw>
+      <meta name="color-scheme" content="light dark">
+      <meta name="supported-color-schemes" content="light dark">
+      <meta name="x-apple-disable-message-reformatting">
+    </mj-raw>
+    <mj-style>
+      :root { color-scheme: light dark; supported-color-schemes: light dark; }
+      a { color: #2B4C7E; }
+      @media (prefers-color-scheme: dark) {
+        body, .lcm-body { background-color: #10161F !important; }
+        .lcm-card, .lcm-card > table { background: #18212D !important; background-color: #18212D !important; }
+        .lcm-footer, .lcm-footer > table { background: #10161F !important; background-color: #10161F !important; }
+        .lcm-text div, .lcm-text h1 { color: #E6EBF2 !important; }
+        a { color: #8DB8F2 !important; }
+        .lcm-button td, .lcm-button a { background: #8DB8F2 !important; background-color: #8DB8F2 !important; }
+        .lcm-button a { color: #10203A !important; }
+      }
+      [data-ogsc] .lcm-text div, [data-ogsc] .lcm-text h1 { color: #E6EBF2 !important; }
+      [data-ogsc] a { color: #8DB8F2 !important; }
+      [data-ogsc] .lcm-button a { color: #10203A !important; }
+      [data-ogsb] .lcm-body { background-color: #10161F !important; }
+      [data-ogsb] .lcm-card, [data-ogsb] .lcm-card > table { background-color: #18212D !important; }
+      [data-ogsb] .lcm-footer, [data-ogsb] .lcm-footer > table { background-color: #10161F !important; }
+      [data-ogsb] .lcm-button td, [data-ogsb] .lcm-button a { background-color: #8DB8F2 !important; }
+    </mj-style>
+  </mj-head>
+  <mj-body width="600px" background-color="#F3F5F8" css-class="lcm-body">
+    <mj-raw>
+      <div class="preheader" style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Reply with what you track and I will set it up&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;</div>
+    </mj-raw>
+    <mj-section css-class="lcm-card" background-color="#FFFFFF" padding="24px 0 0 0">
+      <mj-column>
+        <mj-image src="https://www.ridgeview.example/email/ridgeview-logo-280x64.png" alt="Ridgeview" width="140px" align="left" height="32px" href="https://www.ridgeview.example" />
+      </mj-column>
+    </mj-section>
+    <mj-section css-class="lcm-card" background-color="#FFFFFF" padding="16px 0 0 0">
+      <mj-column>
+        <mj-text css-class="lcm-text">
+          <h1 style="margin:0;font-family:Arial, Helvetica, sans-serif;font-size:22px;line-height:1.3;font-weight:bold;">Tell me what you track</h1>
+        </mj-text>
+        <mj-text css-class="lcm-text">Hi {{ customer.first_name | default: "there" }}, setting up the first report is where a lot of people get stuck, usually because it is not clear which numbers belong on it.</mj-text>
+        <mj-text css-class="lcm-text">Reply to this email with the two or three numbers you check every week, and I will set up a report in your Ridgeview account that shows them.</mj-text>
+        <mj-text css-class="lcm-text">No call needed. You will get an email when it is ready.</mj-text>
+      </mj-column>
+    </mj-section>
+    <mj-section css-class="lcm-card" background-color="#FFFFFF" padding="0 0 32px 0">
+      <mj-column>
+        <mj-button css-class="lcm-button" href="https://app.ridgeview.example/reports/new?utm_source=lifecycle&amp;utm_medium=email&amp;utm_campaign=ridgeview_winback_14d&amp;utm_content=t2_email" align="left" background-color="#2B4C7E" color="#FFFFFF" font-size="16px" font-weight="bold" line-height="1.25" border-radius="6px" inner-padding="12px 20px" padding="8px 24px 0 24px">Or build it yourself</mj-button>
+      </mj-column>
+    </mj-section>
+    <mj-section css-class="lcm-footer" background-color="#F3F5F8" padding="16px 0 24px 0">
+      <mj-column>
+        <mj-text css-class="lcm-text" font-size="12px" line-height="1.5" padding="0 24px">
+          Dana Ortiz at Ridgeview<br>
+          Ridgeview Analytics, Inc. (fictional), 100 Example Way, Suite 400, Springfield, OR 97477<br>
+          You are getting this because you have a Ridgeview account.<br>
+          Questions? Reply to this email and a person on our team will answer.<br>
+          <a href="https://www.linkedin.example/company/ridgeview">LinkedIn</a><br>
+          <a href="{% unsubscribe_url %}">Unsubscribe</a>
+        </mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

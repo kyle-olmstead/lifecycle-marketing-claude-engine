@@ -144,14 +144,32 @@ def render(r: Dict[str, Any]) -> str:
 
 def _cli(argv: Optional[List[str]] = None) -> int:
     d = Inputs()
-    ap = argparse.ArgumentParser(description="ROI model for the LMM Engine (docs/ROI_MEMO.md)")
-    for name in ("pay", "benefits_load", "tools_and_equipment", "productive_hours", "claude_seat_month", "api_copy_year", "hosting_year",
-                 "upkeep_hours_quarter", "setup_engineer_hours", "engineer_hour", "setup_marketer_hours", "email_revenue",
-                 "incremental_share", "spam_share", "detect_days_without", "detect_days_with", "fix_days", "incidents_year"):
-        ap.add_argument("--" + name.replace("_", "-"), type=float, default=getattr(d, name))
-    ap.add_argument("--team", type=int, default=d.team)
-    ap.add_argument("--sms-send-size", type=int, default=d.sms_send_size)
-    ap.add_argument("--json", action="store_true")
+    ap = argparse.ArgumentParser(prog="lcm roi", description="ROI model for the LMM Engine (docs/ROI_MEMO.md)")
+    for name, text, spec in (
+            ("pay", "one marketer's annual pay, in dollars", ",.0f"),
+            ("benefits_load", "benefits as a share of pay, 0.20 = 20%%", "g"),
+            ("tools_and_equipment", "tools and equipment per marketer a year, in dollars", ",.0f"),
+            ("productive_hours", "productive hours per marketer a year", ",.0f"),
+            ("claude_seat_month", "Claude seat price per marketer a month, in dollars", ",.0f"),
+            ("api_copy_year", "Claude API spend on copy per marketer a year, in dollars", ",.0f"),
+            ("hosting_year", "hosting for the scheduled runs per team a year, in dollars", ",.0f"),
+            ("upkeep_hours_quarter", "hours a quarter to review rules, thresholds and the sunset list", "g"),
+            ("setup_engineer_hours", "one-time engineer hours to wire the daily check to the warehouse and Sheets", "g"),
+            ("engineer_hour", "loaded cost of one engineer hour, in dollars", ",.0f"),
+            ("setup_marketer_hours", "one-time setup hours per marketer", "g"),
+            ("email_revenue", "annual revenue your email platform attributes to email, in dollars", ",.0f"),
+            ("incremental_share", "share of attributed email revenue that is truly incremental, 0.38 = 38%%", "g"),
+            ("spam_share", "share of mail landing in spam during an inbox incident, 0.20 = 20%%", "g"),
+            ("detect_days_without", "days until an inbox problem is noticed without the engine", "g"),
+            ("detect_days_with", "days until it is noticed with the morning check", "g"),
+            ("fix_days", "days to fix an inbox problem once found", "g"),
+            ("incidents_year", "inbox incidents a year", "g")):
+        ap.add_argument("--" + name.replace("_", "-"), type=float, default=getattr(d, name),
+                        help=f"{text} (default {format(getattr(d, name), spec)})")
+    ap.add_argument("--team", type=int, default=d.team, help=f"lifecycle marketers sharing the engine (default {d.team})")
+    ap.add_argument("--sms-send-size", type=int, default=d.sms_send_size,
+                    help=f"people in one SMS send, for the legal exposure illustration (default {d.sms_send_size:,})")
+    ap.add_argument("--json", action="store_true", help="print the numbers as JSON instead of the memo text")
     a = ap.parse_args(argv)
     if a.team < 1:
         ap.error("--team must be at least 1")

@@ -87,8 +87,8 @@ def render(bank: Dict[str, List[Dict[str, Any]]]) -> str:
 
 
 def _cli(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Check the question bank and write docs/QUESTION_BANK.md")
-    ap.add_argument("--write", action="store_true")
+    ap = argparse.ArgumentParser(prog="lcm questions", description="Check the question bank and write docs/QUESTION_BANK.md")
+    ap.add_argument("--write", action="store_true", help="also rewrite docs/QUESTION_BANK.md from the bank (default: check only)")
     a = ap.parse_args(argv)
     bank = load()
     problems = check(bank)

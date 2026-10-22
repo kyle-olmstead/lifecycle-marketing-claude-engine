@@ -7,7 +7,7 @@
 > useful one is the first: *what are my top 3 priority builds today and why?* The morning check answers it every day
 > without being asked.
 
-25 questions. The plain version is how you would say it; the expert version is the same question at full depth.
+27 questions. The plain version is how you would say it; the expert version is the same question at full depth.
 In Claude either works. After `lcm`, type the plain version: the terminal router is rules, not a model, and CI checks
 that every plain question with an `lcm` command reaches the job named here. Questions marked *the ... skill in Claude*
 have no terminal job; `lcm` says so instead of guessing. This page is written from `config/question_bank.yaml`
@@ -15,8 +15,8 @@ have no terminal job; `lcm` says so instead of guessing. This page is written fr
 
 | Cadence | Questions |
 |---|---|
-| [Daily](#daily) | What are my top 3 priority builds today and why?; What broke overnight?; Is anything threatening our inbox placement today?; Are our events firing correctly, or did a release break a trigger?; Any anomalies in our flow audiences today? |
-| [Weekly](#weekly) | Is my test ready to call, or do I need more data?; Where are new users dropping off in onboarding this week?; Who should we stop emailing?; How many people do we need before this test can read?; Which flows are underperforming their holdout? |
+| [Daily](#daily) | What are my top 3 priority builds today and why?; What broke overnight?; Is anything threatening our inbox placement today?; Are our events firing correctly, or did a release break a trigger?; Any anomalies in our flow audiences today?; Is our data ready to plan on? |
+| [Weekly](#weekly) | Do our flows collide, or could one person get too many emails a week?; Is my test ready to call, or do I need more data?; Where are new users dropping off in onboarding this week?; Who should we stop emailing?; How many people do we need before this test can read?; Which flows are underperforming their holdout? |
 | [Monthly](#monthly) | When do customers stop using the product, and does it differ by plan?; How healthy is our list, and is the unengaged share growing?; Is our monthly newsletter worth keeping, or should a trigger replace it?; What does our LTV curve look like by signup cohort?; Which tests should we run next? |
 | [Quarterly](#quarterly) | What did our flows actually add this quarter, versus what the platform credits?; Does our tracking plan still match the product, or has the data drifted?; Is our DMARC policy ready to move to quarantine or reject?; Do our RFM segments still describe our customers?; Which flows should we retire? |
 | [Annual](#annual) | What is our lifecycle program worth next year?; Can our stack support real-time triggers, or is latency holding us back?; Are our lifecycle programs raising LTV enough to lower blended CAC?; What does a safe sending plan look like for a new domain?; Which compliance questions are open across our flows? |
@@ -68,8 +68,26 @@ have no terminal job; `lcm` says so instead of guessing. This page is written fr
 - **Needs:** users, orders, track_events; one brief in briefs/active/, or --brief when there are none or several
 - **Cannot answer:** Small series (a median under 5) are not judged, so quiet flows stay quiet.
 
+### Is our data ready to plan on?
+
+*Expert version:* Are the exports complete and fresh, does every required column parse, and are there future-dated, duplicate or orphaned rows that would mislead a cohort or a holdout read?
+
+- **How:** `lcm` job `check_data`: `lcm "is our data ready to plan on?" --data data/`
+- **You get:** Every table and column checked against the canonical schema, with the rows affected, up to three examples and a one-line fix each; errors to fix before planning first.
+- **Needs:** the data folder (or a workspace's data/); lcm import turns vendor exports into it
+- **Cannot answer:** It checks the files you have; it cannot know about events your tracking never sent.
+
 
 ## Weekly
+
+### Do our flows collide, or could one person get too many emails a week?
+
+*Expert version:* Across every live flow, entered close together in either order, does the frequency policy's collision rule hold every cap, and which flows send to the same person on the same day?
+
+- **How:** `lcm` job `program`: `lcm "do our flows collide, or could one person get too many emails a week?"`
+- **You get:** Every pair of live flows simulated 0, 24 and 72 hours apart, each cap checked across flows with and without the collision rule, same-day clashes, and the rule or platform limit that would hold the cap.
+- **Needs:** the briefs of live flows in briefs/active/ and the workspace's frequency policy (lmm.yaml)
+- **Cannot answer:** It simulates people who never convert and have every consent, the worst case; real sends are fewer.
 
 ### Is my test ready to call, or do I need more data?
 

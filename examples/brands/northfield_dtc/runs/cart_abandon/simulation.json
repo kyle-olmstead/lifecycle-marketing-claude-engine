@@ -1,0 +1,67 @@
+{
+  "version": 2,
+  "flow": "Abandoned cart: Northfield Coffee Roasters",
+  "flow_type": "cart_abandon",
+  "core_event": "order_completed",
+  "goal_event": "order_completed",
+  "holdout_pct": 10.0,
+  "caps": [
+    {
+      "channels": [
+        "email",
+        "sms",
+        "push"
+      ],
+      "max": 4,
+      "window": "P7D"
+    },
+    {
+      "channels": [
+        "sms"
+      ],
+      "max": 1,
+      "window": "P1D"
+    }
+  ],
+  "frequency_cap_per_week": 4,
+  "send_hour_local": null,
+  "send_windows": {
+    "email": [
+      8.0,
+      21.0
+    ],
+    "sms": [
+      9.0,
+      20.0
+    ]
+  },
+  "hour_level": true,
+  "in_app_display_days": 3,
+  "max_touches": 3,
+  "engaged_only": true,
+  "steps": {
+    "holdout_split": {
+      "branch": {
+        "holdout": true
+      }
+    },
+    "t1_email": {
+      "condition": null
+    },
+    "t2_sms": {
+      "condition": {
+        "consent": "sms"
+      }
+    },
+    "t2_email_fallback": {
+      "condition": {
+        "not": {
+          "consent": "sms"
+        }
+      }
+    },
+    "t3_email": {
+      "condition": null
+    }
+  }
+}

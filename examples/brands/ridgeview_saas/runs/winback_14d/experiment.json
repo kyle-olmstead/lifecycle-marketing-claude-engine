@@ -21,6 +21,15 @@
     "design_effect": 1.0,
     "required_holdout_n": 781,
     "required_treatment_n": 4426,
+    "power_holdout_n": 781,
+    "power_treatment_n": 4426,
+    "size_set_by": "power",
+    "readout_floor": {
+      "n_control": 30,
+      "n_treatment": 170,
+      "rule": "at least 30 entrants and 5 expected conversions per arm, at the baseline and at the treatment rate (the readout refuses smaller arms)"
+    },
+    "p_readable": 1.0,
     "enrollment_months": 186.0,
     "outcome_window_days": 30,
     "months_to_read": 186.9,
@@ -48,15 +57,15 @@
       "months_of_entries": 3,
       "holdout_n": 12,
       "treatment_n": 71,
-      "mde_abs_pts": 41.0,
-      "mde_rel": 2.3483
+      "mde_abs_pts": null,
+      "mde_rel": null
     },
     {
       "months_of_entries": 6,
       "holdout_n": 25,
       "treatment_n": 142,
-      "mde_abs_pts": 28.24,
-      "mde_rel": 1.6173
+      "mde_abs_pts": null,
+      "mde_rel": null
     },
     {
       "months_of_entries": 12,
@@ -67,8 +76,8 @@
     }
   ],
   "sensitivity": [],
-  "decision_rule": "Keep the flow when the 95% interval for (treatment minus holdout) rate of feature_used where feature = reports lies above zero and the guardrails hold. If it spans zero at the planned read, report it as inconclusive: keep the holdout running or change the flow. Report attributed, incremental and the gap together (engine/measurement/stats.py incrementality).",
-  "srm_rule": "At every look, test the split against 85/15 (engine/measurement/stats.py readout --expected-holdout 0.15). A chi-square p below 0.001 means assignment or logging is broken; read nothing until it is fixed.",
+  "decision_rule": "Keep the flow when the 95% interval for (treatment minus holdout) rate of feature_used where feature = reports lies above zero and the guardrails hold. If it spans zero at the planned read, report it as inconclusive: keep the holdout running or change the flow. Report attributed, incremental and the gap together (lcm readout).",
+  "srm_rule": "At every look, test the split against 85/15 (lcm readout --expected-holdout 0.15). A chi-square p below 0.001 means assignment or logging is broken; read nothing until it is fixed.",
   "peeking_policy": "One planned read on the date above. Earlier looks check sample ratio and guardrails only; no early stop for a good-looking lift.",
   "guardrail_metrics": [
     "spam complaint rate per send below 0.1% (Gmail's target; 0.3% is its hard limit)",
@@ -80,5 +89,44 @@
   ],
   "hash_field": "user_id",
   "global_holdout_pct": 0.0,
-  "registry_entry": null
+  "registry_entry": {
+    "experiment_id": "ridgeview_winback_14d_holdout",
+    "flow": "ridgeview_winback_14d",
+    "unit": "user",
+    "assignment": {
+      "hash_field": "user_id",
+      "salt": "ridgeview_winback_14d",
+      "rule": "persistent, by user: bucket = first 7 hex digits of md5(user_id || ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout, computed in the daily queue query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population"
+    },
+    "holdout_share": 0.15,
+    "primary_metric": {
+      "event": "feature_used",
+      "window_days": 30,
+      "description": "created a report (feature_used where feature = reports) within 30 days of entry, treatment vs holdout, both arms counted from their entry date"
+    },
+    "plan": {
+      "baseline": 0.1746,
+      "mde_abs": 0.04365,
+      "n_per_arm": {
+        "holdout": 781,
+        "treatment": 4426
+      },
+      "design_effect": 1.0,
+      "alpha": 0.05,
+      "power": 0.8,
+      "read_on": null,
+      "expected_read": "directional only"
+    },
+    "stopping_rule": {
+      "design": "fixed_horizon",
+      "looks": 1,
+      "information_fractions": [
+        1.0
+      ],
+      "alpha": 0.05
+    },
+    "status": "draft",
+    "launched_on": null,
+    "looks_taken": []
+  }
 }

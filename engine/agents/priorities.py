@@ -298,9 +298,20 @@ def _blast_evidence(b: Brief, data: str, as_of: Optional[str] = None) -> List[st
 
 def _fix_candidates(audits: List[Dict[str, Any]], engagement: Optional[Dict[str, Any]],
                     deliverability: Optional[Dict[str, Dict[str, Any]]], data: str = "<exports>",
-                    tracking: Optional[Dict[str, Any]] = None) -> (List[Opportunity], List[str]):
+                    tracking: Optional[Dict[str, Any]] = None, monitor: Optional[Dict[str, Any]] = None) -> (List[Opportunity], List[str]):
     fixes: List[Opportunity] = []
     also: List[str] = []
+    today = (monitor or {}).get("today") or {}
+    if today.get("verdict") in ("STOP", "DROP BACK"):
+        # the daily monitor applied the abort rules (engine/deliverability/warmup.py ABORT_RULES) to yesterday's sends
+        fixes.append(Opportunity(key="fix_monitor", kind="fix", title=f"Deliverability monitor says {today['verdict']}: fix sending first",
+                                 why=[f"{today['day']}: " + "; ".join(today.get("reasons", [])[:3])] +
+                                     [f"{prov}: {v}" for prov, v in (today.get("providers") or {}).items() if v in ("STOP", "DROP BACK")][:3],
+                                 confidence="high", effort="M", effort_why="bounce, complaint and block causes, classified by the monitor",
+                                 next_step=f"lcm deliverability monitor --data {data} --markdown"))
+    elif today.get("verdict") == "HOLD":
+        also.append(f"the deliverability monitor says HOLD for {today.get('day')}: keep volume flat until it reads CONTINUE "
+                    f"(lcm deliverability monitor --data {data} --markdown)")
     for domain, r in (deliverability or {}).items():
         verdict = r["gate"]["verdict"]
         crit = [f for f in r["findings"] if f["severity"] == "critical"]
@@ -385,7 +396,7 @@ def run(data: str, briefs: Optional[List[Brief]] = None, live: Optional[List[Bri
         top: int = 3, value: Optional[float] = None, lift_low: float = LIFT_LOW, lift_high: float = LIFT_HIGH,
         audits: Optional[List[Dict[str, Any]]] = None, engagement: Optional[Dict[str, Any]] = None,
         deliverability: Optional[Dict[str, Dict[str, Any]]] = None, out: Optional[Path] = None,
-        tracking: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        tracking: Optional[Dict[str, Any]] = None, monitor: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """briefs: extra core actions to consider (default: the live flows' own, else the example); live: the flows already
     running (default: briefs/active/). top: how many builds, after any fixes."""
     from engine.agents import cohort_analyst
@@ -450,7 +461,7 @@ def run(data: str, briefs: Optional[List[Brief]] = None, live: Optional[List[Bri
             if value_label != "SUPPLIED" and value is not None and len(builds) > 1:
                 notes.append("the post-purchase build is valued at the average order; the others at one month of revenue per paying "
                              "customer. Give --value-per-conversion to put every build on one footing")
-    fixes, also = _fix_candidates(audits or [], engagement, deliverability, data, tracking)
+    fixes, also = _fix_candidates(audits or [], engagement, deliverability, data, tracking, monitor)
     ranked = rank(fixes + builds, 0)
     fixed = [o for o in ranked if o.kind == "fix"]
     built = [o for o in ranked if o.kind == "build"]
@@ -540,18 +551,21 @@ def check_domains(domains: List[str]) -> Dict[str, Dict[str, Any]]:
 
 
 def _cli(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Today's priorities: the builds most worth doing next, ranked from your data")
+    ap = argparse.ArgumentParser(prog="lcm priorities",
+                                 description="Today's priorities: the builds most worth doing next, ranked from your data")
     ap.add_argument("--data", required=True, help="folder or URL prefix with users, orders, track_events (and message_events)")
     ap.add_argument("--brief", action="append", default=[], help="a brief defining a core action (default: briefs/active/, else the example)")
-    ap.add_argument("--as-of")
-    ap.add_argument("--top", type=int, default=3)
+    ap.add_argument("--as-of", help="rank as of this date, YYYY-MM-DD (default: the latest complete day in the data)")
+    ap.add_argument("--top", type=int, default=3, help="how many builds to list after any fixes (default 3)")
     ap.add_argument("--value-per-conversion", type=float, help="what one more converted person is worth to you, in dollars")
-    ap.add_argument("--lift-low", type=float, default=LIFT_LOW)
-    ap.add_argument("--lift-high", type=float, default=LIFT_HIGH)
+    ap.add_argument("--lift-low", type=float, default=LIFT_LOW,
+                    help=f"low end of the assumed relative lift, 0.10 = 10%% (default {LIFT_LOW})")
+    ap.add_argument("--lift-high", type=float, default=LIFT_HIGH,
+                    help=f"high end of the assumed relative lift, 0.25 = 25%% (default {LIFT_HIGH})")
     ap.add_argument("--domain", action="append", default=[],
                     help="a sending domain to check live first, so a RED domain shows as a fix (default: LCM_DOMAINS)")
-    ap.add_argument("--out", default="out")
-    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--out", default="out", help="folder to write priorities/ (the ranking and a brief per build) into (default: out)")
+    ap.add_argument("--json", action="store_true", help="print the ranking as JSON instead of text")
     a = ap.parse_args(argv)
     from engine.brief import load_brief
     import os

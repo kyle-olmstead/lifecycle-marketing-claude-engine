@@ -120,8 +120,27 @@ def experiment(run) -> Dict[str, Any]:
 
 
 def qa(run) -> Dict[str, Any]:
-    return {"qa": qa_report(run.out["brief"], run.out["gate_policy"], run.out["cohort"], run.out["flow"], run.out["copy_plan"],
-                            run.out["experiment"], run.state.data is not None)}
+    report = qa_report(run.out["brief"], run.out["gate_policy"], run.out["cohort"], run.out["flow"], run.out["copy_plan"],
+                       run.out["experiment"], run.state.data is not None)
+    program_check = _program_check(run.out["brief"])
+    if program_check is not None:
+        report = QAReport.from_checks(report.checks + [program_check], len(run.out["brief"].assumptions))
+    return {"qa": report}
+
+
+def _program_check(brief: Brief):
+    """This flow beside every live flow in the workspace (briefs/active/), against one frequency policy."""
+    from engine.policy import program
+    try:
+        live = [b for b in program.active_briefs() if b.slug != brief.slug]
+    except Exception as e:  # noqa: BLE001  (a broken live brief is reported, not fatal to this plan)
+        return Check(name="program: caps across live flows", status="warn", detail=f"could not read the live briefs: {str(e)[:200]}")
+    if not live:
+        return None
+    r = program.simulate(live + [brief], program.workspace_policy())
+    worst = next((c for c in r["checks"] if c["status"] != "pass"), None)
+    return Check(name="program: caps across live flows", status="pass" if worst is None else ("warn" if worst["status"] == "warn" else "fail"),
+                 detail=(f"{len(live)} live flow(s) checked; " + (f"{worst['name']}: {worst['detail']}" if worst else "every cap holds")))
 
 
 def compliance(run) -> Dict[str, Any]:

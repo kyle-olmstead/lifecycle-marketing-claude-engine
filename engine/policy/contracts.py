@@ -267,12 +267,21 @@ def parse_cap_text(text: str, channels: Optional[List[str]] = None) -> List[Cap]
     """'at most 1 lifecycle email per day' -> [Cap(email, 1, P1D)]; 'three messages a week' -> [Cap(email,sms,push, 3, P7D)].
     Days, weeks, fortnights and months are understood; v2 read only 'per week'."""
     low = (text or "").lower()
-    chans = channels or (["email"] if re.search(r"\bemails?\b", low) and not re.search(r"\bmessages?\b", low) else ["email", "sms", "push"])
+    default = channels or (["email"] if re.search(r"\bemails?\b", low) and not re.search(r"\bmessages?\b", low) else ["email", "sms", "push"])
     out: List[Cap] = []
     for m in CAP_TEXT.finditer(low):
         n = int(m.group(1)) if m.group(1).isdigit() else WORDS[m.group(1)]
-        out.append(Cap(channels=chans, max=n, window=WINDOW_FOR[m.group(2)]))
+        out.append(Cap(channels=channels or _cap_channels(m.group(0)) or default, max=n, window=WINDOW_FOR[m.group(2)]))
     return out
+
+
+def _cap_channels(phrase: str) -> List[str]:
+    """The channels one cap phrase names: '2 texts a day' is SMS, '6 emails a month' email, '3 messages a week' all three."""
+    if re.search(r"\b(messages?|touch(es)?|sends?|notifications?)\b", phrase):
+        return ["email", "sms", "push"]
+    found = [ch for ch, pat in (("email", r"\be-?mails?\b"), ("sms", r"\b(sms|texts?|text messages?)\b"), ("push", r"\bpush(es)?\b"))
+             if re.search(pat, phrase)]
+    return found
 
 
 # ----------------------------------------------------------------------------------------------

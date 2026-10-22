@@ -1,10 +1,10 @@
 {
-  "headline": "[The change, as a benefit]",
-  "body": "It came from requests like yours. Try it on your own data.",
-  "cta_label": "Try it now",
+  "headline": "Your data sources are still syncing",
+  "body": "A report built now would show everything that arrived while you were away. Start one in under two minutes.",
+  "cta_label": "Create a report",
   "preview": {
-    "headline": "[The change, as a benefit]",
-    "body": "It came from requests like yours. Try it on your own data.",
-    "cta_label": "Try it now"
+    "headline": "Your data sources are still syncing",
+    "body": "A report built now would show everything that arrived while you were away. Start one in under two minutes.",
+    "cta_label": "Create a report"
   }
 }

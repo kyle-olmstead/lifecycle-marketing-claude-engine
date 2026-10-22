@@ -480,6 +480,23 @@
         "currency": {
           "type": "string",
           "pattern": "^[A-Z]{3}$"
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https://",
+          "description": "the product page; the browse flow's button goes here"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "the product's name as the store shows it; the browse flow names it"
+        },
+        "image_url": {
+          "type": "string",
+          "pattern": "^https://",
+          "description": "a product image (PNG or JPG); the browse email shows it at 96 px"
         }
       }
     },
@@ -511,6 +528,11 @@
           "items": {
             "$ref": "#/$defs/line_item"
           }
+        },
+        "checkout_url": {
+          "type": "string",
+          "pattern": "^https://",
+          "description": "the link that reopens this checkout with its items; the cart flow's button goes here (Shopify sends it as abandoned_checkout_url)"
         }
       }
     },
@@ -699,6 +721,16 @@
           "type": "number",
           "minimum": 0,
           "description": "currency units; round to cents upstream. Not enforced with multipleOf 0.01, which rejects values such as 19.99 under binary floating point"
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https://",
+          "description": "the product page; the product block links each item here"
+        },
+        "image_url": {
+          "type": "string",
+          "pattern": "^https://",
+          "description": "a product image (PNG or JPG); the product block shows it at 96 px"
         }
       }
     }

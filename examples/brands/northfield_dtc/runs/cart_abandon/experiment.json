@@ -1,0 +1,133 @@
+{
+  "holdout_pct": 10.0,
+  "unit": "user",
+  "salt": "northfield_coffee_cart_abandon_1h",
+  "assignment_sql": {
+    "postgres": "((('x' || substr(md5(user_id || ':northfield_coffee_cart_abandon_1h'), 1, 7))::bit(28)::int) % 100) < 10",
+    "snowflake": "MOD(TO_NUMBER(SUBSTR(MD5(user_id || ':northfield_coffee_cart_abandon_1h'), 1, 7), 'XXXXXXX'), 100) < 10",
+    "bigquery": "MOD(CAST(CONCAT('0x', SUBSTR(TO_HEX(MD5(CONCAT(user_id, ':northfield_coffee_cart_abandon_1h'))), 1, 7)) AS INT64), 100) < 10"
+  },
+  "assignment_rule": "persistent, by user: bucket = first 7 hex digits of md5(user_id || ':northfield_coffee_cart_abandon_1h') mod 100; bucket < 10 is the holdout, added as in_holdout to the live checkout_started event by the system that sends it; holdout members enter, then exit at holdout_split, so both arms are the same population",
+  "primary_metric": "placed an order (order_completed) within 10 days of entry, treatment vs holdout, both arms counted from their entry date",
+  "outcome_window_days": 10,
+  "read": "directional only",
+  "sizing": "about 351 entrants a month (ESTIMATE), 31.3% return within 10 days with no flow (ESTIMATE), 20% relative lift (6.3 pts) worth acting on: 508 holdout entrants at 10%, 14.5 months of entries plus the 10-day outcome window, so the read lands about 14.8 months after launch (engine/measurement/stats.py feasible --entries-per-month 350.7 --holdout 0.1 --baseline 0.3132 --mde-rel 0.2 --outcome-window-days 10)",
+  "read_after": "not inside 12 months at this volume (it would take about 15 months): keep the holdout, report against a pre/post baseline, and label every result directional",
+  "feasibility": {
+    "entries_per_month": 350.7,
+    "holdout_share": 0.1,
+    "p_control": 0.3132,
+    "mde_abs": 0.06264,
+    "design_effect": 1.0,
+    "required_holdout_n": 508,
+    "required_treatment_n": 4572,
+    "power_holdout_n": 508,
+    "power_treatment_n": 4572,
+    "size_set_by": "power",
+    "readout_floor": {
+      "n_control": 30,
+      "n_treatment": 270,
+      "rule": "at least 30 entrants and 5 expected conversions per arm, at the baseline and at the treatment rate (the readout refuses smaller arms)"
+    },
+    "p_readable": 1.0,
+    "enrollment_months": 14.5,
+    "outcome_window_days": 10,
+    "months_to_read": 14.8,
+    "recommended_design": "the holdout will not reach a readable sample inside the horizon. Use a pre/post baseline, label it directional, and watch an operational signal instead; do not report a lift percentage",
+    "expected_read": "directional only",
+    "alternatives": [
+      {
+        "holdout_share": 0.25,
+        "months_to_read": 7.3,
+        "fits_horizon": true,
+        "cost": "withholds 25% of entrants from the flow while it reads"
+      },
+      {
+        "holdout_share": 0.5,
+        "months_to_read": 5.5,
+        "fits_horizon": true,
+        "cost": "withholds 50% of entrants from the flow while it reads"
+      }
+    ],
+    "horizon_months": 12,
+    "randomization_unit": "account (company or workspace) where the buying unit is an account; entrants in one unit are not independent, so set design_effect = 1 + (entrants per unit - 1) x ICC"
+  },
+  "mde_by_horizon": [
+    {
+      "months_of_entries": 3,
+      "holdout_n": 105,
+      "treatment_n": 946,
+      "mde_abs_pts": 14.05,
+      "mde_rel": 0.4487
+    },
+    {
+      "months_of_entries": 6,
+      "holdout_n": 210,
+      "treatment_n": 1893,
+      "mde_abs_pts": 9.85,
+      "mde_rel": 0.3144
+    },
+    {
+      "months_of_entries": 12,
+      "holdout_n": 420,
+      "treatment_n": 3787,
+      "mde_abs_pts": 6.9,
+      "mde_rel": 0.2202
+    }
+  ],
+  "sensitivity": [],
+  "decision_rule": "Keep the flow when the 95% interval for (treatment minus holdout) rate of order_completed lies above zero and the guardrails hold. If it spans zero at the planned read, report it as inconclusive: keep the holdout running or change the flow. Report attributed, incremental and the gap together (lcm readout).",
+  "srm_rule": "At every look, test the split against 90/10 (lcm readout --expected-holdout 0.1). A chi-square p below 0.001 means assignment or logging is broken; read nothing until it is fixed.",
+  "peeking_policy": "One planned read on the date above. Earlier looks check sample ratio and guardrails only; no early stop for a good-looking lift.",
+  "guardrail_metrics": [
+    "spam complaint rate per send below 0.1% (Gmail's target; 0.3% is its hard limit)",
+    "unsubscribe rate per send, against the 90-day median for your lifecycle sends; pause a touch running above twice it",
+    "hard bounce rate below 1%",
+    "SMS opt-out rate per send, against your SMS program's median"
+  ],
+  "variant_tests": [
+    "Copy variants rotate evenly inside the treatment arm. Read them on clicks or the core action, never opens, and only directionally below about 1,000 sends per variant (size exactly with engine/measurement/stats.py size --baseline <click rate> --mde-rel 0.2)"
+  ],
+  "hash_field": "user_id",
+  "global_holdout_pct": 5.0,
+  "registry_entry": {
+    "experiment_id": "northfield_coffee_cart_abandon_1h_holdout",
+    "flow": "northfield_coffee_cart_abandon_1h",
+    "unit": "user",
+    "assignment": {
+      "hash_field": "user_id",
+      "salt": "northfield_coffee_cart_abandon_1h",
+      "rule": "persistent, by user: bucket = first 7 hex digits of md5(user_id || ':northfield_coffee_cart_abandon_1h') mod 100; bucket < 10 is the holdout, added as in_holdout to the live checkout_started event by the system that sends it; holdout members enter, then exit at holdout_split, so both arms are the same population"
+    },
+    "holdout_share": 0.1,
+    "primary_metric": {
+      "event": "order_completed",
+      "window_days": 10,
+      "description": "placed an order (order_completed) within 10 days of entry, treatment vs holdout, both arms counted from their entry date"
+    },
+    "plan": {
+      "baseline": 0.3132,
+      "mde_abs": 0.06264,
+      "n_per_arm": {
+        "holdout": 508,
+        "treatment": 4572
+      },
+      "design_effect": 1.0,
+      "alpha": 0.05,
+      "power": 0.8,
+      "read_on": null,
+      "expected_read": "directional only"
+    },
+    "stopping_rule": {
+      "design": "fixed_horizon",
+      "looks": 1,
+      "information_fractions": [
+        1.0
+      ],
+      "alpha": 0.05
+    },
+    "status": "draft",
+    "launched_on": null,
+    "looks_taken": []
+  }
+}

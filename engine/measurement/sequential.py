@@ -543,44 +543,54 @@ def _floats(text: Optional[str]) -> List[float]:
 
 
 def _cli(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Group-sequential and always-valid testing")
-    sub = ap.add_subparsers(dest="cmd", required=True)
-    b = sub.add_parser("boundaries", help="Lan-DeMets efficacy boundaries")
-    b.add_argument("--looks", type=int, default=5)
+    ap = argparse.ArgumentParser(prog="lcm sequential", description="Group-sequential and always-valid testing")
+    sub = ap.add_subparsers(dest="cmd", required=True, help="what to compute")
+    spending_help = "obf (O'Brien-Fleming: very strict early, near fixed at the end) or pocock (same bar every look); default obf"
+    alpha_help = "false positive rate across all looks (default 0.05)"
+    count_help = {"xt": "conversions in treatment so far", "nt": "people in treatment so far",
+                  "xc": "conversions in the holdout so far", "nc": "people in the holdout so far",
+                  "planned-nt": "people planned in treatment at the final look", "planned-nc": "people planned in the holdout at the final look"}
+    b = sub.add_parser("boundaries", help="Lan-DeMets efficacy boundaries",
+                       description="The z value each planned look must clear to stop early for efficacy")
+    b.add_argument("--looks", type=int, default=5, help="number of equally spaced looks, the last one final (default 5)")
     b.add_argument("--fractions", help="comma-separated information fractions, last = 1 (default equally spaced)")
-    b.add_argument("--spending", choices=SPENDING, default="obf")
-    b.add_argument("--alpha", type=float, default=0.05)
-    b.add_argument("--one-sided", action="store_true")
-    p = sub.add_parser("plan", help="per-arm entrants at each look for a two-proportion test")
-    p.add_argument("--baseline", type=float, required=True)
+    b.add_argument("--spending", choices=SPENDING, default="obf", help=spending_help)
+    b.add_argument("--alpha", type=float, default=0.05, help="false positive rate across all looks (default 0.05, two-sided)")
+    b.add_argument("--one-sided", action="store_true", help="test for a lift only, not a drop (default: two-sided)")
+    p = sub.add_parser("plan", help="per-arm entrants at each look for a two-proportion test",
+                       description="People each arm needs at each look of a group-sequential conversion test")
+    p.add_argument("--baseline", type=float, required=True, help="the holdout's expected conversion rate, 0.10 = 10%%")
     g = p.add_mutually_exclusive_group(required=True)
-    g.add_argument("--mde-abs", type=float)
-    g.add_argument("--mde-rel", type=float)
-    p.add_argument("--looks", type=int, default=5)
-    p.add_argument("--fractions")
-    p.add_argument("--spending", choices=SPENDING, default="obf")
-    p.add_argument("--alpha", type=float, default=0.05)
-    p.add_argument("--power", type=float, default=0.80)
+    g.add_argument("--mde-abs", type=float, help="smallest lift worth detecting, in rate points (0.02 = 2 points)")
+    g.add_argument("--mde-rel", type=float, help="smallest lift worth detecting, relative to baseline (0.20 = 20%% lift)")
+    p.add_argument("--looks", type=int, default=5, help="number of equally spaced looks, the last one final (default 5)")
+    p.add_argument("--fractions", help="comma-separated information fractions, last = 1 (default: equally spaced --looks)")
+    p.add_argument("--spending", choices=SPENDING, default="obf", help=spending_help)
+    p.add_argument("--alpha", type=float, default=0.05, help=alpha_help)
+    p.add_argument("--power", type=float, default=0.80, help="chance of detecting a real lift of the MDE (default 0.80)")
     p.add_argument("--holdout", type=float, help="holdout share, e.g. 0.20")
-    p.add_argument("--design-effect", type=float, default=1.0)
-    lk = sub.add_parser("look", help="the decision at one look, from z or from counts")
-    lk.add_argument("--z", type=float)
+    p.add_argument("--design-effect", type=float, default=1.0,
+                   help="sample inflation for account-level tests, from `lcm cluster deff` (default 1.0, people randomized)")
+    lk = sub.add_parser("look", help="the decision at one look, from z or from counts",
+                        description="Continue, stop for efficacy, or the final read at one look, from z or from counts")
+    lk.add_argument("--z", type=float, help="the observed z statistic now (with --t), instead of counts")
     lk.add_argument("--t", type=float, help="information fraction now (with --z)")
     for k in ("xt", "nt", "xc", "nc", "planned-nt", "planned-nc"):
-        lk.add_argument(f"--{k}", type=int)
+        lk.add_argument(f"--{k}", type=int, help=f"{count_help[k]} (a count)")
     lk.add_argument("--previous", help="comma-separated information fractions of the efficacy looks already taken")
-    lk.add_argument("--spending", choices=SPENDING, default="obf")
-    lk.add_argument("--alpha", type=float, default=0.05)
-    lk.add_argument("--final", action="store_true")
-    lk.add_argument("--expected-holdout", type=float)
-    m = sub.add_parser("msprt", help="always-valid p-value and confidence sequence")
+    lk.add_argument("--spending", choices=SPENDING, default="obf", help=spending_help)
+    lk.add_argument("--alpha", type=float, default=0.05, help=alpha_help)
+    lk.add_argument("--final", action="store_true", help="this is the final look: spend all remaining alpha")
+    lk.add_argument("--expected-holdout", type=float, help="planned holdout share, e.g. 0.20, to check the split first (default: no check)")
+    m = sub.add_parser("msprt", help="always-valid p-value and confidence sequence",
+                       description="An always-valid p-value and confidence sequence, safe to check as often as you like")
     for k in ("xt", "nt", "xc", "nc"):
-        m.add_argument(f"--{k}", type=int, required=True)
+        m.add_argument(f"--{k}", type=int, required=True, help=f"{count_help[k]} (a count)")
     gm = m.add_mutually_exclusive_group(required=True)
-    gm.add_argument("--tau", type=float)
+    gm.add_argument("--tau", type=float, help="spread of the prior over the true difference, in rate points; set it to the absolute MDE")
     gm.add_argument("--mde-abs", type=float, help="sets tau to the absolute MDE")
-    m.add_argument("--alpha", type=float, default=0.05)
-    m.add_argument("--previous-p", type=float)
+    m.add_argument("--alpha", type=float, default=0.05, help="false positive rate, however often you look (default 0.05)")
+    m.add_argument("--previous-p", type=float, help="the always-valid p-value from the last look, to carry forward")
     m.add_argument("--previous-cs", help="lower,upper of the confidence sequence so far")
     a = ap.parse_args(argv)
     try:

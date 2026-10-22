@@ -52,7 +52,25 @@ daily:
     needs: users, orders, track_events; one brief in briefs/active/, or --brief when there are none or several
     limits: Small series (a median under 5) are not judged, so quiet flows stay quiet.
 
+  - id: data_ready
+    ask: Is our data ready to plan on?
+    expert: Are the exports complete and fresh, does every required column parse, and are there future-dated, duplicate or orphaned rows that would mislead a cohort or a holdout read?
+    route: {job: check_data}
+    command: lcm "is our data ready to plan on?" --data data/
+    you_get: Every table and column checked against the canonical schema, with the rows affected, up to three examples and a one-line fix each; errors to fix before planning first.
+    needs: the data folder (or a workspace's data/); lcm import turns vendor exports into it
+    limits: It checks the files you have; it cannot know about events your tracking never sent.
+
 weekly:
+  - id: collisions
+    ask: Do our flows collide, or could one person get too many emails a week?
+    expert: Across every live flow, entered close together in either order, does the frequency policy's collision rule hold every cap, and which flows send to the same person on the same day?
+    route: {job: program}
+    command: lcm "do our flows collide, or could one person get too many emails a week?"
+    you_get: Every pair of live flows simulated 0, 24 and 72 hours apart, each cap checked across flows with and without the collision rule, same-day clashes, and the rule or platform limit that would hold the cap.
+    needs: the briefs of live flows in briefs/active/ and the workspace's frequency policy (lmm.yaml)
+    limits: It simulates people who never convert and have every consent, the worst case; real sends are fewer.
+
   - id: test_ready
     ask: Is my test ready to call, or do I need more data?
     expert: Do the arms differ beyond chance at the planned alpha with the planned power, is the split still what we set, and are we about to fall for an early peek?

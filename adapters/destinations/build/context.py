@@ -158,6 +158,17 @@ class Ctx:
         return self.brief.qualifying_event.event
 
     @property
+    def shopify(self) -> bool:
+        """Klaviyo with Shopify's own events: esp.options.shopify when set, else whatever the rendered copy reads (the product
+        block reads Shopify's event.extra.line_items for an ecommerce cart or post-purchase flow on Klaviyo)."""
+        if self.options.get("shopify") is not None:
+            return bool(self.options["shopify"])
+        if self.platform != "klaviyo" or self.brief.platform != "klaviyo":
+            return False
+        from engine.render.product_blocks import source
+        return source(self.brief).startswith("shopify")
+
+    @property
     def holdout_property(self) -> str:
         """The per-person, per-flow property a native segment trigger splits on (no trigger event carries in_holdout)."""
         return f"lcm_holdout_{self.slug}"[:100]
@@ -168,7 +179,9 @@ class Ctx:
         mapped = (self.options.get("event_names") or {}).get(event)
         if mapped:
             return str(mapped)
-        if self.platform == "klaviyo" and self.options.get("shopify"):
+        if self.platform == "klaviyo" and event in self.caps["built_in_metric_names"]["value"]:
+            return self.caps["built_in_metric_names"]["value"][event]       # Klaviyo's own email metrics (names LIKELY)
+        if self.platform == "klaviyo" and self.shopify:
             return self.caps["shopify_metric_names"]["value"].get(event, event)
         if self.platform == "hubspot":
             hub = str(self.options.get("hub_id") or "<hub id>")

@@ -188,16 +188,17 @@ def rows_to_events(rows: Iterable[Dict[str, Any]], event: str, flow: str, as_of:
 
 
 def _cli(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Cohort entry rows to ESP trigger-event request bodies (nothing is sent)")
-    ap.add_argument("platform", choices=PLATFORMS)
+    ap = argparse.ArgumentParser(prog="lcm events", description="Cohort entry rows to ESP trigger-event request bodies (nothing is sent)")
+    ap.add_argument("platform", choices=PLATFORMS, help="the platform to build requests for")
     ap.add_argument("input", help="CSV or JSON rows from the cohort entry query")
-    ap.add_argument("--event", required=True)
-    ap.add_argument("--flow", default="lcm_flow")
-    ap.add_argument("--as-of", default=datetime.now(timezone.utc).date().isoformat())
-    ap.add_argument("--hub-id", default="00000000")
-    ap.add_argument("--braze-instance", default="iad-01")
+    ap.add_argument("--event", required=True, help="the trigger event name the flow listens for, e.g. core_action_lapsed_14d")
+    ap.add_argument("--flow", default="lcm_flow", help="flow name stamped on each event and its id (default: lcm_flow)")
+    ap.add_argument("--as-of", default=datetime.now(timezone.utc).date().isoformat(),
+                    help="the run date, YYYY-MM-DD; sets each event's timestamp (default: today, UTC)")
+    ap.add_argument("--hub-id", default="00000000", help="your HubSpot hub id, used in the event name pe<hub id>_<event> (HubSpot only)")
+    ap.add_argument("--braze-instance", default="iad-01", help="the REST instance in your Braze dashboard URL (default: iad-01)")
     ap.add_argument("--eu", action="store_true", help="Customer.io EU workspace, or Iterable EU project")
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--out", required=True, help="folder to write one JSON file per request into")
     a = ap.parse_args(argv)
     p = Path(a.input)
     text = p.read_text(encoding="utf-8")

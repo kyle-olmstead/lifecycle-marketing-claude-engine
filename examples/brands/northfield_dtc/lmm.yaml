@@ -1,0 +1,47 @@
+# Northfield Coffee Roasters (fictional): a direct-to-consumer coffee roaster on Shopify, emailing from Klaviyo.
+# The second demo workspace: vendor exports in exports/, mapped to canonical tables in data/ by `lcm import`.
+
+brand:
+  name: Northfield Coffee Roasters
+  business_model: ecommerce
+  postal_address: 48 Example Street, Unit 2, Portland, ME 04101
+  sender_name: Sam at Northfield
+  brand_voice: warm, concrete and unhurried; talk about the coffee, the farm and the roast date, never about hype
+  recipient_countries: [US]
+
+brand_kit: brand.yaml
+
+platform: klaviyo
+esp:
+  tier: Email
+warehouse_dialect: bigquery
+
+# No gate on record yet: plans run as AMBER (engaged recipients only) until
+# `lcm deliverability check northfield.example --write-gate gate.json` records an observed one.
+sending_gate:
+
+frequency:
+  caps:
+    - {channels: [email, sms, push], max: 4, window: P7D}
+    - {channels: [sms], max: 1, window: P1D}
+  send_windows:
+    - {channel: email, allowed_from: "08:00", allowed_until: "21:00"}
+    - {channel: sms, allowed_from: "09:00", allowed_until: "20:00"}
+  flow_priority: [cart_abandon, browse_abandon, post_purchase, replenishment, welcome, winback, sunset]
+  collision_rule: higher_priority_preempts
+
+# One offer exists: 10% off a second order, for three days. Never in a first touch, never to deal hunters.
+offer_policy:
+  offers:
+    - {offer_id: SECOND10, kind: percent_off, value: 10, eligible: second order, expires_after: P3D}
+  max_offers_per_person: {count: 1, window: P30D}
+  min_days_between_offers: 30
+  never_in_first_touch: true
+  exclude_if: [discount_share_over_50pct_last_3_orders, redeemed_offer_last_30d]
+
+measurement:
+  randomization_unit: user
+  global_holdout_pct: 5
+  stopping_rule: fixed_horizon
+
+data: data

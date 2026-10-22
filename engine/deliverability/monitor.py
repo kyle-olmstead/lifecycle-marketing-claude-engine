@@ -694,7 +694,7 @@ def _cli(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--postmaster", help="CSV of date,spam_rate from Gmail Postmaster Tools")
     ap.add_argument("--min-sample", type=int, default=W.MIN_SAMPLE, help=f"smallest denominator a rate is judged on (default {W.MIN_SAMPLE})")
     ap.add_argument("--days", type=int, default=14, help="days shown in the markdown (all days are evaluated)")
-    ap.add_argument("--markdown", action="store_true")
+    ap.add_argument("--markdown", action="store_true", help="print a readable report instead of JSON")
     ap.add_argument("--out", help="also write monitor.json and monitor.md here")
     a = ap.parse_args(argv)
     try:

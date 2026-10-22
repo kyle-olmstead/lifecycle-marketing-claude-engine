@@ -2,7 +2,143 @@
 
 ## 3.0.0 (2026-10)
 
-In progress.
+**From one sentence to a program you can run.** In plain English: a folder per brand (`lcm init`) holds your platform,
+sending gate, one frequency policy, offer policy and brand kit, so a plan never guesses them; the engine plans ten
+kinds of flow instead of two and refuses the rest by name; it reads your vendors' own exports; every live flow is
+checked together, not one at a time; emails are laid out from your brand kit; measurement handles accounts, peeking
+and a program-wide holdout; deliverability gets the daily operations (bounces, complaints, trends against abort rules);
+and `lcm` became a real command line with help on every flag. The audit behind this release is the LMM Engine Product
+Audit (v2.3); every quick win and systemic enhancement in its roadmap is in here.
+
+**Closed the false greens**
+- A bare `GREEN` typed into a brief runs as AMBER: an unobserved claim can lower the gate, never raise it. A gate
+  record older than 30 days runs as AMBER too. `lcm deliverability check DOMAIN --write-gate gate.json` writes the
+  dated, evidence-labeled record (`schemas/sending_gate.schema.json`) that `lmm.yaml` points to.
+- QA passes the sending-gate check only on an effective GREEN, and reports the audience left after the gate.
+- Engagement tiers suppress hard bounces only (RFC 3463 class 5.1.x, 5.2.1, mailbox-unknown text, or a bounce with no
+  detail); blocks, authentication failures and deferrals are the sender's problem, not the address's.
+
+**Fixed the silent plan-breakers**
+- Welcome and other new-entrant flows are exempt from the AMBER engaged-only filter (a new subscriber has no
+  engagement history yet); each flow has a gate class (new entrant, behavior, lapsed, transactional, remediation).
+- Account-level holdouts hash `account_id` (falling back to `user_id`), so people in one account are never split.
+- Caps written as days or months ("2 a day", "6 a month") are parsed, not dropped, and each phrase keeps its own
+  channel ("2 texts a day and 6 emails a month" is an SMS cap and an email cap); timestamps are validated; the flow
+  spec's branch graph is checked for dangling targets (the shipped example had one).
+- Sign-ups are read from `users.created_at` as well as `signed_up` events, so a store whose exports carry no sign-up
+  event still has a welcome audience; engagement flows check their events in `message_events`.
+- The SMS window is 09:00 to 20:00 recipient local time, the narrowest US state window `config/compliance_rules.json`
+  tracks, and the prose says "permitted sending window" everywhere; a send hour outside a channel's window is refused
+  when the brief is read.
+- The data loader converts timestamps with a UTC offset to UTC instead of keeping the clock time.
+
+**The workspace** (`lmm.yaml`, `schemas/workspace.schema.json`, `engine/workspace.py`)
+- `lcm init` writes `lmm.yaml`, `brand.yaml`, `data/`, `briefs/active/` and `runs/`. Commands find the workspace from
+  the current folder or `LCM_WORKSPACE`; outside one they use the bundled demo and say so.
+- Briefs inherit platform, brand, gate, frequency policy, offer policy and measurement settings from `lmm.yaml`; the
+  sentence and explicit overrides still win, and inherited values are not listed as assumptions. `lcm brief` writes
+  thin briefs that keep inheriting.
+- `lcm doctor` checks Python, packages, the MJML compiler, `lmm.yaml`, the gate's age, the brand kit's contrast, the
+  data, the live briefs and which keys are set (names only).
+
+**Typed policies and the program simulator** (`engine/policy/contracts.py`, `engine/policy/program.py`)
+- Sending gate, trigger, frequency policy (caps across channels and windows, permitted send windows per channel, flow
+  priority, a collision rule), offer policy (offers with real deadlines or none, never in a first touch, exclusions for
+  deal hunters) and consent records are typed contracts with JSON Schemas, and tests hold each schema and its model to
+  the same answers.
+- `lcm simulate --program` walks people who enter several live flows close together, applies the collision rule, and
+  checks every cap across flows; when a cap breaks it names the rule that would hold it or the platform's own limit.
+
+**The flow library** (`engine/flows/`, `docs/FLOW_LIBRARY.md`)
+- Ten flows: welcome, activation, win-back, abandoned cart, browse abandonment, post-purchase, replenishment, failed
+  payment (dunning), trial conversion and sunset, each with its trigger, goal, timing, re-entry, dedupe key, AMBER
+  audience, holdout default and native build steps for every platform. Cart and browse flows wait in hours; other
+  flows record an hours request as an assumption instead of dropping it. Unsupported flows are refused by name.
+- Product blocks show the cart or product from each platform's own event fields (Klaviyo's Shopify events,
+  Customer.io and Braze event items, HubSpot and Marketing Cloud contact or entry data), and the button goes back to
+  that checkout or product. The offline copy library covers every flow's roles with no bracketed fill-ins, and
+  `tests/test_flow_library.py` plans all ten flows on all six platforms with no copy warning.
+- Templates read only the event fields the tracking plan gives the trigger event (`engine/render/fields.py`); the
+  check found and closed three gaps (item names, item links and images, and the browse event's single product).
+
+**Build packs and sending** (`adapters/destinations/build/`, `adapters/destinations/send.py`, `docs/ESP_BUILD_PACKS.md`)
+- `lcm build --run <plan folder>` writes a build pack per platform: the native trigger (exact type, filters, exit
+  criteria, re-entry), every step as the platform's own action with its wait in the platform's smallest unit (Braze
+  seconds; Klaviyo, HubSpot, Iterable and Marketing Cloud minutes; Customer.io hours), the holdout split first and each
+  SMS or push consent split with its email fallback, the goal, permitted send window and frequency settings, the copy
+  each message uses, and the steps a person does by hand.
+- Win-back, replenishment and sunset trigger natively where the platform can see the absence (Klaviyo and HubSpot
+  segments, Customer.io segment triggers, daily scheduled audiences on Braze, Iterable and Marketing Cloud), with the
+  exact segment to create; `--warehouse-job` keeps the daily job when the core event does not reach the ESP. A
+  segment trigger's holdout reads a person property written by `build/holdout_sync_<dialect>.sql`.
+- Capability checks from `config/esp_capabilities.json` (every fact with its source and confidence) against the
+  account in `lmm.yaml` (`esp.tier`, `esp.options`): HubSpot custom event enrollment on Professional or Enterprise,
+  its frequency safeguard on Enterprise, Braze Canvas Context, Customer.io latest Liquid and opt-in message limits,
+  Klaviyo's 100 flow creates a day, delay units, events that must reach the platform. An unknown tier warns; a failed
+  hard requirement blocks the pack with the reason.
+- Importable artifacts where a create API exists, validated against `config/esp_artifact_schemas.json` with every
+  unverified field named: Klaviyo templates, segment and flow (Draft; shapes from Klaviyo's official OpenAPI spec),
+  the HubSpot automation v4 workflow (beta, off), the Marketing Cloud journey (Draft). Braze, Customer.io and Iterable
+  get a click-by-click build sheet, and Braze an optional `/canvas/duplicate` request (UNVERIFIED).
+- `lcm build --create --approve` creates them in order through the safe client: metric ids looked up, template and
+  segment ids carried forward, unresolved inputs and UNVERIFIED shapes refused (`--allow-unverified`), 429 retried and
+  5xx not, and a receipt log so a rerun never creates the same object twice.
+- `lcm send` pushes the warehouse job's pending rows, request files or profile updates: a dry run unless `--approve`
+  and the platform's key are given; batched to each platform's limit, idempotency keys on every item (a client-side
+  sent log for Braze), retries with backoff and jitter on 429 and 5xx honoring `Retry-After`, never on another 4xx, and
+  a JSONL receipt log so a rerun sends nothing twice.
+- Iterable is a sixth platform: Handlebars copy (`defaultIfEmpty`, `{{#each items}}`, `{{unsubscribeUrl}}`,
+  `{{physicalAddress}}`) with its own linter, product blocks and return links, the field check, its track request with
+  an event id, and every flow planning on it.
+
+**Sources and check-data** (`adapters/sources/`, `engine/data/check.py`, `docs/IMPORTING_DATA.md`)
+- `lcm import` maps Shopify, Klaviyo, Stripe, HubSpot, Customer.io, GA4 (BigQuery export), Segment and RudderStack
+  exports into the canonical tables, merges several sources by email, and keeps the earlier source on a conflict.
+  Warehouse SQL models do the same mapping in BigQuery and Snowflake.
+- `lcm check-data` reports, column by column, what would break or quietly mislead a plan: missing or late tables,
+  empty required columns, values that do not parse, future dates, duplicate keys, orphaned references, bad enums and
+  phone numbers, with up to three examples and a fix for each.
+
+**Measurement** (`engine/measurement/`, `docs/MEASUREMENT.md`)
+- Cluster-aware sizing and readouts for account-level tests (ICC by ANOVA, design effect); group-sequential
+  (Lan-DeMets O'Brien-Fleming) and always-valid (mSPRT) stopping; an experiment registry that catches overlaps,
+  overdue reads and unplanned peeking; a global holdout every flow excludes; discount dependency by customer and flow.
+  Readouts refuse arms under 30 people or 5 events.
+
+**Deliverability operations** (`engine/deliverability/`, `docs/DELIVERABILITY_OPERATIONS.md`)
+- Bounce classification, complaint rates by mailbox provider and flow, provider share, and a daily monitor that
+  evaluates the warm-up abort rules (now machine-readable) against message events.
+
+**Brand kit and MJML** (`engine/render/brand.py`, `engine/render/mjml_render.py`, `docs/BRAND_KIT.md`)
+- Emails are built in MJML from the brand kit: logo, colors (every text pair checked to WCAG AA in light and dark
+  mode), fonts, footer and voice rules (forbidden phrases and vocabulary are flagged in the copy).
+
+**One command line** (`engine/cli/`, `docs/COMMANDS.md`)
+- `lcm COMMAND` for every tool, grouped in `lcm --help`, with help text on every flag. `lcm size` and `lcm readout`
+  answer in sentences (`--json` for the full result). "make it 4 touches", "add SMS", "use a 20% holdout" revise the
+  newest run. `--value-per-conversion` is accepted wherever `--value` is. Every run keeps its own copy of its outputs.
+- `lcm workflow run morning_check | new_flow | quarterly_review`: named graphs of commands in `workflows/`.
+
+**Docs that cannot drift** (`engine/docs_gen.py`, `tests/test_drift.py`)
+- The flow library, platform, send-window and command tables are generated from the code; CI fails when they are
+  stale, when prose names a command or file that does not exist, says "quiet hours", states a single default holdout,
+  or gets the SMS window wrong.
+
+**Finished examples**: Ridgeview (SaaS win-back on Customer.io) and Northfield Coffee Roasters (Shopify and Klaviyo,
+from raw exports to an abandoned cart plan with two live flows) are complete workspaces, planned from written copy
+with no fill-ins, and held to what the engine writes by `tests/test_golden_runs.py`.
+
+### Upgrading from 2.x
+
+- The layout changed: `agents/`, `tools/` and `scripts/` are now `engine/` and `adapters/`; `modules/` is `prompts/`;
+  the sample company is `examples/brands/ridgeview_saas`. Run modules as `lcm COMMAND` or `python3 -m engine...`.
+- Make a workspace (`lcm init .` in your existing folder) and move platform, gate, caps and offers out of each brief
+  into `lmm.yaml`. `quiet_hours` and `frequency_cap_per_week` still load but are deprecated: use `frequency` (caps and
+  `send_windows`) in `lmm.yaml`.
+- A typed `GREEN` now runs as AMBER: record an observed gate with `lcm deliverability check DOMAIN --write-gate gate.json`.
+- If you created the warehouse ledger in 2.x, add the new column once:
+  `ALTER TABLE lcm_flow_entries ADD COLUMN detail VARCHAR;` (Snowflake: `VARCHAR`, BigQuery: `STRING`).
+- `message_events` may now carry `smtp_status` and `diagnostic`; with them, only hard bounces suppress an address.
 
 ## 2.3.0 (2026-10)
 

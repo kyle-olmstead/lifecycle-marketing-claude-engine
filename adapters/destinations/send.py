@@ -465,30 +465,41 @@ def accepted_rows(rows: List[Dict[str, Any]], flow: str, accepted: set) -> List[
     return out
 
 
+def _workspace_platform() -> Optional[str]:
+    try:
+        from engine import workspace
+        return workspace.find().config().get("platform")
+    except Exception:  # noqa: BLE001 - no workspace, or a broken lmm.yaml: the platform must then be given
+        return None
+
+
 def _cli(argv: Optional[List[str]] = None, env: Optional[Mapping[str, str]] = None, transport: Any = None,
          sleep: Callable[[float], None] = time.sleep) -> int:
     import os
-    ap = argparse.ArgumentParser(description="Send ESP requests: a dry run unless --approve, then batched, idempotent, retried, receipted")
+    ap = argparse.ArgumentParser(prog="lcm send", description="Send ESP requests: a dry run unless --approve, then batched, idempotent, "
+                                                           "retried and receipted (nothing is sent without --approve and the platform's key)")
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--rows", help="pending warehouse-job rows (CSV or JSON)")
     src.add_argument("--requests", help="folder of request files (event_payloads.py or payloads.py output)")
     src.add_argument("--profile-updates", help="person-attribute rows (CSV or JSON) to sync")
     ap.add_argument("--run", help="the plan folder: platform, event and flow come from it, and receipts go to <run>/send/")
-    ap.add_argument("--platform", choices=sorted(KEY_ENV))
+    ap.add_argument("--platform", choices=sorted(KEY_ENV),
+                    help="the platform to send to (default: the plan's with --run, else the workspace's lmm.yaml platform)")
     ap.add_argument("--event", help="trigger event name, with --rows when there is no --run")
     ap.add_argument("--flow", help="flow slug, with --rows when there is no --run")
-    ap.add_argument("--as-of", default=datetime.now(timezone.utc).date().isoformat())
+    ap.add_argument("--as-of", default=datetime.now(timezone.utc).date().isoformat(),
+                    help="with --rows: the run date, YYYY-MM-DD, stamped on each event (default: today, UTC)")
     ap.add_argument("--hub-id", default=None, help="HubSpot portal id (default: HUBSPOT_HUB_ID)")
     ap.add_argument("--braze-instance", default=None, help="Braze REST instance (default: BRAZE_INSTANCE or iad-01)")
     ap.add_argument("--eu", action="store_true", help="Customer.io or Iterable EU data center")
     ap.add_argument("--receipts", help="receipt log path (default: <run>/send/receipts.jsonl, else beside the input)")
     ap.add_argument("--approve", action="store_true", help="really send (needs the platform's key in the environment)")
-    ap.add_argument("--max-attempts", type=int, default=6)
+    ap.add_argument("--max-attempts", type=int, default=6, help="attempts per request on 429, 5xx and connection errors (default: 6)")
     a = ap.parse_args(argv)
     env = os.environ if env is None else env
 
     ctx: Dict[str, Any] = plan_context(Path(a.run)) if a.run else {}
-    platform = a.platform or ctx.get("platform")
+    platform = a.platform or ctx.get("platform") or (None if a.requests else _workspace_platform())
     hub_id = a.hub_id or env.get("HUBSPOT_HUB_ID", "00000000")
     braze_instance = a.braze_instance or env.get("BRAZE_INSTANCE", "iad-01")
     rows: List[Dict[str, Any]] = []

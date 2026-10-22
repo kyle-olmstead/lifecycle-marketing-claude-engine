@@ -1,0 +1,15 @@
+The right grind for how you brew
+
+Hi {{ first_name|default:'there' }}, the question we hear most at checkout is which grind to choose. Whole bean keeps longest if you have a grinder; otherwise pick the grind for your brewer: coarse for a French press, medium for drip, fine for espresso.
+
+Not sure? Reply with how you make your coffee and a person on our team will tell you which to pick. Your cart is saved in the meantime.
+
+Back to my cart: {{ event.extra.checkout_url|default:organization.url }}
+
+Sam at Northfield
+{{ organization.name }}, {{ organization.full_address }}
+You are getting this because you bought from us or joined the roast list.
+Questions about an order? Reply to this email and a person on our team will answer.
+Instagram: https://www.instagram.example/northfieldcoffee
+Brew guides: https://www.northfieldcoffee.example/brew
+Unsubscribe: {% unsubscribe_link %}

@@ -14,9 +14,12 @@ Sequence (each agent's output is a typed contract in engine/models.py):
   6. QA           schema, simulated journeys, payloads, SQL, copy and guardrails, rolled into one status:
                   READY, READY WITH ASSUMPTIONS (things to confirm), or BLOCKED (something must change)
 
-Outputs land in out/<flow>/: plan.md for the marketer, flow_spec.json and simulation.json for the
+Outputs land in <out>/<flow>/: plan.md for the marketer, flow_spec.json and simulation.json for the
 builder and the simulator, the cohort SQL in every dialect, rendered copy, the trigger-event payload
-example, and plan.json with everything. Nothing is sent and nothing is changed in any platform.
+example, and plan.json with everything. That folder always holds the newest run; each run also keeps its
+own copy in <out>/<flow>/runs/<run_id>/outputs/, so a revision never erases the plan it revised.
+<out> is the workspace's runs/ folder inside a workspace, otherwise ./out. Nothing is sent and nothing is
+changed in any platform.
 """
 from __future__ import annotations
 
@@ -172,8 +175,22 @@ def render_plan(p: ExecutionPlan) -> str:
     return "\n".join(L)
 
 
-def write_outputs(p: ExecutionPlan, out_root: Path) -> Path:
-    out = out_root / p.brief.slug
+def default_out() -> str:
+    """The workspace's runs/ folder inside a workspace (lmm.yaml here or above, or LCM_WORKSPACE), otherwise ./out."""
+    from engine import workspace
+    ws = workspace.find()
+    return "out" if ws.fallback else str(ws.runs_dir)
+
+
+def write_outputs(p: ExecutionPlan, out_root: Path, run_dir: Optional[Path] = None) -> Path:
+    """Write the plan's files to out_root/<flow>/ (the newest run) and, with run_dir, a copy into run_dir/outputs/."""
+    out = _write_files(p, out_root / p.brief.slug)
+    if run_dir is not None:
+        _write_files(p, Path(run_dir) / "outputs")
+    return out
+
+
+def _write_files(p: ExecutionPlan, out: Path) -> Path:
     (out / "cohort").mkdir(parents=True, exist_ok=True)
     (out / "copy").mkdir(exist_ok=True)
     (out / "plan.json").write_text(p.model_dump_json(indent=2), encoding="utf-8")
@@ -211,7 +228,8 @@ def _report(plan: ExecutionPlan, out: Path, run_dir: Optional[Path]) -> None:
             print(f"  {k.status.upper():4}  {k.name}: {k.detail[:160]}")
     print(f"plan: {out / 'plan.md'}")
     if run_dir:
-        print(f"run:  {run_dir}  (revise with: python3 -m engine.pipeline.orchestrator revise --run {run_dir} --set touches=4)")
+        print(f"run:  {run_dir}  (this run's own copy: {Path(run_dir) / 'outputs'})")
+        print(f"next: lcm revise --run {run_dir} --set touches=4   |   lcm approve --run {run_dir} --step <step> --variant <id>")
 
 
 def _value(v: str) -> Any:
@@ -238,41 +256,44 @@ def _root(run_dir: Path) -> Path:
 
 
 def _cli(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="LMM Engine teammate: one brief in, a build-ready plan out")
+    ap = argparse.ArgumentParser(prog="lcm", description="LMM Engine teammate: one brief in, a build-ready plan out")
     sub = ap.add_subparsers(dest="cmd", required=True)
+    out_help = "where plans are written (default: the workspace's runs/ folder, or ./out outside a workspace)"
     pl = sub.add_parser("plan", help="run every agent and write the plan")
     src = pl.add_mutually_exclusive_group(required=True)
-    src.add_argument("--brief", help="a filled templates/brief.yaml")
-    src.add_argument("--text", help="the brief in one sentence")
-    pl.add_argument("--product", help="product name, with --text")
+    src.add_argument("--brief", help="a filled brief YAML (templates/brief.yaml shows every field)")
+    src.add_argument("--text", help="the brief in one sentence, e.g. \"a 3-touch abandoned cart flow in Klaviyo\"")
+    pl.add_argument("--product", help="product or brand name, with --text (default: brand.name in lmm.yaml)")
     pl.add_argument("--set", action="append", default=[], metavar="FIELD=VALUE",
-                    help="set a brief field, e.g. postal_address=\"1 Main St, Springfield, IL 62701\" or holdout_pct=20")
+                    help="set a brief field, e.g. postal_address=\"1 Main St, Springfield, IL 62701\" or holdout_pct=20 (repeatable)")
     pl.add_argument("--data", help="folder or URL prefix with users, orders, track_events exports (.csv or .parquet)")
     pl.add_argument("--as-of", help="evaluate the cohort on this date (default: the latest complete day in the data)")
-    pl.add_argument("--copy-mode", default="auto", choices=["auto", "claude", "handoff", "offline"])
+    pl.add_argument("--copy-mode", default="auto", choices=["auto", "claude", "handoff", "offline"],
+                    help="who writes the copy: auto (Claude when ANTHROPIC_API_KEY is set, else the offline library), claude, "
+                         "handoff (write copy_briefs.md for a person or a Claude chat), offline (the built-in library)")
     pl.add_argument("--drafts", help="drafts.json answering copy_briefs.md (from handoff mode)")
-    pl.add_argument("--out", default="out")
+    pl.add_argument("--out", help=out_help)
     pl.add_argument("--sheet", action="store_true", help="log the plan to Google Sheets (needs LCM_SHEET_ID and service-account credentials)")
     br = sub.add_parser("brief", help="turn a sentence into an editable YAML brief")
-    br.add_argument("--text", required=True)
-    br.add_argument("--product")
-    br.add_argument("--set", action="append", default=[], metavar="FIELD=VALUE")
-    br.add_argument("--out")
+    br.add_argument("--text", required=True, help="the brief in one sentence")
+    br.add_argument("--product", help="product or brand name (default: brand.name in lmm.yaml)")
+    br.add_argument("--set", action="append", default=[], metavar="FIELD=VALUE", help="set a brief field (repeatable)")
+    br.add_argument("--out", help="write the YAML here instead of printing it")
     rs = sub.add_parser("resume", help="continue a run that failed part way, from the failed stage")
     rs.add_argument("--run", required=True, help="a run directory, or a flow folder for its newest run")
     rs.add_argument("--data", help="replace the data location (when that was the cause of the failure)")
     rs.add_argument("--out", help="default: the folder the run lives in")
     rv = sub.add_parser("revise", help="start a new run from an old one with brief fields changed; unchanged copy is kept")
-    rv.add_argument("--run", required=True)
+    rv.add_argument("--run", required=True, help="a run directory, or a flow folder for its newest run")
     rv.add_argument("--set", action="append", default=[], metavar="FIELD=VALUE", help="e.g. touches=4, channels=[email,sms], holdout_pct=20")
     rv.add_argument("--out", help="default: the folder the run lives in")
     apv = sub.add_parser("approve", help="mark a copy variant as approved; revisions keep it while its touch is unchanged")
-    apv.add_argument("--run", required=True)
-    apv.add_argument("--step", required=True)
-    apv.add_argument("--variant", required=True)
+    apv.add_argument("--run", required=True, help="a run directory, or a flow folder for its newest run")
+    apv.add_argument("--step", required=True, help="the step id from plan.md, e.g. email_1")
+    apv.add_argument("--variant", required=True, help="the variant id from plan.md, e.g. A")
     apv.add_argument("--out", help="default: the folder the run lives in")
     st = sub.add_parser("status", help="show a run's stages")
-    st.add_argument("--run", required=True)
+    st.add_argument("--run", required=True, help="a run directory, or a flow folder for its newest run")
     a = ap.parse_args(argv)
 
     def sets(items: List[str]) -> Dict[str, Any]:
@@ -286,11 +307,11 @@ def _cli(argv: Optional[List[str]] = None) -> int:
 
     try:
         if a.cmd == "brief":
-            y = to_yaml(parse_text(a.text, a.product, sets(a.set) or None))
+            y = to_yaml(parse_text(a.text, a.product, sets(a.set) or None), thin=True)
             if a.out:
                 Path(a.out).parent.mkdir(parents=True, exist_ok=True)
                 Path(a.out).write_text(y, encoding="utf-8")
-                print(f"wrote {a.out}: confirm the assumptions at the top, then run: python3 -m engine.pipeline.orchestrator plan --brief {a.out}")
+                print(f"wrote {a.out}: confirm the assumptions at the top, then run: lcm plan --brief {a.out}")
             else:
                 print(y)
             return 0
@@ -307,7 +328,7 @@ def _cli(argv: Optional[List[str]] = None) -> int:
             run_dir = _latest(Path(a.run))
             approve(run_dir, a.step, a.variant)
             r = Run.load(run_dir)
-            write_outputs(r.plan(), Path(a.out) if a.out else _root(run_dir))
+            write_outputs(r.plan(), Path(a.out) if a.out else _root(run_dir), run_dir)
             print(f"approved {a.step} variant {a.variant} in run {r.state.run_id}")
             return 0
         if a.cmd == "resume":
@@ -316,13 +337,13 @@ def _cli(argv: Optional[List[str]] = None) -> int:
             if a.data:
                 r.state.data = a.data
             plan = r.execute()
-            _report(plan, write_outputs(plan, Path(a.out) if a.out else _root(run_dir)), r.dir)
+            _report(plan, write_outputs(plan, Path(a.out) if a.out else _root(run_dir), r.dir), r.dir)
             return 3 if plan.qa.status == "BLOCKED" else 0
         if a.cmd == "revise":
             run_dir = _latest(Path(a.run))
             out = Path(a.out) if a.out else _root(run_dir)
             r, plan = revise(run_dir, sets(a.set), out)
-            _report(plan, write_outputs(plan, out), r.dir)
+            _report(plan, write_outputs(plan, out, r.dir), r.dir)
             return 3 if plan.qa.status == "BLOCKED" else 0
         changes = sets(a.set)
         if a.brief:
@@ -334,6 +355,7 @@ def _cli(argv: Optional[List[str]] = None) -> int:
         else:
             brief = parse_text(a.text, a.product, changes or None)
         drafts = json.loads(Path(a.drafts).read_text(encoding="utf-8")) if a.drafts else None
+        a.out = a.out or default_out()
         r = Run.new(brief, Path(a.out), data=a.data, as_of=a.as_of, copy_mode=a.copy_mode, drafts=drafts)
         plan = r.execute()
     except PipelineError as e:
@@ -342,7 +364,7 @@ def _cli(argv: Optional[List[str]] = None) -> int:
     except (ValueError, FileNotFoundError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
-    out = write_outputs(plan, Path(a.out))
+    out = write_outputs(plan, Path(a.out), r.dir)
     _report(plan, out, r.dir)
     if a.sheet:
         from adapters.destinations import sheets as sheets_sync

@@ -1,0 +1,2 @@
+Subject: {{ event.extra.line_items.0.product.title|default:'your cart' }} is waiting for you
+Preview text: Pick up right where you stopped

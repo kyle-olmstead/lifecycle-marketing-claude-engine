@@ -44,6 +44,15 @@ MIN_DELIVERIES = 5
 PLATFORMS = ("klaviyo", "hubspot", "braze", "customerio")
 
 
+# Only a hard bounce suppresses the address. A bounce with no detail is treated as hard (most ESP exports record only hard
+# bounces as 'bounced'); with detail, an address problem (RFC 3463 class 5.1.x, or 5.2.1 mailbox disabled) or a server text
+# saying the mailbox does not exist is hard. Blocks, authentication failures and deferrals are the sender's problem, not the
+# address's: suppressing them would remove good people (engine/deliverability/bounces.py classifies them in full).
+HARD_BOUNCE = ("(m.smtp_status IS NULL AND m.diagnostic IS NULL) OR m.smtp_status LIKE '5.1.%' OR m.smtp_status LIKE '5.2.1%' "
+               "OR LOWER(m.diagnostic) LIKE '%does not exist%' OR LOWER(m.diagnostic) LIKE '%user unknown%' "
+               "OR LOWER(m.diagnostic) LIKE '%no such user%' OR LOWER(m.diagnostic) LIKE '%mailbox not found%'")
+
+
 def tiers_sql(dialect_name: str, as_of: Optional[str] = None, min_deliveries: int = MIN_DELIVERIES, order: bool = True) -> str:
     D = dialect(dialect_name)
     a = D.date_literal(as_of) if as_of else D.current_date
@@ -55,7 +64,7 @@ def tiers_sql(dialect_name: str, as_of: Optional[str] = None, min_deliveries: in
             f"  SELECT m.user_id,\n"
             f"         MAX(CASE WHEN m.event_name = 'clicked' AND {upto} THEN m.event_at END) AS last_click_at,\n"
             f"         SUM(CASE WHEN m.event_name = 'delivered' AND {since(180)} AND {upto} THEN 1 ELSE 0 END) AS deliveries_180d,\n"
-            f"         MAX(CASE WHEN m.event_name = 'bounced' AND {upto} THEN 1 ELSE 0 END) AS hard_bounced,\n"
+            f"         MAX(CASE WHEN m.event_name = 'bounced' AND {upto} AND ({HARD_BOUNCE}) THEN 1 ELSE 0 END) AS hard_bounced,\n"
             f"         MAX(CASE WHEN m.event_name = 'complained' AND {upto} THEN 1 ELSE 0 END) AS complained,\n"
             f"         MAX(CASE WHEN m.event_name = 'unsubscribed' AND {upto} THEN 1 ELSE 0 END) AS unsubscribed\n"
             f"  FROM message_events m\n"
@@ -134,15 +143,16 @@ def render(summary: Dict[str, Any]) -> str:
 
 
 def _cli(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Engagement tiers and the unengaged suppression cohort")
+    ap = argparse.ArgumentParser(prog="lcm engagement", description="Engagement tiers and the unengaged suppression cohort")
     ap.add_argument("--data", help="folder or URL prefix with users and message_events exports")
-    ap.add_argument("--as-of")
-    ap.add_argument("--dialect", default="postgres", choices=["postgres", "snowflake", "bigquery"])
+    ap.add_argument("--as-of", help="score engagement as of this date, YYYY-MM-DD (default: the latest day in message_events)")
+    ap.add_argument("--dialect", default="postgres", choices=["postgres", "snowflake", "bigquery"],
+                    help="warehouse dialect for the tier SQL written to --out (default: postgres)")
     ap.add_argument("--sql-only", action="store_true", help="write the tier SQL for your warehouse and stop")
     ap.add_argument("--platform", choices=PLATFORMS, help="also build sync requests for this ESP (nothing is sent)")
     ap.add_argument("--braze-instance", default="iad-01", help="the REST instance in your Braze dashboard URL (iad-01, fra-02, ...)")
     ap.add_argument("--eu", action="store_true", help="Customer.io EU workspace")
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--out", required=True, help="folder for tiers.csv, summary.json, summary.md and the tier SQL")
     a = ap.parse_args(argv)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)

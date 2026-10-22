@@ -1,11 +1,16 @@
-If you got stuck, this is usually where
+Skip the blank page
 
-Hi {{ customer.first_name | default: "there" }}, when people stop using Ridgeview after the first few weeks, it is usually one step: [the most common blocker from support tickets or the leak map].
+Hi {{ customer.first_name | default: "there" }}, the most common reason people stop after onboarding is the blank report page: it is not obvious what to put on it first.
 
-[The shortest path past it, in one or two sentences]. If that is not it, reply to this email and a person will help.
+The report templates in Ridgeview start you with the charts most teams build first. Pick one, point it at a connected data source, and change what you like.
 
-Try the shortcut: https://app.ridgeview.example/reports/new?utm_source=lifecycle&utm_medium=email&utm_campaign=ridgeview_winback_14d&utm_content=t2_email
+It takes about two minutes, and you can delete it if it is not useful.
+
+Start from a template: https://app.ridgeview.example/reports/new?utm_source=lifecycle&utm_medium=email&utm_campaign=ridgeview_winback_14d&utm_content=t2_email
 
 Dana Ortiz at Ridgeview
-100 Example Way, Suite 400, Springfield, OR 97477
+Ridgeview Analytics, Inc. (fictional), 100 Example Way, Suite 400, Springfield, OR 97477
+You are getting this because you have a Ridgeview account.
+Questions? Reply to this email and a person on our team will answer.
+LinkedIn: https://www.linkedin.example/company/ridgeview
 Unsubscribe: {% unsubscribe_url %}

@@ -1,0 +1,80 @@
+<!-- dialect: klaviyo. MJML source built by engine/render/mjml_render.py from templates/email/mjml/; compile it with: python3 engine/render/mjml_render.py compile FILE -->
+<mjml lang="en-US">
+  <mj-raw position="file-start"><!-- dialect: klaviyo -->
+<!-- northfield_coffee_cart_abandon_1h / t2_email_fallback. Rendered by engine/agents/copywriter.py through MJML (engine/render/mjml_render.py); lint: python3 engine/render/template_lint.py --dialect klaviyo --email <this file> -->
+</mj-raw>
+  <mj-head>
+    <mj-title>No surprises at checkout</mj-title>
+    <mj-font name="Lora" href="https://fonts.googleapis.com/css2?family=Lora:wght@400;700&amp;display=swap" />
+    <mj-attributes>
+      <mj-all font-family="Lora, Georgia, 'Times New Roman', serif" />
+      <mj-section padding="0" />
+      <mj-text color="#2B2118" font-size="16px" line-height="1.5" padding="0 24px 16px 24px" />
+      <mj-image padding="0 24px" />
+    </mj-attributes>
+    <mj-raw>
+      <meta name="color-scheme" content="light dark">
+      <meta name="supported-color-schemes" content="light dark">
+      <meta name="x-apple-disable-message-reformatting">
+    </mj-raw>
+    <mj-raw>
+      <!--[if mso]><style type="text/css">body, table, td, div, p, a, h1 { font-family: Georgia, 'Times New Roman', serif !important; }</style><![endif]-->
+    </mj-raw>
+    <mj-style>
+      :root { color-scheme: light dark; supported-color-schemes: light dark; }
+      a { color: #6B3E26; }
+      @media (prefers-color-scheme: dark) {
+        body, .lcm-body { background-color: #15100C !important; }
+        .lcm-card, .lcm-card > table { background: #211913 !important; background-color: #211913 !important; }
+        .lcm-footer, .lcm-footer > table { background: #15100C !important; background-color: #15100C !important; }
+        .lcm-text div, .lcm-text h1 { color: #F3ECE4 !important; }
+        a { color: #E0A878 !important; }
+        .lcm-button td, .lcm-button a { background: #D9A066 !important; background-color: #D9A066 !important; }
+        .lcm-button a { color: #1A120C !important; }
+      }
+      [data-ogsc] .lcm-text div, [data-ogsc] .lcm-text h1 { color: #F3ECE4 !important; }
+      [data-ogsc] a { color: #E0A878 !important; }
+      [data-ogsc] .lcm-button a { color: #1A120C !important; }
+      [data-ogsb] .lcm-body { background-color: #15100C !important; }
+      [data-ogsb] .lcm-card, [data-ogsb] .lcm-card > table { background-color: #211913 !important; }
+      [data-ogsb] .lcm-footer, [data-ogsb] .lcm-footer > table { background-color: #15100C !important; }
+      [data-ogsb] .lcm-button td, [data-ogsb] .lcm-button a { background-color: #D9A066 !important; }
+    </mj-style>
+  </mj-head>
+  <mj-body width="600px" background-color="#F6F1EA" css-class="lcm-body">
+    <mj-raw>
+      <div class="preheader" style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Shipping shows before you pay&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;</div>
+    </mj-raw>
+    <mj-section css-class="lcm-card" background-color="#FFFFFF" padding="24px 0 0 0">
+      <mj-column>
+        <mj-image src="https://www.northfieldcoffee.example/email/northfield-wordmark-320x80.png" alt="Northfield Coffee Roasters" width="160px" align="left" height="40px" href="https://www.northfieldcoffee.example" />
+      </mj-column>
+    </mj-section>
+    <mj-section css-class="lcm-card" background-color="#FFFFFF" padding="16px 0 0 0">
+      <mj-column>
+        <mj-text css-class="lcm-text">
+          <h1 style="margin:0;font-family:Lora, Georgia, 'Times New Roman', serif;font-size:22px;line-height:1.3;font-weight:bold;">See the full price before you pay</h1>
+        </mj-text>
+        <mj-text css-class="lcm-text">Hi {{ first_name|default:'there' }}, if you stopped because you were not sure what shipping would cost, the checkout page shows it before you enter any payment details.</mj-text>
+        <mj-text css-class="lcm-text">Your cart is saved with {{ event.extra.line_items.0.product.title|default:'your cart' }} in it, and questions about an order go straight to a person on our team if you reply to this email.</mj-text>
+      </mj-column>
+    </mj-section>
+    <mj-section css-class="lcm-card" background-color="#FFFFFF" padding="0 0 32px 0">
+      <mj-column>
+        <mj-button css-class="lcm-button" href="{{ event.extra.checkout_url|default:organization.url }}" align="left" background-color="#6B3E26" color="#FFFFFF" font-size="16px" font-weight="bold" line-height="1.25" border-radius="6px" inner-padding="12px 20px" padding="8px 24px 0 24px">See my total</mj-button>
+      </mj-column>
+    </mj-section>
+    <mj-section css-class="lcm-footer" background-color="#F6F1EA" padding="16px 0 24px 0">
+      <mj-column>
+        <mj-text css-class="lcm-text" font-size="12px" line-height="1.5" padding="0 24px">
+          Sam at Northfield<br>
+          {{ organization.name }}, {{ organization.full_address }}<br>
+          You are getting this because you bought from us or joined the roast list.<br>
+          Questions about an order? Reply to this email and a person on our team will answer.<br>
+          <a href="https://www.instagram.example/northfieldcoffee">Instagram</a> | <a href="https://www.northfieldcoffee.example/brew">Brew guides</a><br>
+          {% unsubscribe 'Unsubscribe' %}
+        </mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

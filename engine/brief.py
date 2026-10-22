@@ -13,6 +13,8 @@ and the plan prints those first under "Confirm before you build". Nothing is sil
 """
 from __future__ import annotations
 
+import json
+
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -102,8 +104,10 @@ def _num(token: str) -> Optional[int]:
     return int(token) if token.isdigit() else NUMBER_WORDS.get(token)
 
 
-def parse_text(text: str, product_name: Optional[str] = None, overrides: Optional[Dict[str, Any]] = None) -> Brief:
-    """Rule-based parse of a one-sentence brief. Unstated values become recorded assumptions."""
+def parse_text(text: str, product_name: Optional[str] = None, overrides: Optional[Dict[str, Any]] = None,
+               defaults: Optional[Dict[str, Any]] = None) -> Brief:
+    """Rule-based parse of a one-sentence brief. The sentence wins, then the workspace's lmm.yaml (`defaults`, read from the
+    workspace when None), then the engine's defaults; values that came from none of these become recorded assumptions."""
     t = " ".join(text.split())
     low = t.lower().replace("’", "'")
     data: Dict[str, Any] = {}
@@ -265,6 +269,9 @@ def parse_text(text: str, product_name: Optional[str] = None, overrides: Optiona
                                       why=f"the sentence named {c.event} for both who qualifies and the core action; qualifying set to "
                                           f"{fallback.event}. Confirm who should be eligible"))
     data["goal"] = t
+    from engine import workspace
+    filled = workspace.apply_defaults(data, {a.field for a in assumptions}, defaults)
+    assumptions = [a for a in assumptions if a.field not in filled]
     for k, v in (overrides or {}).items():
         data[k] = v
         assumptions = [a for a in assumptions if a.field != k]
@@ -300,20 +307,31 @@ def _event(value: Any) -> Any:
     return value
 
 
-def load_brief(path: Path) -> Brief:
-    """Load and validate a YAML brief. Raises ValueError with every problem listed, in plain words."""
+def load_brief(path: Path, defaults: Optional[Dict[str, Any]] = None) -> Brief:
+    """Load and validate a YAML brief, filling unstated fields from the workspace's lmm.yaml (`defaults`, read from the
+    workspace when None). Raises ValueError with every problem listed, in plain words."""
     raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
     if not isinstance(raw, dict):
         raise ValueError(f"{path}: a brief is a set of 'field: value' lines")
     raw = {k: v for k, v in raw.items() if v is not None and v != ""}
-    missing = [k for k in REQUIRED_YAML if k not in raw and not (k == "churn_threshold_days" and raw.get("flow_type") == "activation")]
+    gate = raw.get("sending_gate")
+    if isinstance(gate, str) and gate.lower().endswith(".json"):        # a gate record written by lcm deliverability check
+        gp = Path(gate) if Path(gate).is_absolute() else Path(path).parent / gate
+        if not gp.exists():
+            raise ValueError(f"{path}: sending_gate names {gate}, which does not exist (run lcm deliverability check DOMAIN --write-gate {gate})")
+        raw["sending_gate"] = json.loads(gp.read_text(encoding="utf-8"))
+    from engine import workspace
+    workspace.apply_defaults(raw, set(), defaults)
+    ft = raw.get("flow_type", "winback")
+    needed = {"winback": REQUIRED_YAML, "activation": ("product_name", "core_conversion_event")}.get(ft, ("product_name",))
+    missing = [k for k in needed if k not in raw]
     if missing:
         raise ValueError(f"{path}: fill in {', '.join(missing)} (see the comments in templates/brief.yaml)")
     for k in ("qualifying_event", "core_conversion_event"):
         if k in raw:
             raw[k] = _event(raw[k])
     assumptions: List[Assumption] = []
-    if "qualifying_event" not in raw:
+    if "qualifying_event" not in raw and ft == "winback":
         assumptions.append(Assumption(field="qualifying_event", value={"event": "activation_reached"},
                                       why="who qualifies was not stated; defaulted to users who reached activation"))
     if "platform" not in raw:
@@ -327,11 +345,37 @@ def load_brief(path: Path) -> Brief:
         raise ValueError(f"{path}: {problems}") from None
 
 
-def to_yaml(brief: Brief) -> str:
-    """Write a brief back out for editing, with the assumptions listed as comments to confirm."""
+KEEP_IN_THIN = ("product_name", "flow_type", "goal", "platform", "touches", "channels", "qualifying_event", "core_conversion_event",
+                "churn_threshold_days", "abandon_after_hours", "replenish_after_days", "trial_days", "holdout_pct")
+IRRELEVANT = {"churn_threshold_days": ("winback", "sunset"), "abandon_after_hours": ("cart_abandon", "browse_abandon"),
+              "replenish_after_days": ("replenishment",), "replenish_lead_days": ("replenishment",), "trial_days": ("trial_convert",)}
+
+
+def to_yaml(brief: Brief, thin: bool = False, defaults: Optional[Dict[str, Any]] = None) -> str:
+    """Write a brief back out for editing, with the assumptions listed as comments to confirm.
+
+    thin=True writes only what this flow needs and what differs from the workspace (lmm.yaml) and the engine's defaults,
+    so the brief keeps inheriting the workspace's platform, gate, policies and brand: what `lcm brief --out` writes."""
     data = brief.model_dump(exclude={"assumptions"}, exclude_none=True)
-    head = ["# Generated by engine/pipeline/orchestrator.py brief. Edit, then run:",
-            "#   python3 -m engine.pipeline.orchestrator plan --brief <this file>", "#"]
+    data = {k: v for k, v in data.items() if brief.flow_type in IRRELEVANT.get(k, (brief.flow_type,))}
+    if thin:
+        from engine import workspace
+        ws = workspace.brief_defaults() if defaults is None else defaults
+        mine = brief.model_dump(mode="json", exclude={"assumptions"})
+        try:     # the workspace's values as this brief would hold them (validated the same way, so 5 and 5.0 compare equal)
+            theirs = Brief.model_validate({**brief.model_dump(exclude={"assumptions"}), **ws}).model_dump(mode="json")
+        except ValidationError:
+            theirs = {}
+        model_defaults = Brief.model_construct().model_dump(mode="json")
+        same = lambda k: json.dumps(mine.get(k), sort_keys=True) == json.dumps((theirs if k in ws else model_defaults).get(k), sort_keys=True)  # noqa: E731
+        data = {k: v for k, v in data.items() if k in KEEP_IN_THIN or not same(k)}
+        data.pop("brand_kit", None)
+        if brief.frequency is not None or "frequency" in ws:
+            data.pop("frequency_cap_per_week", None)
+    head = ["# Generated by lcm brief. Edit, then run:", "#   lcm plan --brief <this file>", "#"]
+    if thin:
+        head += ["# Fields left out come from the workspace's lmm.yaml (platform, sending gate, frequency policy, offer policy,",
+                 "# brand and measurement). Add one here to override it for this flow only.", "#"]
     if brief.assumptions:
         head.append("# Assumed, not stated. Confirm or change each one:")
         head += [f"#   {a.field}: {a.why}" for a in brief.assumptions]

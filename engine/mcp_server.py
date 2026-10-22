@@ -8,8 +8,16 @@ you point them at, write plans under LCM_OUT_DIR (default ./out), and never send
 Tools
   draft_brief      a sentence to an editable YAML brief, with every assumption listed
   plan_campaign    the full plan from a sentence or a brief file (optionally verified on data)
+  revise_plan, approve_variant, priorities, engagement_tiers, check_domain
   audit_cohort     the cohort health check on a folder of exports
   simulate_flow    dry-run any flow spec JSON
+  simulate_program every live flow in the workspace together, against its one frequency policy
+  check_data       a data folder against the canonical tables, column by column
+  import_exports   vendor exports (Shopify, Klaviyo, Stripe, HubSpot, ...) into the canonical tables
+  size_holdout     people and months a holdout needs, in sentences
+  workspace_doctor what is set up in the workspace and what is missing
+
+Plans are written to LCM_OUT_DIR, else the workspace's runs/ folder, else ./out.
 
 Requires the Python packages in requirements.txt (mcp 2.x).
 
@@ -36,7 +44,7 @@ from engine.pipeline.core import PipelineError, approve, revise  # noqa: E402
 from engine.brief import load_brief, parse_text, to_yaml  # noqa: E402
 from engine.policy import simulator as campaign_simulator  # noqa: E402
 
-OUT = Path(os.environ.get("LCM_OUT_DIR", "out")).resolve()
+OUT = Path(os.environ.get("LCM_OUT_DIR") or orchestrator.default_out()).resolve()
 
 server = MCPServer(
     name="lcm-teammate", version=__version__,
@@ -44,7 +52,8 @@ server = MCPServer(
                   "assumptions; plan_campaign to produce a build-ready plan; revise_plan to change one thing in a plan (unchanged copy and "
                   "approvals are kept); approve_variant to record the copy to ship; priorities for what to build next and why; audit_cohort for a cohort health check; "
                   "engagement_tiers for who has stopped engaging; check_domain for a sending domain's live authentication records; "
-                  "simulate_flow to dry-run a flow spec. Always show the plan's status, its 'Confirm before you build' list and any "
+                  "simulate_flow to dry-run a flow spec; simulate_program for every live flow at once; check_data before trusting a data folder; "
+                  "import_exports to turn vendor exports into the engine's tables; size_holdout for test sizing; workspace_doctor for setup. Always show the plan's status, its 'Confirm before you build' list and any "
                   "compliance line that is not PASS. Nothing is sent to any platform by these tools."),
 )
 
@@ -156,6 +165,56 @@ def simulate_flow(flow_spec_path: str) -> str:
     rules_path = p.with_name("simulation.json")
     rules = json.loads(rules_path.read_text(encoding="utf-8")) if rules_path.exists() else None
     return campaign_simulator.render(campaign_simulator.simulate(spec, rules))
+
+
+@server.tool()
+def simulate_program(add_brief_paths: Optional[List[str]] = None) -> str:
+    """Every brief in the workspace's briefs/active/ (plus any candidates) simulated together against the workspace's
+    frequency policy and collision rule: which caps break across flows, and the rule or platform limit that holds them."""
+    from engine.policy import program
+    briefs = program.active_briefs() + [load_brief(Path(x)) for x in (add_brief_paths or [])]
+    if not briefs:
+        return "No live flows: copy the briefs of live flows into briefs/active/, or pass add_brief_paths."
+    return program.render(program.simulate(briefs, program.workspace_policy()))
+
+
+@server.tool()
+def check_data(data_dir: str) -> str:
+    """Check a folder of exports against the canonical tables: missing or late tables, empty or malformed columns, future
+    dates, duplicate keys and orphaned rows, each with examples and a fix. Returns Markdown."""
+    from engine.data import check
+    return check.render_markdown(check.check_folder(Path(data_dir)))
+
+
+@server.tool()
+def import_exports(source: str, folders: List[str], out_dir: str) -> str:
+    """Map vendor export folders into the canonical tables in out_dir (source: shopify, klaviyo, stripe, hubspot, customerio,
+    ga4, segment, rudderstack, or auto to detect), then check the result. Returns the import and check reports."""
+    from adapters.sources import cli as import_cli
+    from engine.data import check
+    summary = import_cli.run_import(source, [Path(f) for f in folders], Path(out_dir))
+    return import_cli.render_markdown(summary) + "\n" + check.render_markdown(check.check_folder(Path(out_dir)))
+
+
+@server.tool()
+def size_holdout(baseline: float, mde_rel: float, holdout: float = 0.15, entries_per_month: Optional[float] = None,
+                 outcome_window_days: float = 0) -> str:
+    """People a holdout test needs to detect a relative lift on a baseline rate (shares: 0.10 = 10%), and with
+    entries_per_month, how many months it takes to read and what a larger holdout would buy."""
+    from engine.measurement import stats
+    if entries_per_month:
+        return stats.render_feasible(stats.feasibility(entries_per_month, holdout, baseline, None, mde_rel, outcome_window_days=outcome_window_days))
+    ratio = (1 - holdout) / holdout if holdout else 1.0
+    return stats.render_size(stats.sample_size(baseline, baseline * (1 + mde_rel), 0.05, 0.80, ratio, True), holdout)
+
+
+@server.tool()
+def workspace_doctor() -> str:
+    """What is set up and what is missing: Python and packages, the workspace's lmm.yaml, the sending gate's age, the
+    brand kit's contrast, the data, the live briefs, and which credential names are set (values are never read out)."""
+    from engine.cli.commands import diagnose
+    mark = {"ok": "OK", "note": "NOTE", "fail": "FAIL"}
+    return "\n".join(f"{mark[r['status']]:4}  {r['name']}: {r['detail']}" for r in diagnose())
 
 
 if __name__ == "__main__":

@@ -329,12 +329,14 @@ def _lint_summary(html: str, dialect: str) -> Tuple[bool, str]:
 
 
 def _cli(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Render a sample email for a brand kit, compile MJML, or refresh the golden files")
+    ap = argparse.ArgumentParser(prog="lcm render",
+                                 description="Render a sample email for a brand kit, compile MJML, or refresh the golden files")
     ap.add_argument("command", nargs="?", choices=("render", "compile"), default="render",
                     help="render (default): a sample email for a kit; compile: compile an MJML file to HTML")
     ap.add_argument("file", nargs="?", help="compile: the .mjml file to compile")
     ap.add_argument("--brand", help="brand.yaml (default: the current workspace's kit, or the neutral default)")
-    ap.add_argument("--dialect", default="customerio", choices=(*DIALECTS, "all"))
+    ap.add_argument("--dialect", default="customerio", choices=(*DIALECTS, "all"),
+                    help="render: the platform's template language for the sample, or all (default: customerio)")
     ap.add_argument("--out", help="render: output .html path (default: lcm_preview_<dialect>.html); compile: default <file>.html")
     ap.add_argument("--out-dir", help="render: folder for the preview files (default: the current folder)")
     ap.add_argument("--compile", dest="compile_path", metavar="FILE", help="same as: compile FILE")

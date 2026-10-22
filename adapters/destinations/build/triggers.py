@@ -253,7 +253,7 @@ def trigger(ctx: Ctx, mode: str) -> TriggerConfig:
     if mode == "native_event":
         if p == "klaviyo":
             ttype = "metric"
-            if ft == "replenishment" and ctx.options.get("shopify"):
+            if ft == "replenishment" and ctx.shopify:
                 qn = ctx.caps["shopify_metric_names"]["value"]["product_ordered"]
             summary = f"Metric-triggered flow on {qn}"
             filters = [f"trigger filter: {w}" for w in where]
@@ -261,6 +261,8 @@ def trigger(ctx: Ctx, mode: str) -> TriggerConfig:
                 filters.append(f"profile filter: {qn} equals 1 over all time (the first order)")
             if ft in ("cart_abandon", "browse_abandon"):
                 filters.append("Klaviyo tracks events on known profiles only, so anonymous sessions cannot enter")
+            if ft == "welcome":
+                filters.append("or use a list trigger (Added to list) on your newsletter list instead of the event")
         elif p == "hubspot":
             ttype = "EVENT_BASED: Custom event occurs"
             summary = f"Contact-based workflow enrolled when the custom event {qn} occurs (enrolls existing contacts only)"
