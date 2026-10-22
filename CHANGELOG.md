@@ -22,8 +22,11 @@ Audit (v2.3); every quick win and systemic enhancement in its roadmap is in here
 - Welcome and other new-entrant flows are exempt from the AMBER engaged-only filter (a new subscriber has no
   engagement history yet); each flow has a gate class (new entrant, behavior, lapsed, transactional, remediation).
 - Account-level holdouts hash `account_id` (falling back to `user_id`), so people in one account are never split.
-- Caps written as days or months ("2 a day", "6 a month") are parsed, not dropped; timestamps are validated; the flow
+- Caps written as days or months ("2 a day", "6 a month") are parsed, not dropped, and each phrase keeps its own
+  channel ("2 texts a day and 6 emails a month" is an SMS cap and an email cap); timestamps are validated; the flow
   spec's branch graph is checked for dangling targets (the shipped example had one).
+- Sign-ups are read from `users.created_at` as well as `signed_up` events, so a store whose exports carry no sign-up
+  event still has a welcome audience; engagement flows check their events in `message_events`.
 - The SMS window is 09:00 to 20:00 recipient local time, the narrowest US state window `config/compliance_rules.json`
   tracks, and the prose says "permitted sending window" everywhere; a send hour outside a channel's window is refused
   when the brief is read.
@@ -53,7 +56,10 @@ Audit (v2.3); every quick win and systemic enhancement in its roadmap is in here
   flows record an hours request as an assumption instead of dropping it. Unsupported flows are refused by name.
 - Product blocks show the cart or product from each platform's own event fields (Klaviyo's Shopify events,
   Customer.io and Braze event items, HubSpot and Marketing Cloud contact or entry data), and the button goes back to
-  that checkout or product. The offline copy library covers every flow's roles with no bracketed fill-ins.
+  that checkout or product. The offline copy library covers every flow's roles with no bracketed fill-ins, and
+  `tests/test_flow_library.py` plans all ten flows on all five platforms with no copy warning.
+- Templates read only the event fields the tracking plan gives the trigger event (`engine/render/fields.py`); the
+  check found and closed three gaps (item names, item links and images, and the browse event's single product).
 
 **Sources and check-data** (`adapters/sources/`, `engine/data/check.py`, `docs/IMPORTING_DATA.md`)
 - `lcm import` maps Shopify, Klaviyo, Stripe, HubSpot, Customer.io, GA4 (BigQuery export), Segment and RudderStack
