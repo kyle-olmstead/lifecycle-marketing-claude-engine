@@ -360,5 +360,8 @@ def test_northfield_behaves_like_a_coffee_store():
 
 
 def test_northfield_folder_stays_small():
-    size = sum(p.stat().st_size for p in BRAND.rglob("*") if p.is_file() and "__pycache__" not in p.parts)
+    def committed(p):          # runs/ holds the one finished run; anything else there is a local try-out (gitignored)
+        parts = p.relative_to(BRAND).parts
+        return "__pycache__" not in parts and not (parts[0] == "runs" and len(parts) > 1 and parts[1] not in ("cart_abandon", "README.md"))
+    size = sum(p.stat().st_size for p in BRAND.rglob("*") if p.is_file() and committed(p))
     assert size < 8 * 1024 * 1024, size

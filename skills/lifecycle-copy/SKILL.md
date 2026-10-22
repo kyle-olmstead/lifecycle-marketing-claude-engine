@@ -5,50 +5,56 @@ description: >
   "personalize this in Liquid", "convert this template to Klaviyo" or "to HubSpot" or "to
   AMPscript", "write the SMS", "push notification copy", "in-app message", "this copy isn't
   converting", or needs a template checked for broken tags or missing fallbacks. Writes copy for a
-  specific position in a specific flow, in the platform's real template dialect, with fallbacks on
-  every token and falsifiable hypotheses on every variant.
+  specific position in a specific flow, in the platform's real template dialect, linted, with a
+  falsifiable hypothesis on every variant.
 metadata:
-  version: "2.0.0"
+  version: "3.0.0"
 ---
 
 # Lifecycle copy in the right dialect
 
-## Step 0: Load context and rules
+Always read (once per conversation; skip any you already read in this conversation):
+- `${CLAUDE_PLUGIN_ROOT}/prompts/core/principles.md`
+- `${CLAUDE_PLUGIN_ROOT}/prompts/core/syntax_rules.md` (every copy job writes template code)
 
-Read `${CLAUDE_PLUGIN_ROOT}/prompts/core/system_prompt.md` and `lmm-engine/context.xml`, especially the voice
-module (binding when present) and the messaging platform's template dialect.
+Workspace: `lmm.yaml` (`platform` sets the dialect; `offer_policy` says what copy may offer; `frequency` holds the
+permitted send windows) and the brand kit `brand.yaml` (its voice is binding when present). Older setups keep the
+voice module and dialect in `lmm-engine/context.xml`.
 
-**Before running a tool:** the checks need Python 3.12 or later and the packages in
-`${CLAUDE_PLUGIN_ROOT}/requirements.txt`. If an import fails, install them once with
-`python3 -m pip install -r ${CLAUDE_PLUGIN_ROOT}/requirements.txt`. If code cannot run here (no
-shell, or the install is blocked), still deliver, and write "unchecked" next to every artifact a
-tool would have checked; never describe an unchecked artifact as verified.
+`lcm` below is the installed command, or `python3 ${CLAUDE_PLUGIN_ROOT}/engine/cli/main.py` (Python 3.12 or later and
+`${CLAUDE_PLUGIN_ROOT}/requirements.txt`; `lcm doctor` checks the install). If code cannot run, still deliver and
+label every template unlinted.
 
-## Step 1: Pick the module
+## 1. Refuse to write blind
 
+Flow position, segment, trigger, the single conversion goal and the platform are required. Ask for what is missing;
+never invent brand facts, numbers or names.
+
+## 2. Write
+
+Route (read the one job prompt that matches):
 - Email in any dialect: `${CLAUDE_PLUGIN_ROOT}/prompts/jobs/copy/email_writer.md`
 - SMS, push, in-app and channel orchestration: `${CLAUDE_PLUGIN_ROOT}/prompts/jobs/copy/sms_push_in_app.md`
-- HTML building blocks: `${CLAUDE_PLUGIN_ROOT}/templates/email/components.html`
 
-Syntax reference: `${CLAUDE_PLUGIN_ROOT}/docs/LIQUID_CHEATSHEET.md`.
+For copy inside a planned flow, the plan's `copy_briefs.md` names each touch's role and job and the tokens to write
+(`{first_name}`, `{product_name}`, and for event flows `{item_name}` and `{product_block}`), which the renderer turns
+into the platform's syntax with fallbacks; never bracketed fill-ins. The flow type's prompt in
+`${CLAUDE_PLUGIN_ROOT}/prompts/jobs/flows/` says what that flow's copy must not claim. HTML building blocks, when you
+build a full email by hand: `${CLAUDE_PLUGIN_ROOT}/templates/email/components.html`; the brand's MJML templates render
+with `lcm render`. Per-dialect details beyond the syntax rules: `${CLAUDE_PLUGIN_ROOT}/docs/LIQUID_CHEATSHEET.md`.
 
-## Step 2: Refuse to write blind
-
-Flow position, segment, trigger, the single conversion goal and the platform are required. Ask for
-what is missing; never invent brand facts, numbers or names.
-
-## Step 3: Write, then check
+## 3. Check: the engine counts and lints
 
 ```text
-python3 ${CLAUDE_PLUGIN_ROOT}/engine/render/template_lint.py --dialect <dialect> --email email.html
-python3 ${CLAUDE_PLUGIN_ROOT}/engine/render/sms.py "<rendered worst-case SMS>"
+lcm lint --dialect <dialect> --email email.html
+lcm sms "<the worst-case rendering>" [--first-message]
+lcm brand check
 ```
 
 Paste the results under the copy, or label it unlinted.
 
 ## Rules
 
-- One conversion goal per message; every token has a fallback; every variant has a falsifiable
-  hypothesis.
-- No fake urgency, fake scarcity or fabricated personalization.
+- One conversion goal per message; every variant has a falsifiable hypothesis.
+- No fake urgency, fake scarcity or fabricated personalization; no offer the workspace's `offer_policy` does not list.
 - Never send or schedule anything; drafts only, unless the user approves a specific send.

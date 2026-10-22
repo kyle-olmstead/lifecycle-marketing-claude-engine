@@ -12,8 +12,8 @@ label how each is known.
 
 **Order** (plugin mode does steps 1 and 3 for you):
 
-1. `prompts/core/system_prompt.md`: the operating rules.
-2. Your filled `templates/context/context_loader.xml`: one file per brand.
+1. `prompts/core/principles.md`: the operating principles (syntax rules and diagnostics are read when a job needs them).
+2. Your workspace's `lmm.yaml` (written by `lcm init`; older setups: a filled `templates/context/context_loader.xml`).
 3. The module prompt for the job (the router in the system prompt names it).
 4. The evidence for this job: header samples, query results, exports.
 

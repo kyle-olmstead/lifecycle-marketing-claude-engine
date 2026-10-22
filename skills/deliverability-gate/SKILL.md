@@ -8,53 +8,51 @@ description: >
   sending gate, diagnoses the root cause from headers, DNS and placement data, and produces a
   remediation protocol with exact DNS records and a warming ladder the gate allows.
 metadata:
-  version: "2.0.0"
+  version: "3.0.0"
 ---
 
 # Deliverability gate and inbox recovery
 
-## Step 0: Load context and rules
+Always read (once per conversation; skip it if you already read it in this conversation):
+`${CLAUDE_PLUGIN_ROOT}/prompts/core/principles.md`.
 
-Read `${CLAUDE_PLUGIN_ROOT}/prompts/core/system_prompt.md` and `lmm-engine/context.xml` (run
-`lifecycle-setup` first if it does not exist).
+Workspace: `lmm.yaml` (`sending_gate`, `platform`, `brand`); older setups keep the same facts in
+`lmm-engine/context.xml`. No workspace yet: run `lifecycle-setup` first.
 
-**Before running a tool:** the checks need Python 3.12 or later and the packages in
-`${CLAUDE_PLUGIN_ROOT}/requirements.txt`. If an import fails, install them once with
-`python3 -m pip install -r ${CLAUDE_PLUGIN_ROOT}/requirements.txt`. If code cannot run here (no
-shell, or the install is blocked), still deliver, and write "unchecked" next to every artifact a
-tool would have checked; never describe an unchecked artifact as verified.
+`lcm` below is the installed command, or `python3 ${CLAUDE_PLUGIN_ROOT}/engine/cli/main.py` (Python 3.12 or later and
+`${CLAUDE_PLUGIN_ROOT}/requirements.txt`; `lcm doctor` checks the install). If code cannot run, do the job prompt's
+steps by hand, say the analysis is manual, and mark every artifact a tool would have checked "unchecked".
 
-## Step 1: Pick the module
+## 1. Compute: the engine issues the gate
 
-- Diagnosis, headers, DNS, gate: `${CLAUDE_PLUGIN_ROOT}/prompts/jobs/deliverability/header_analyzer.md`
+- A domain: `lcm deliverability check <domain> --write-gate gate.json` (add `--selectors s1,s2`, `--envelope <bounce
+  domain>`, `--signals <signals.json>`). It looks up SPF, DKIM, DMARC, MTA-STS, TLS-RPT and BIMI and writes the gate
+  `lmm.yaml` points to. If lookups fail here, ask for `dig` output with the date it was run.
+- One raw message: `lcm deliverability headers <file>`. Evidence collected another way: `lcm deliverability analyze
+  incident.json --markdown`. Signals only: `lcm deliverability gate signals.json`.
+- Sending data: `lcm deliverability bounces`, `complaints`, `providers`, and the daily trend `lcm deliverability
+  monitor`. Engagement tiers for the gate and the ladder: `lcm engagement --data <exports> --out <dir>`.
+- A warming ladder: `lcm warmup --target <n> --tiers '<json>' --gate <verdict> --markdown`.
+
+## 2. Judgment
+
+Route (read the one job prompt that matches; it holds the method and the output format):
+- Diagnosis, headers, DNS, root cause, remediation: `${CLAUDE_PLUGIN_ROOT}/prompts/jobs/deliverability/header_analyzer.md`
 - Warming a new or recovering IP or domain: `${CLAUDE_PLUGIN_ROOT}/prompts/jobs/deliverability/warmup_schedule_generator.md`
 - DMARC rollout or alignment audit: `${CLAUDE_PLUGIN_ROOT}/prompts/jobs/deliverability/dmarc_alignment_audit.md`
 
-Follow the module's protocol and output format exactly.
+Engagement fell with no obvious cause: `${CLAUDE_PLUGIN_ROOT}/prompts/core/diagnostics/degraded_inbox_placement.md`
+first. The DNS record rule is in the job prompts; read `${CLAUDE_PLUGIN_ROOT}/prompts/core/syntax_rules.md` only if
+you also write a template, SQL or an API payload.
 
-## Step 2: Gather evidence
+Ask for raw headers from affected messages (several providers, several campaign types). With a messaging platform
+connected, read bounce classes, complaint and unsubscribe rates, and engagement by recipient domain. Label everything.
 
-Ask for raw headers from affected messages (several providers, several campaign types) and `dig`
-output with the date it was run. If a messaging platform is connected, read bounce classes,
-complaint and unsubscribe rates, and engagement split by recipient domain. Label everything.
+## 3. Deliver
 
-## Step 3: Compute, do not guess
-
-When code execution is available, assemble the analyzer input and run:
-
-```text
-python3 ${CLAUDE_PLUGIN_ROOT}/engine/deliverability/analyze.py analyze incident.json --markdown
-python3 ${CLAUDE_PLUGIN_ROOT}/engine/deliverability/warmup.py --target <n> --tiers '<json>' --gate <verdict> --markdown
-```
-
-Without code execution, do the module's steps by hand and label the analysis manual.
-
-## Step 4: Deliver
-
-The gate is the first line. Then the root cause, the alignment report, the bulk-sender matrix, the
-remediation protocol (every DNS change as host, type, TTL and value), the warming schedule the gate
-allows, and the verification plan. Offer to save the report to `lmm-engine/deliverability/<date>.md`
-and to update the gate in the context file.
+The gate is the first line. Then the root cause, the alignment report, the bulk-sender matrix, the remediation
+protocol (every DNS change as host, type, TTL and value), the warming schedule the gate allows, and the verification
+plan. Offer to save the report in the workspace's `runs/` folder and to record the gate with `--write-gate`.
 
 ## Rules
 

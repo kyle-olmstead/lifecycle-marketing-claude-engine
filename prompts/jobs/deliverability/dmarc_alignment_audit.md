@@ -1,16 +1,15 @@
 ---
 id: lmm.deliverability.dmarc_alignment_audit
-version: 2.0.0
-module: 01_deliverability_and_infrastructure
+version: 3.0.0
 type: checklist
-tools: [engine/deliverability/analyze.py]
+tools: [lcm deliverability]
 ---
 
 # DMARC Alignment Audit and Enforcement Rollout
 
 Work top to bottom. Do not start a phase until the previous phase's exit criterion is met. Every
-record is shown for the fictional domain `example.com`; substitute the real domain from
-`organization` and `deliverability` in the context file. RFC 9989 (May 2026) replaced RFC 7489 as
+record is shown for the fictional domain `example.com`; substitute the real domain from the workspace
+(`lmm.yaml`, or `organization` and `deliverability` in an older `lmm-engine/context.xml`). RFC 9989 (May 2026) replaced RFC 7489 as
 the DMARC standard: `pct` is gone, `t=y` marks a testing phase, and `np=` sets the policy for
 non-existent subdomains. During the transition some receivers still follow RFC 7489.
 
@@ -21,8 +20,9 @@ non-existent subdomains. During the transition some receivers still follow RFC 7
       recruiting, calendar tools, forms. Ask each owner; selectors cannot be discovered by lookup.
 - [ ] For each platform record: From domain used, envelope (return-path) domain, DKIM signing
       domain and selector, volume, and whether it can sign with a custom domain.
-- [ ] Look up each selector: `dig +short TXT <selector>._domainkey.example.com`. Key at least
-      1024-bit RSA, 2048 where supported (the analyzer reports the size).
+- [ ] Look up each selector: `dig +short TXT <selector>._domainkey.example.com`, or all at once with
+      `lcm deliverability check example.com --selectors s1,s2`. Key at least 1024-bit RSA, 2048 where
+      supported (the analyzer reports the size).
 - [ ] Look up SPF at every envelope domain: `dig +short TXT example.com`. Exactly one `v=spf1`
       record, at most 10 DNS-resolving terms after expansion.
 
@@ -63,7 +63,7 @@ v=DMARC1; p=none; rua=mailto:dmarc-reports@example.com
       gives the CNAME or TXT to publish). Verify with a test send: `dkim=pass header.d=example.com`.
 - [ ] Configure a custom return-path (bounce) subdomain where the platform supports it, so SPF
       aligns too. Verify: `smtp.mailfrom=...@bounces.example.com` passes.
-- [ ] Re-run `engine/deliverability/analyze.py analyze` on a header sample from each platform.
+- [ ] Re-run `lcm deliverability headers <file>` on a header sample from each platform.
 
 **Exit**: aggregate reports show every legitimate sender passing aligned DKIM (or aligned SPF) for
 two consecutive weeks.

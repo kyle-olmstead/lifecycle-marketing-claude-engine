@@ -7,43 +7,48 @@ description: >
   Writes warehouse SQL in the named dialect against verified columns, with window functions,
   censoring, readability labels and API-ready export payloads.
 metadata:
-  version: "2.0.0"
+  version: "3.0.0"
 ---
 
 # Lifecycle SQL
 
-## Step 0: Load context and rules
+Always read (once per conversation; skip any you already read in this conversation):
+- `${CLAUDE_PLUGIN_ROOT}/prompts/core/principles.md`
+- `${CLAUDE_PLUGIN_ROOT}/prompts/core/syntax_rules.md` (its SQL section binds every query)
 
-Read `${CLAUDE_PLUGIN_ROOT}/prompts/core/system_prompt.md`, `lmm-engine/context.xml` (warehouse dialect and
-transaction object) and `${CLAUDE_PLUGIN_ROOT}/docs/SQL_SCHEMA_CONVENTIONS.md`.
+Workspace: `lmm.yaml` `warehouse_dialect` (postgres, snowflake or bigquery) and the transaction object; older setups
+keep both in `lmm-engine/context.xml`. Never guess the dialect.
 
-**Before running a tool:** the checks need Python 3.12 or later and the packages in
-`${CLAUDE_PLUGIN_ROOT}/requirements.txt`. If an import fails, install them once with
-`python3 -m pip install -r ${CLAUDE_PLUGIN_ROOT}/requirements.txt`. If code cannot run here (no
-shell, or the install is blocked), still deliver, and write "unchecked" next to every artifact a
-tool would have checked; never describe an unchecked artifact as verified.
+`lcm` below is the installed command, or `python3 ${CLAUDE_PLUGIN_ROOT}/engine/cli/main.py` (Python 3.12 or later and
+`${CLAUDE_PLUGIN_ROOT}/requirements.txt`; `lcm doctor` checks the install). If code cannot run, deliver the query
+labeled unexecuted.
 
-## Step 1: Pick the module
+## 1. Pick the job
 
+Route (read the one job prompt that matches; the RFM and LTV prompts name the one reference file to read for the
+workspace's dialect):
 - RFM scores, segments and CDP sync: `${CLAUDE_PLUGIN_ROOT}/prompts/jobs/sql/rfm_segmentation.md`
 - Cohort LTV curves: `${CLAUDE_PLUGIN_ROOT}/prompts/jobs/sql/ltv_cohort.md`
-- Retention: `${CLAUDE_PLUGIN_ROOT}/prompts/jobs/sql/rolling_d30_retention.sql`
+- Retention by signup cohort: `${CLAUDE_PLUGIN_ROOT}/prompts/jobs/sql/rolling_d30_retention.sql`
 
-## Step 2: Verify before writing
+The engine writes some SQL itself: a flow plan's entry and history queries per dialect (`lcm plan`), engagement tiers
+(`lcm engagement --sql-only --dialect <dialect> --out <dir>`), and retention curves on exports (`lcm retention`).
+When the user's tables differ from the canonical ones the reference SQL reads (users, orders, track_events,
+message_events), map them with `${CLAUDE_PLUGIN_ROOT}/docs/SQL_SCHEMA_CONVENTIONS.md` or `lcm import`.
 
-With a warehouse connector (BigQuery, Snowflake, Neon, Blaze SQL), read the schema and run the
-module's fill-rate and frequency queries first, labeled LIVE PULL. Otherwise ask for DDL and fill
-rates. Never filter on an unverified column.
+## 2. Verify before writing
 
-## Step 3: Check the query
+With a warehouse connector (BigQuery, Snowflake, Neon, Blaze SQL), read the schema and run the job's fill-rate and
+frequency queries first, labeled LIVE PULL. Otherwise ask for DDL and fill rates. Never filter on an unverified
+column.
+
+## 3. Check and export
 
 ```text
-python3 ${CLAUDE_PLUGIN_ROOT}/engine/sql/check.py query.sql --dialect <dialect>
-python3 ${CLAUDE_PLUGIN_ROOT}/engine/sql/check.py query.sql --run        # PostgreSQL only, on the bundled fixtures
+lcm sql-check query.sql --dialect <dialect>
+lcm sql-check query.sql --run              # PostgreSQL only, on the bundled fixtures
+lcm sync klaviyo|hubspot rows.csv --id-column email --properties <col=property,...> --out <dir>
 ```
 
-## Step 4: Export
-
-Build request bodies within vendor limits with `python3 ${CLAUDE_PLUGIN_ROOT}/adapters/destinations/payloads.py`.
-Run queries that read data only; never run statements that write to the user's warehouse or push to
-an ESP without explicit approval of that specific action.
+`lcm sync` builds request bodies within the vendor's limits and sends nothing. Run queries that read data only; never
+run statements that write to the user's warehouse, or push to an ESP, without explicit approval of that action.

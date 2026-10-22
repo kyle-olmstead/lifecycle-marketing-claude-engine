@@ -45,8 +45,16 @@
   },
   "frequency": {
     "cap": "Smart Sending on (16 hours); at most 3 lifecycle emails a week across flows",
-    "quiet_hours": "send at 10:00 recipient local",
-    "priority": 3
+    "send_windows": [
+      {
+        "channel": "email",
+        "allowed_from": "08:00",
+        "allowed_until": "21:00",
+        "basis": "recipient_local"
+      }
+    ],
+    "priority": 3,
+    "send_hour_local": "10:00"
   },
   "steps": [
     {

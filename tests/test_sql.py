@@ -1,15 +1,14 @@
 import sqlglot
 
-from tests.conftest import ROOT, fenced
+from tests.conftest import ROOT
 from engine.sql import check as sql_check
 
-RFM = ROOT / "prompts/jobs/sql/rfm_segmentation.md"
-LTV = ROOT / "prompts/jobs/sql/ltv_cohort.md"
+RFM = ROOT / "prompts/jobs/sql/rfm_segmentation"
+LTV = ROOT / "prompts/jobs/sql/ltv_cohort"
 
 
 def _first(path, dialect):
-    blocks = fenced(path, "sql", dialect)
-    return blocks[0]
+    return (path / f"{path.name}_{dialect}.sql").read_text()
 
 
 def test_retention_query_runs_and_labels_small_cohorts(duck):

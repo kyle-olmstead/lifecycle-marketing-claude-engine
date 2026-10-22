@@ -29,4 +29,4 @@ def test_an_unplanned_field_is_named():
     tpl = "{% for item in event.items limit: 3 %}{{ item.colour }}{% endfor %} {{ event.coupon_code | default: '' }}"
     assert fields.unknown(tpl, "customerio", "checkout_started") == ["coupon_code", "items[].colour"]
     assert fields.unknown("{{context.${checkout_url} | default: 'x'}}", "braze", "checkout_started") == []
-    assert fields.allowed("payment_failed") is None       # a warehouse event, not the event stream: not checked here
+    assert fields.allowed("message_delivered") is None    # an ESP message event (message_events), not the event stream

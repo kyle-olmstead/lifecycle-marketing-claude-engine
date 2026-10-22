@@ -49,7 +49,20 @@
   },
   "frequency": {
     "cap": "at most 1 lifecycle email per day and 3 per week across all flows; at most 1 in-app modal per session",
-    "quiet_hours": "email and push 08:00 to 20:00 recipient local; no SMS in this flow",
+    "send_windows": [
+      {
+        "channel": "email",
+        "allowed_from": "08:00",
+        "allowed_until": "20:00",
+        "basis": "recipient_local"
+      },
+      {
+        "channel": "push",
+        "allowed_from": "08:00",
+        "allowed_until": "20:00",
+        "basis": "recipient_local"
+      }
+    ],
     "priority": 2
   },
   "steps": [

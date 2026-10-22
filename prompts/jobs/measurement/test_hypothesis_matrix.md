@@ -1,9 +1,8 @@
 ---
-id: lmm.analytics.test_hypothesis_matrix
-version: 2.0.0
-module: 05_experimentation_and_analytics
+id: lmm.measurement.test_hypothesis_matrix
+version: 3.0.0
 type: framework
-tools: [engine/measurement/stats.py]
+tools: [lcm size, lcm experiments]
 ---
 
 # Test Hypothesis Matrix
@@ -39,7 +38,7 @@ following up; falsified if the item-name arm's click rate is equal or lower" is.
 | Primary metric | clicks, conversions, replies, revenue per recipient | never opens |
 | Baseline | from the client's own history | labeled LIVE PULL or ESTIMATE |
 | Minimum effect worth acting on | absolute or relative | set by the business before sizing |
-| Required sample | `engine/measurement/stats.py size` output | per arm and total |
+| Required sample | `lcm size` output | per arm and total |
 | Time to read | sample divided by eligible weekly volume | over one quarter means redesign or drop |
 | Readable? | yes / directional only / no | "no" leaves the backlog |
 | Value if true | what changes and what it is worth, as a range | labeled ESTIMATE, with the arithmetic |
@@ -71,19 +70,13 @@ priority = P(hypothesis true) x value if true x share of program reached
 | Quarterly | structural tests, after the quarterly review |
 
 Two tests on overlapping audiences at the same time contaminate each other unless they are
-explicitly crossed and sized for it. Default: one test per audience at a time.
+explicitly crossed and sized for it. Default: one test per audience at a time; `lcm experiments check` finds
+overlaps in the registry.
 
-## 5. Example backlog (fictional retailer, second-order flow)
+## 5. Example backlog
 
-| ID | Hypothesis (short) | Metric | Baseline | Effect | Sample (tool) | Weeks | Readable | Priority |
-|---|---|---|---|---|---|---|---|---|
-| SO-1 | item name in subject raises clicks | click rate | 3.1% | +15% rel. | 23,387 per arm | 5.2 at 9,000 a week | yes | high |
-| SO-2 | person as sender raises replies | reply rate | 0.4% | +50% rel. | 19,523 per arm | 4.3 at 9,000 a week | yes | medium |
-| SO-3 | free-shipping offer raises second orders | second-order rate in 60 days | 4.0% | +1.5 pts | 3,156 per arm at 50/50 | 0.7 to enter, plus the 60-day window | yes; costs margin | medium: report cost per incremental order |
-| SO-4 | emoji in subject raises opens | open rate | n/a | n/a | n/a | n/a | no: open rate is not a valid metric | dropped |
-
-SO-4 is in the table on purpose. Writing down why an idea was dropped stops it from coming back
-every quarter.
+A filled matrix for a second-order flow, including a dropped idea and why:
+`prompts/examples/test_hypothesis_matrix_backlog.md`. Read it only when a model answer would help.
 
 ## 6. After the read
 

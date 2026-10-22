@@ -1,12 +1,10 @@
 ---
-id: lmm.analytics.holdout_incrementality_analyzer
-version: 2.0.0
-module: 05_experimentation_and_analytics
-persona: Principal Lifecycle Growth Strategist (what the number means and how to say it) with the Senior Data Engineer (how it was computed)
+id: lmm.measurement.holdout_incrementality
+version: 3.0.0
 inputs: [flow, period, design, arms, attributed_revenue, attribution_model, window_days, inter_purchase_interval, transaction_object, known_events]
 outputs: [three_numbers, read_label, interrogation, caveats, client_ready_line]
-tools: [engine/measurement/stats.py]
-tested: the worked example is engine/measurement/stats.py output on examples/stats/winback_readout.json; the tests pin reference values for the Newcombe interval and chi-square tail that were checked against statsmodels and scipy when written (the suite does not import either library)
+tools: [lcm readout, lcm global-holdout]
+tested: the worked example (prompts/examples/holdout_incrementality_winback_readout.md) is lcm readout output on examples/stats/winback_readout.json; the tests pin reference values for the Newcombe interval and chi-square tail that were checked against statsmodels and scipy when written (the suite does not import either library)
 ---
 
 # Holdout and Incrementality Analyzer
@@ -38,7 +36,7 @@ a methodological fact rather than a confession.
 <protocol_1_design_check>
 | Situation | Design | Read |
 |---|---|---|
-| high, steady entry volume | persistent randomized holdout, about 10% | causal |
+| high, steady entry volume | persistent randomized holdout at the flow type's default share (`engine/flows/library.py`) | causal |
 | moderate volume, or a one-time campaign | randomized holdout at 20 to 30% to decide faster | causal, wide interval |
 | low volume, high value per entry | pre/post baseline | directional; label it |
 | entry volume in single digits | no statistical read exists | qualitative; no lift percentage |
@@ -75,10 +73,10 @@ incrementality is the answer and attribution is the context.
 
 <execution_protocol>
 1. Check the design against protocol 1 and say which read it can support.
-2. Run the readout:
+2. Run the readout (`schemas/readout_input.schema.json`; a sample is `examples/stats/winback_readout.json`):
 
    ```text
-   python3 engine/measurement/stats.py incrementality readout.json --markdown
+   lcm readout readout.json
    ```
 
 3. Work through protocol 2 and record each check's result.
@@ -103,32 +101,9 @@ incrementality is the answer and attribution is the context.
 ```
 </reporting_format>
 
-<worked_example>
-`examples/stats/winback_readout.json`: the win-back flow from prompts/jobs/flows/winback.md, four months of entries
-with a 20% persistent holdout, outcomes on the Shopify orders object.
 
-```text
-Win-back: lapsed past own cycle | entries 2026-04-01 to 2026-07-31, outcomes through 2026-09-29
-
-  Entered:        10,200 (treatment 8,160 / holdout 2,040)
-  Conversion:     5.05% vs 4.02%; difference +1.03 pts, 95% CI -0.02 to +1.95 pts; not distinguishable from zero at 95%
-  Attributed:     $41,900   (Klaviyo flow attribution, 5-day click window)
-  Incremental:    $15,880   (point estimate: revenue per entrant, treatment minus holdout, times treatment entrants; supply revenue_sd per arm for an interval)
-  Gap:            $26,020
-
-  Read:           causal, inconclusive
-  Window:         60 days, chosen because the median inter-purchase interval for returning customers is 41 days, so 60 days covers a normal return
-  Caveats:        a site-wide sale ran 2026-07-14 to 2026-07-20 and reached both arms equally (campaign sends were not suppressed for the holdout)
-  Sample ratio:   chi2 0.0, p=1: split matches the planned allocation
-```
-
-How to say it to a client, in one line: "Klaviyo credits the win-back flow with $41,900; against
-the holdout, the best estimate of what it actually added is about $15,900, and four months of data
-cannot yet rule out zero. We keep it running and read again at the end of Q4."
-
-What this does not license: calling the flow a $41,900 flow, calling it a failure, or adding a
-discount to "boost" a number that has not yet been measured cleanly.
-</worked_example>
+A model answer (a win-back readout and the client line): `prompts/examples/holdout_incrementality_winback_readout.md`;
+read it only when one would help.
 
 <prohibited>
 - Reporting attributed revenue alone.
