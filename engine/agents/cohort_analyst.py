@@ -129,8 +129,13 @@ def _source(D: Dialect, m: EventMatch, alias: str) -> str:
     if m.event == "order_completed":
         return (f"SELECT {alias}.user_id, {alias}.order_at AS event_at FROM orders {alias} "
                 f"WHERE {alias}.status = 'completed' AND {alias}.user_id IS NOT NULL")
-    return (f"SELECT {alias}.user_id, {alias}.event_at FROM track_events {alias} "
-            f"WHERE {D.event_filter(alias + '.', m.event, m.where)} AND {alias}.user_id IS NOT NULL")
+    stream = (f"SELECT {alias}.user_id, {alias}.event_at FROM track_events {alias} "
+              f"WHERE {D.event_filter(alias + '.', m.event, m.where)} AND {alias}.user_id IS NOT NULL")
+    if m.event == "signed_up" and not m.where:
+        # users.created_at is when each person signed up (engine/data/schema.py), so a store whose exports carry no
+        # signed_up event (Shopify customers, Klaviyo profiles) still has its sign-ups; the earliest of the two wins
+        return stream + f" UNION ALL SELECT {alias}u.user_id, {alias}u.created_at AS event_at FROM users {alias}u WHERE {alias}u.created_at IS NOT NULL"
+    return stream
 
 
 def _as_of_expr(D: Dialect, as_of: Optional[str]) -> str:
@@ -554,6 +559,9 @@ def check_sql(sql_by_dialect: Dict[str, str]) -> Dict[str, str]:
 # define
 # ----------------------------------------------------------------------------------------------
 
+MESSAGE_EVENTS = {"message_delivered": "delivered", "message_opened": "opened", "message_clicked": "clicked"}
+
+
 def _dependencies(brief: Brief, con) -> List[DataDependency]:
     deps: List[DataDependency] = []
 
@@ -565,7 +573,16 @@ def _dependencies(brief: Brief, con) -> List[DataDependency]:
             n = con.execute("SELECT COUNT(*), COUNT(DISTINCT user_id) FROM orders WHERE status = 'completed'").fetchone()
             return DataDependency(name=name, kind="object" if n[0] else "event", status="verified" if n[0] else "blocked",
                                   note=f"{role}; orders table (the transaction object): {n[0]} completed orders, {n[1]} people")
+        if m.event in MESSAGE_EVENTS:       # engagement flows read the ESP's message events, not the product event stream
+            rows, users = con.execute("SELECT COUNT(*), COUNT(DISTINCT user_id) FROM message_events WHERE event_name = ?",
+                                      [MESSAGE_EVENTS[m.event]]).fetchone()
+            return DataDependency(name=name, kind="event", status="verified" if rows else "blocked",
+                                  note=f"{role}; message_events {MESSAGE_EVENTS[m.event]}: {rows} rows from {users} people")
         rows, users = con.execute("SELECT COUNT(*), COUNT(DISTINCT user_id) FROM track_events WHERE event_name = ?", [m.event]).fetchone()
+        if rows == 0 and m.event == "signed_up" and not m.where:
+            n = con.execute("SELECT COUNT(created_at) FROM users").fetchone()[0]
+            return DataDependency(name=name, kind="attribute" if n else "event", status="verified" if n else "blocked",
+                                  note=f"{role}; no signed_up events, so sign-ups are read from users.created_at ({n} people)")
         if rows == 0:
             return DataDependency(name=name, kind="event", status="blocked", note=f"{role}; no {m.event} rows in track_events")
         fill = None

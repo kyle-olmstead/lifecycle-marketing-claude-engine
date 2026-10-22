@@ -55,7 +55,7 @@ INTENTS = (
                    r"data (quality|check)|(missing|bad|broken) data\b|can (i|we) trust (our|my|the) data"),
     ("program", r"\b(flows?|campaigns?|journeys?) (collide|overlap|clash|step on each other)|(collide|overlap|clash) (with|across)|"
                 r"(too many|how many) (emails|messages|texts) .*(a|per) (week|day)|all (our |my |the )?(live )?flows together|"
-                r"across (all )?(our |my )?flows|frequency (cap|policy) across"),
+                r"(frequency|caps?|too many|over-?mail\w*)[^.?]*across (all )?(our |my |the )?(live )?flows"),
     ("tracking", r"events? (are |is )?firing|event (stream|tracking|taxonomy|schema)|tracking plan|tracking (health|break|broke)|"
                  r"schema (drift|fidelity)|data (has )?drift|has the data drifted|webhook|null values|break a trigger|broke a trigger|"
                  r"triggers? (stopped|broke|breaking)|break (our |the )?tracking|still (coming|arriving)|\bnull\b"),
