@@ -160,27 +160,73 @@ Fulfilled Order, is skipped and counted in the report.
 
 ## Stripe
 
-See the mapper's docstring.
+`lcm import stripe <folder> --out data`. Export Customers, Subscriptions and Invoices from the Stripe Dashboard (each
+list, Export, CSV), or save API list responses as JSON; files are recognised by name and by Stripe's id prefixes
+(cus_, sub_, in_), so another vendor's customers.csv is never read as Stripe's.
+
+| Writes | From |
+|---|---|
+| users | one per customer with an email; `user_id` is your product's id from metadata (user_id, external_id, ...), else the customer id |
+| accounts | when metadata carries an account id or the customer a business name (one customer = one buying unit, ASSUMED) |
+| subscriptions, invoices | status, start, trial end, current period end, cancellation, MRR (active and past_due only); amounts in major units |
+| track_events | trial_started, subscription_started, payment_failed, payment_succeeded, subscription_cancelled, ids `stripe:<event>:<object id>` |
+
+Stripe does not export when each payment attempt failed, so `payment_failed` is dated at the invoice's finalization and
+says so (`dated_at`). Every rule and source: the docstring of `adapters/sources/stripe.py`.
 
 ## HubSpot
 
-See the mapper's docstring.
+`lcm import hubspot <folder> --out data [--timezone America/Chicago]`. Export contacts (Contacts, Export, CSV, all
+properties); unzip it if HubSpot zipped it.
+
+| Writes | From |
+|---|---|
+| users | Record ID (or your product's user id when the export carries one), Email, Create Date, Lifecycle Stage, Country/Region, Time zone, Phone number |
+| consent_events | one revoked email row per contact unsubscribed from all email or from any subscription type (stricter than HubSpot), source `import_undated` |
+
+HubSpot exports times in the portal's time zone without saying which: pass `--timezone` with the portal's zone, or they
+are read as UTC (recorded as an assumption). Consent is never inferred from "marketing contact" or "not unsubscribed".
+Details: `adapters/sources/hubspot_export.py`.
 
 ## Customer.io
 
-See the mapper's docstring.
+`lcm import customerio <folder> --out data`. Export People (any attribute set) and the Deliveries (message
+activity) export from the Sent tab.
+
+| Writes | From |
+|---|---|
+| users | the person's id (your product's id), email, created_at (Unix seconds), plan, country, timezone, phone, account_id when present |
+| consent_events | one revoked email row per unsubscribed person, source `import_undated` (the export has no time) |
+| message_events | delivered, opened, clicked, bounced (with the failure text as `diagnostic`), spammed as complained, unsubscribed |
+
+Sent, failed, suppressed and converted states are counted in the report but have no canonical event yet. Details:
+`adapters/sources/customerio_export.py`.
 
 ## GA4
 
-See the mapper's docstring.
+`lcm import ga4 <folder> --out data` on a dump of the BigQuery export (`bq extract` to newline-delimited JSON, a JSON
+array, or Parquet). In the warehouse, run `adapters/sources/sql/ga4/track_events_bigquery.sql` instead; the tests hold the
+two to identical rows.
+
+GA4 event names map to the canonical ones (purchase to order_completed, begin_checkout to checkout_started, view_item
+to product_viewed, add_to_cart to product_added, sign_up to signed_up, login to session_started); others stay in snake
+case. A purchase repeated on a reloaded confirmation page is one order (`purchase:<transaction_id>`). GA4 has no event
+id, so others get a hash of the row's identifying fields. Details: `adapters/sources/ga4_bigquery.py`.
 
 ## RudderStack
 
-See the mapper's docstring.
+`lcm import rudderstack <folder> --out data` on CSV dumps of the warehouse tables (tracks, identifies and the
+per-event tables, each named after its table). In the warehouse, run the SQL in `adapters/sources/sql/rudderstack/`
+(BigQuery and Snowflake). Events come from tracks with their properties from the matching per-event table; users from
+identifies (latest non-empty email, plan, country and time zone; created_at from the trait, else the first identify).
+Shared rules: `adapters/sources/_cdp_warehouse.py`.
 
 ## Segment
 
-See the mapper's docstring.
+`lcm import segment <folder> --out data` on CSV dumps of the warehouse tables (tracks, identifies, users and the
+per-event tables). In the warehouse, run the SQL in `adapters/sources/sql/segment/` (BigQuery and Snowflake). The rules
+match RudderStack's (`adapters/sources/_cdp_warehouse.py`); users come from users.csv when present. GA4, Segment and
+RudderStack are alternative instrumentations of the same events: import one of them, not several, or events count twice.
 
 ## Try it on the demo brand
 
@@ -188,8 +234,8 @@ See the mapper's docstring.
 real formats (`exports/`, written by `make_exports.py`) and the result of importing them (`data/`):
 
 ```bash
-python3 adapters/sources/cli.py auto examples/brands/northfield_dtc/exports --out /tmp/northfield
-python3 engine/data/check.py /tmp/northfield
+lcm import auto examples/brands/northfield_dtc/exports --out /tmp/northfield
+lcm check-data /tmp/northfield
 ```
 
 The saved report starts like this (`data/import_report.json`):
