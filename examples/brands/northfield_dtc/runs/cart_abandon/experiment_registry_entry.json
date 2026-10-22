@@ -1,0 +1,40 @@
+{
+  "experiment_id": "northfield_coffee_cart_abandon_1h_holdout",
+  "flow": "northfield_coffee_cart_abandon_1h",
+  "unit": "user",
+  "assignment": {
+    "hash_field": "user_id",
+    "salt": "northfield_coffee_cart_abandon_1h",
+    "rule": "persistent, by user: bucket = first 7 hex digits of md5(user_id || ':northfield_coffee_cart_abandon_1h') mod 100; bucket < 10 is the holdout, added as in_holdout to the live checkout_started event by the system that sends it; holdout members enter, then exit at holdout_split, so both arms are the same population"
+  },
+  "holdout_share": 0.1,
+  "primary_metric": {
+    "event": "order_completed",
+    "window_days": 10,
+    "description": "placed an order (order_completed) within 10 days of entry, treatment vs holdout, both arms counted from their entry date"
+  },
+  "plan": {
+    "baseline": 0.3132,
+    "mde_abs": 0.06264,
+    "n_per_arm": {
+      "holdout": 508,
+      "treatment": 4572
+    },
+    "design_effect": 1.0,
+    "alpha": 0.05,
+    "power": 0.8,
+    "read_on": null,
+    "expected_read": "directional only"
+  },
+  "stopping_rule": {
+    "design": "fixed_horizon",
+    "looks": 1,
+    "information_fractions": [
+      1.0
+    ],
+    "alpha": 0.05
+  },
+  "status": "draft",
+  "launched_on": null,
+  "looks_taken": []
+}

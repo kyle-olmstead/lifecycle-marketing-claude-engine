@@ -29,7 +29,9 @@ channels:
 - in_app
 holdout_pct: 15.0
 randomization_unit: user
-global_holdout_pct: 0
+global_holdout_pct: 0.0
+stopping_rule: fixed_horizon
+looks: 5
 min_detectable_lift: 0.25
 outcome_window_days: 30
 sending_gate: AMBER
@@ -38,9 +40,40 @@ sender_name: Dana Ortiz at Ridgeview
 brand_voice: plain, specific, second person, no exclamation marks; operations vocabulary
   (reports, data sources, teammates)
 postal_address: 100 Example Way, Suite 400, Springfield, OR 97477
+brand_kit: /home/claude/lifecycle-marketing-claude-engine/examples/brands/ridgeview_saas/brand.yaml
 cta_url: https://app.ridgeview.example/reports/new
-recipient_countries: []
+recipient_countries:
+- US
 offer_policy: no discounts or offers
 frequency_cap_per_week: 3
+frequency:
+  caps:
+  - channels:
+    - email
+    - sms
+    - push
+    max: 3
+    window: P7D
+  send_windows:
+  - channel: email
+    allowed_from: 08:00
+    allowed_until: '21:00'
+    basis: recipient_local
+  - channel: sms
+    allowed_from: 09:00
+    allowed_until: '20:00'
+    basis: recipient_local
+  - channel: push
+    allowed_from: 09:00
+    allowed_until: '21:00'
+    basis: recipient_local
+  flow_priority:
+  - dunning
+  - trial_convert
+  - activation
+  - welcome
+  - winback
+  - sunset
+  collision_rule: higher_priority_preempts
 send_hour_local: 10
 copy_variants: 2

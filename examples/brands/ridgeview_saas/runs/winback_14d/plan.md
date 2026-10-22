@@ -1,6 +1,6 @@
 # Win-back: Ridgeview, 14 days since the core action (created a report)
 
-**Status: READY WITH ASSUMPTIONS** | Customer.io | generated 2026-10-21T19:41:07+00:00 | run 4ad6068978f2 | LMM Engine 3.0.0
+**Status: READY WITH ASSUMPTIONS** | Customer.io | generated 2026-10-22T22:19:55+00:00 | run 0226c72c9f2e | LMM Engine 3.0.0
 
 ## In one paragraph
 
@@ -12,9 +12,6 @@ People who completed onboarding and then went 14 days without the core action (c
 - **baseline_conversion_rate**: estimated from the data (DEMO DATA): 17.5%, 22 of 126 matured threshold crossings came back within 30 days with no flow
 - **outcome_window_days**: not stated; set to 30 days so the whole flow (last touch on day 18) plus a week is inside it
 - **sending gate**: AMBER gate: engaged recipients only, no volume growth (AMBER gate as supplied)
-- **copy: t2_email**: 2 variant(s) pass lint and guardrails (offline); contains [bracketed] fill-ins: replace them with the real specifics before sending
-- **copy: t3_in_app**: 2 variant(s) pass lint and guardrails (offline); contains [bracketed] fill-ins: replace them with the real specifics before sending
-- **copy: t4_email**: 2 variant(s) pass lint and guardrails (offline); contains [bracketed] fill-ins: replace them with the real specifics before sending
 - **holdout read**: directional only: not inside 12 months at this volume (it would take about 187 months): keep the holdout, report against a pre/post baseline, and label every result directional
 - **compliance: one-click unsubscribe and complaint rate**: mailbox providers: Gmail and Yahoo require bulk senders' marketing mail to carry one-click unsubscribe (RFC 8058) plus a visible unsubscribe link, honored within two days, and to keep user-reported spam under 0.3% (Gmail's target is under 0.1%). One-click unsubscribe is a header your platform adds: confirm it is on (engine/deliverability/analyze.py checks it in real headers).
 - **compliance: bulk-sender authentication**: mailbox providers: Gmail, Yahoo and Microsoft (Outlook.com, Hotmail.com and Live.com since 5 May 2025) require senders of more than 5,000 messages a day to pass SPF and DKIM and publish DMARC (p=none or stricter) aligned with one of them; Microsoft sends failing mail to junk, then rejects it with 550 5.7.515. Run lcm "check deliverability for <your sending domain>" (engine/deliverability/dns_collect.py) and resolve anything RED before launch.
@@ -110,55 +107,55 @@ Every step: has not done feature_used where feature = reports since entering; ca
 10. Time delay to day 12 at 10:00 recipient local, then email message t4_email: social proof.
 11. Time delay to day 18 at 10:00 recipient local, then email message t5_email: repermission.
 12. Time delay 14 days, then: if no click on the re-permission email, update the person: lcm_sunset = true. Make lcm_sunset a suppression in every marketing send.
-13. Frequency: at most 3 email/sms/push message(s) per week across flows (the workspace message limit). Permitted send windows, recipient local: email 08:00 to 21:00. Priority 9 of the program's flows (higher priority preempts).
+13. Frequency: at most 3 email/sms/push message(s) per week across flows (the workspace message limit). Permitted send windows, recipient local: email 08:00 to 21:00. Priority 5 of the program's flows (higher priority preempts).
 14. Before enabling: run lcm simulate on flow_spec.json (engine/policy/simulator.py), send every message to a seed list, and get approval. Exit on feature_used where feature = reports must be live before the first send.
 
 ## The copy
 
-### t1_email (email, offline)
+### t1_email (email, supplied)
 
 | Variant | Copy | Framework | Hypothesis |
 |---|---|---|---|
-| A | **Your Ridgeview workspace is where you left it** / Pick up from your last session in Ridgeview | BAB: before, after, bridge | Stressing that setup is already done raises the core-action rate within 7 days because it removes the restart cost; falsified if B converts as well or better. |
-| B | **14 days since you last created a report** / A plain note, no offer | Plain, factual reminder | A factual, specific gap in the subject raises clicks more than a benefit line because it is concrete; falsified if A's click rate is equal or higher. |
+| A | **Your last report is one click away** / Rerun it with this week's numbers | BAB | Pointing to the report they already built lowers the effort of coming back; falsified if B's fresh-start framing recovers as many or more users within 7 days. |
+| B | **This week's numbers are ready to pull** / Your data sources are still connected | BAB | Framing the gap as unseen data creates a reason to return now; falsified if A recovers as many or more users within 7 days. |
 
-Files: `copy/t1_email_A.html`, `copy/t1_email_A.subject.txt`, `copy/t1_email_A.txt`, `copy/t1_email_B.html`, `copy/t1_email_B.subject.txt`, `copy/t1_email_B.txt`
+Files: `copy/t1_email_A.html`, `copy/t1_email_A.mjml`, `copy/t1_email_A.subject.txt`, `copy/t1_email_A.txt`, `copy/t1_email_B.html`, `copy/t1_email_B.mjml`, `copy/t1_email_B.subject.txt`, `copy/t1_email_B.txt`
 
-### t2_email (email, offline)
-
-| Variant | Copy | Framework | Hypothesis |
-|---|---|---|---|
-| A | **The step most people get stuck on** / And the two-minute way past it | PAS: problem, agitation kept factual, solution | Naming the blocker raises the core-action rate among lapsed users because it addresses the actual reason they left; falsified if B converts as well or better. |
-| B | **A template to create a report in two minutes** / Start from something that already works | Solution first, problem implied | Leading with a ready-made starting point raises the core-action rate more than naming the problem because it lowers effort at the moment of reading; falsified if A converts as well or better. |
-
-Files: `copy/t2_email_A.html`, `copy/t2_email_A.subject.txt`, `copy/t2_email_A.txt`, `copy/t2_email_B.html`, `copy/t2_email_B.subject.txt`, `copy/t2_email_B.txt`
-
-### t3_in_app (in-app, offline)
+### t2_email (email, supplied)
 
 | Variant | Copy | Framework | Hypothesis |
 |---|---|---|---|
-| A | **One thing changed** / [What the change does for them, with a concrete example]. [See it] | AIDA: attention, interest, desire, action | A single concrete change raises clicks more than a roundup because it is easy to evaluate; falsified if B's click rate is equal or higher. |
-| B | **[The change, as a benefit]** / It came from requests like yours. Try it on your own data. [Try it now] | Reciprocity framed around feedback | Framing the change as a response to customer requests raises clicks because it signals the product is improving for them; falsified if A's click rate is equal or higher. |
+| A | **The two-minute way to build a report** / Start from a template instead of a blank page | PAS | Naming the blank-page problem and handing over a template removes the main friction; falsified if B's offer of a person recovers as many or more users. |
+| B | **Want me to build your first report?** / Reply with what you track and I will set it up | PAS | Offering a person removes the friction for people who are unsure what to build; falsified if A's template path recovers as many or more users. |
+
+Files: `copy/t2_email_A.html`, `copy/t2_email_A.mjml`, `copy/t2_email_A.subject.txt`, `copy/t2_email_A.txt`, `copy/t2_email_B.html`, `copy/t2_email_B.mjml`, `copy/t2_email_B.subject.txt`, `copy/t2_email_B.txt`
+
+### t3_in_app (in-app, supplied)
+
+| Variant | Copy | Framework | Hypothesis |
+|---|---|---|---|
+| A | **New: start a report from a template** / Report templates start you with the charts most teams build first. Pick one and point it at a connected data source. [Browse templates] | AIDA | Showing templates at the next session converts users who returned on their own but did not build; falsified if B recovers as many or more. |
+| B | **Your data sources are still syncing** / A report built now would show everything that arrived while you were away. Start one in under two minutes. [Create a report] | AIDA | The unseen-data framing works better in product than the feature framing; falsified if A recovers as many or more. |
 
 Files: `copy/t3_in_app_A.json`, `copy/t3_in_app_B.json`
 
-### t4_email (email, offline)
+### t4_email (email, supplied)
 
 | Variant | Copy | Framework | Hypothesis |
 |---|---|---|---|
-| A | **How [customer type] use Ridgeview each week** / One routine, start to finish | Social proof through one concrete case | A single specific customer routine raises the core-action rate more than general benefits because it is easy to imitate; falsified if B converts as well or better. |
-| B | **[Number] teams did this last week** / A quick look at what is working | Social proof through volume | A volume number raises clicks less than one concrete case; falsified if B's click rate is higher than A's. |
+| A | **How our support team builds its weekly report** / Five minutes on Monday, then it runs itself | Social proof | A concrete first-party example makes the weekly habit easy to copy; falsified if B's scheduling angle recovers as many or more users. |
+| B | **Have your report come to you** / Schedule it once and it lands every Monday | Social proof | Scheduling answers the forgetting that causes the lapse; falsified if A recovers as many or more users. |
 
-Files: `copy/t4_email_A.html`, `copy/t4_email_A.subject.txt`, `copy/t4_email_A.txt`, `copy/t4_email_B.html`, `copy/t4_email_B.subject.txt`, `copy/t4_email_B.txt`
+Files: `copy/t4_email_A.html`, `copy/t4_email_A.mjml`, `copy/t4_email_A.subject.txt`, `copy/t4_email_A.txt`, `copy/t4_email_B.html`, `copy/t4_email_B.mjml`, `copy/t4_email_B.subject.txt`, `copy/t4_email_B.txt`
 
-### t5_email (email, offline)
+### t5_email (email, supplied)
 
 | Variant | Copy | Framework | Hypothesis |
 |---|---|---|---|
-| A | **Should we keep sending these?** / One click to stay; nothing to do to stop | Plain re-permission; no guilt, no countdown | An honest ask keeps the people who still care and lowers complaints from those who do not; expect 1 to 5% to click. Falsified if complaints on this send exceed the flow average. |
-| B | **We will pause emails from Ridgeview** / Unless you tell us otherwise | Default-effect framing | Stating the default (a pause) raises stay clicks over asking a question because it makes the consequence concrete; falsified if A's stay rate is equal or higher. |
+| A | **Should I keep sending these?** / One click to stay, or do nothing to stop | Re-permission | A plain question with a clear default keeps engaged people and quietly removes the rest; falsified if B's version keeps a larger share of clickers with no rise in complaints. |
+| B | **Last note from me about reports** / Click if you want more, otherwise I will stop | Re-permission | Marking this as the last note raises the stay rate among people who still care; falsified if A keeps as many or more clickers. |
 
-Files: `copy/t5_email_A.html`, `copy/t5_email_A.subject.txt`, `copy/t5_email_A.txt`, `copy/t5_email_B.html`, `copy/t5_email_B.subject.txt`, `copy/t5_email_B.txt`
+Files: `copy/t5_email_A.html`, `copy/t5_email_A.mjml`, `copy/t5_email_A.subject.txt`, `copy/t5_email_A.txt`, `copy/t5_email_B.html`, `copy/t5_email_B.mjml`, `copy/t5_email_B.subject.txt`, `copy/t5_email_B.txt`
 
 ## Measurement
 
@@ -168,16 +165,16 @@ Files: `copy/t5_email_A.html`, `copy/t5_email_A.subject.txt`, `copy/t5_email_A.t
 | Primary metric | created a report (feature_used where feature = reports) within 30 days of entry, treatment vs holdout, both arms counted from their entry date |
 | Sizing | about 28 entrants a month (DEMO DATA), 17.5% return within 30 days with no flow (DEMO DATA), 25% relative lift (4.4 pts) worth acting on: 781 holdout entrants at 15%, 186.0 months of entries plus the 30-day outcome window, so the read lands about 186.9 months after launch (engine/measurement/stats.py feasible --entries-per-month 28 --holdout 0.15 --baseline 0.1746 --mde-rel 0.25 --outcome-window-days 30) |
 | Read | directional only: not inside 12 months at this volume (it would take about 187 months): keep the holdout, report against a pre/post baseline, and label every result directional |
-| Decision rule | Keep the flow when the 95% interval for (treatment minus holdout) rate of feature_used where feature = reports lies above zero and the guardrails hold. If it spans zero at the planned read, report it as inconclusive: keep the holdout running or change the flow. Report attributed, incremental and the gap together (engine/measurement/stats.py incrementality). |
-| Sample ratio | At every look, test the split against 85/15 (engine/measurement/stats.py readout --expected-holdout 0.15). A chi-square p below 0.001 means assignment or logging is broken; read nothing until it is fixed. |
+| Decision rule | Keep the flow when the 95% interval for (treatment minus holdout) rate of feature_used where feature = reports lies above zero and the guardrails hold. If it spans zero at the planned read, report it as inconclusive: keep the holdout running or change the flow. Report attributed, incremental and the gap together (lcm readout). |
+| Sample ratio | At every look, test the split against 85/15 (lcm readout --expected-holdout 0.15). A chi-square p below 0.001 means assignment or logging is broken; read nothing until it is fixed. |
 | Peeking | One planned read on the date above. Earlier looks check sample ratio and guardrails only; no early stop for a good-looking lift. |
 | Guardrails | spam complaint rate per send below 0.1% (Gmail's target; 0.3% is its hard limit); unsubscribe rate per send, against the 90-day median for your lifecycle sends; pause a touch running above twice it; hard bounce rate below 1% |
 | Copy tests | Copy variants rotate evenly inside the treatment arm. Read them on clicks or the core action, never opens, and only directionally below about 1,000 sends per variant (size exactly with engine/measurement/stats.py size --baseline <click rate> --mde-rel 0.2) |
 
 | Months of entries | Holdout n | Treatment n | Smallest detectable lift |
 |---:|---:|---:|---|
-| 3 | 12 | 71 | 41.0 pts (235% relative) |
-| 6 | 25 | 142 | 28.24 pts (162% relative) |
+| 3 | 12 | 71 | not reachable |
+| 6 | 25 | 142 | not reachable |
 | 12 | 50 | 285 | 19.35 pts (111% relative) |
 
 ## Deliverability guardrails
@@ -247,11 +244,11 @@ Files: `copy/t5_email_A.html`, `copy/t5_email_A.subject.txt`, `copy/t5_email_A.t
 | simulation: sunset applies only to people who did not click | PASS | non-clicker sunset: True; clicker sunset: False |
 | simulation: no journey loops | PASS | none |
 | trigger payload (customerio_pipelines_track) | PASS | valid against config/esp_payload_schemas.json |
-| copy: t1_email | PASS | 2 variant(s) pass lint and guardrails (offline) |
-| copy: t2_email | WARN | 2 variant(s) pass lint and guardrails (offline); contains [bracketed] fill-ins: replace them with the real specifics before sending |
-| copy: t3_in_app | WARN | 2 variant(s) pass lint and guardrails (offline); contains [bracketed] fill-ins: replace them with the real specifics before sending |
-| copy: t4_email | WARN | 2 variant(s) pass lint and guardrails (offline); contains [bracketed] fill-ins: replace them with the real specifics before sending |
-| copy: t5_email | PASS | 2 variant(s) pass lint and guardrails (offline) |
+| copy: t1_email | PASS | 2 variant(s) pass lint and guardrails (supplied) |
+| copy: t2_email | PASS | 2 variant(s) pass lint and guardrails (supplied) |
+| copy: t3_in_app | PASS | 2 variant(s) pass lint and guardrails (supplied) |
+| copy: t4_email | PASS | 2 variant(s) pass lint and guardrails (supplied) |
+| copy: t5_email | PASS | 2 variant(s) pass lint and guardrails (supplied) |
 | holdout read | WARN | directional only: not inside 12 months at this volume (it would take about 187 months): keep the holdout, report against a pre/post baseline, and label every result directional |
 | compliance: one-click unsubscribe and complaint rate | WARN | mailbox providers: Gmail and Yahoo require bulk senders' marketing mail to carry one-click unsubscribe (RFC 8058) plus a visible unsubscribe link, honored within two days, and to keep user-reported spam under 0.3% (Gmail's target is under 0.1%). One-click unsubscribe is a header your platform adds: confirm it is on (engine/deliverability/analyze.py checks it in real headers). |
 | compliance: bulk-sender authentication | WARN | mailbox providers: Gmail, Yahoo and Microsoft (Outlook.com, Hotmail.com and Live.com since 5 May 2025) require senders of more than 5,000 messages a day to pass SPF and DKIM and publish DMARC (p=none or stricter) aligned with one of them; Microsoft sends failing mail to junk, then rejects it with 550 5.7.515. Run lcm "check deliverability for <your sending domain>" (engine/deliverability/dns_collect.py) and resolve anything RED before launch. |

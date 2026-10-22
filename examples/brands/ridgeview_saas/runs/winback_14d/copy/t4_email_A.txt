@@ -1,11 +1,16 @@
-A weekly routine that sticks
+One report, five minutes, every Monday
 
-Hi {{ customer.first_name | default: "there" }}, [a real customer or team like theirs] uses Ridgeview every [day of week] to [specific outcome with a number].
+Hi {{ customer.first_name | default: "there" }}, our own support team uses Ridgeview for a weekly report of open tickets, response times and the busiest hours. Here is exactly how they set it up.
 
-The routine is short: they create a report, share it, and move on. You can copy it as is.
+They started from the support template, connected the help desk as a data source, and scheduled the report to land in the team channel every Monday morning.
 
-Copy the routine: https://app.ridgeview.example/reports/new?utm_source=lifecycle&utm_medium=email&utm_campaign=ridgeview_winback_14d&utm_content=t4_email
+The setup took about five minutes, and nobody has touched it since. The same steps work for any weekly number you track.
+
+Build a weekly report: https://app.ridgeview.example/reports/new?utm_source=lifecycle&utm_medium=email&utm_campaign=ridgeview_winback_14d&utm_content=t4_email
 
 Dana Ortiz at Ridgeview
-100 Example Way, Suite 400, Springfield, OR 97477
+Ridgeview Analytics, Inc. (fictional), 100 Example Way, Suite 400, Springfield, OR 97477
+You are getting this because you have a Ridgeview account.
+Questions? Reply to this email and a person on our team will answer.
+LinkedIn: https://www.linkedin.example/company/ridgeview
 Unsubscribe: {% unsubscribe_url %}

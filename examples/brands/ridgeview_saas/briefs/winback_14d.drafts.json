@@ -1,0 +1,128 @@
+{
+  "t1_email": [
+    {
+      "subject": "Your last report is one click away",
+      "preheader": "Rerun it with this week's numbers",
+      "headline": "Pick up where your report left off",
+      "paragraphs": [
+        "Hi {first_name}, the last time you were in {product_name} you built a report from your connected data. It is still there, and it will rerun with this week's numbers the moment you open it.",
+        "Most weekly reports take a minute once the data source is connected, and yours already is.",
+        "If something got in the way, reply to this email and tell me what. I read every reply."
+      ],
+      "cta_label": "Open my reports",
+      "framework": "BAB",
+      "hypothesis": "Pointing to the report they already built lowers the effort of coming back; falsified if B's fresh-start framing recovers as many or more users within 7 days."
+    },
+    {
+      "subject": "This week's numbers are ready to pull",
+      "preheader": "Your data sources are still connected",
+      "headline": "Your data kept arriving while you were away",
+      "paragraphs": [
+        "Hi {first_name}, your data sources in {product_name} have kept syncing, so a report built today would show the last two weeks you have not looked at yet.",
+        "Start from a blank report or from one of the templates on the reports page. Either way the numbers fill in on their own.",
+        "If a report is not what you need right now, reply and tell me what would be."
+      ],
+      "cta_label": "Create a report",
+      "framework": "BAB",
+      "hypothesis": "Framing the gap as unseen data creates a reason to return now; falsified if A recovers as many or more users within 7 days."
+    }
+  ],
+  "t2_email": [
+    {
+      "subject": "The two-minute way to build a report",
+      "preheader": "Start from a template instead of a blank page",
+      "headline": "Skip the blank page",
+      "paragraphs": [
+        "Hi {first_name}, the most common reason people stop after onboarding is the blank report page: it is not obvious what to put on it first.",
+        "The report templates in {product_name} start you with the charts most teams build first. Pick one, point it at a connected data source, and change what you like.",
+        "It takes about two minutes, and you can delete it if it is not useful."
+      ],
+      "cta_label": "Start from a template",
+      "framework": "PAS",
+      "hypothesis": "Naming the blank-page problem and handing over a template removes the main friction; falsified if B's offer of a person recovers as many or more users."
+    },
+    {
+      "subject": "Want me to build your first report?",
+      "preheader": "Reply with what you track and I will set it up",
+      "headline": "Tell me what you track",
+      "paragraphs": [
+        "Hi {first_name}, setting up the first report is where a lot of people get stuck, usually because it is not clear which numbers belong on it.",
+        "Reply to this email with the two or three numbers you check every week, and I will set up a report in your {product_name} account that shows them.",
+        "No call needed. You will get an email when it is ready."
+      ],
+      "cta_label": "Or build it yourself",
+      "framework": "PAS",
+      "hypothesis": "Offering a person removes the friction for people who are unsure what to build; falsified if A's template path recovers as many or more users."
+    }
+  ],
+  "t3_in_app": [
+    {
+      "headline": "New: start a report from a template",
+      "body": "Report templates start you with the charts most teams build first. Pick one and point it at a connected data source.",
+      "cta_label": "Browse templates",
+      "framework": "AIDA",
+      "hypothesis": "Showing templates at the next session converts users who returned on their own but did not build; falsified if B recovers as many or more."
+    },
+    {
+      "headline": "Your data sources are still syncing",
+      "body": "A report built now would show everything that arrived while you were away. Start one in under two minutes.",
+      "cta_label": "Create a report",
+      "framework": "AIDA",
+      "hypothesis": "The unseen-data framing works better in product than the feature framing; falsified if A recovers as many or more."
+    }
+  ],
+  "t4_email": [
+    {
+      "subject": "How our support team builds its weekly report",
+      "preheader": "Five minutes on Monday, then it runs itself",
+      "headline": "One report, five minutes, every Monday",
+      "paragraphs": [
+        "Hi {first_name}, our own support team uses {product_name} for a weekly report of open tickets, response times and the busiest hours. Here is exactly how they set it up.",
+        "They started from the support template, connected the help desk as a data source, and scheduled the report to land in the team channel every Monday morning.",
+        "The setup took about five minutes, and nobody has touched it since. The same steps work for any weekly number you track."
+      ],
+      "cta_label": "Build a weekly report",
+      "framework": "Social proof",
+      "hypothesis": "A concrete first-party example makes the weekly habit easy to copy; falsified if B's scheduling angle recovers as many or more users."
+    },
+    {
+      "subject": "Have your report come to you",
+      "preheader": "Schedule it once and it lands every Monday",
+      "headline": "Reports you do not have to remember",
+      "paragraphs": [
+        "Hi {first_name}, here is how our own support team keeps up with its numbers without logging in: a {product_name} report scheduled to arrive in the team channel every Monday.",
+        "Build any report, choose a schedule and where it should go, and it shows up on its own after that.",
+        "If you only want one number a week, that is a fine report too."
+      ],
+      "cta_label": "Schedule a report",
+      "framework": "Social proof",
+      "hypothesis": "Scheduling answers the forgetting that causes the lapse; falsified if A recovers as many or more users."
+    }
+  ],
+  "t5_email": [
+    {
+      "subject": "Should I keep sending these?",
+      "preheader": "One click to stay, or do nothing to stop",
+      "headline": "Do you still want these emails?",
+      "paragraphs": [
+        "Hi {first_name}, I have sent a few notes about {product_name} reports and I do not want to fill your inbox with ones you do not read.",
+        "If you would like to keep hearing from us, click below. If you do nothing, I will stop sending these product emails. Your account and your reports stay exactly as they are."
+      ],
+      "cta_label": "Keep me on the list",
+      "framework": "Re-permission",
+      "hypothesis": "A plain question with a clear default keeps engaged people and quietly removes the rest; falsified if B's version keeps a larger share of clickers with no rise in complaints."
+    },
+    {
+      "subject": "Last note from me about reports",
+      "preheader": "Click if you want more, otherwise I will stop",
+      "headline": "Keep hearing from us?",
+      "paragraphs": [
+        "Hi {first_name}, this is the last email in this series. If you want tips on getting more out of {product_name}, click below and I will keep you on the list.",
+        "If not, you do not need to do anything. These emails stop, and nothing in your account changes."
+      ],
+      "cta_label": "Yes, keep them coming",
+      "framework": "Re-permission",
+      "hypothesis": "Marking this as the last note raises the stay rate among people who still care; falsified if A keeps as many or more clickers."
+    }
+  ]
+}

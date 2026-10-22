@@ -1,10 +1,10 @@
 {
-  "headline": "One thing changed",
-  "body": "[What the change does for them, with a concrete example].",
-  "cta_label": "See it",
+  "headline": "New: start a report from a template",
+  "body": "Report templates start you with the charts most teams build first. Pick one and point it at a connected data source.",
+  "cta_label": "Browse templates",
   "preview": {
-    "headline": "One thing changed",
-    "body": "[What the change does for them, with a concrete example].",
-    "cta_label": "See it"
+    "headline": "New: start a report from a template",
+    "body": "Report templates start you with the charts most teams build first. Pick one and point it at a connected data source.",
+    "cta_label": "Browse templates"
   }
 }

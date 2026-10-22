@@ -161,6 +161,9 @@ def subject_lines(f: Dict[str, Any], brief: Brief) -> str:
             f"Preview text: {_tokens(f['preheader'], d, brief, escape=False, inline=True)}\n")
 
 
+SMS_LINK_PREVIEW = "https://ex.co/a1B2c3d"   # what a platform-shortened link costs in the segment count (21 characters)
+
+
 def _preview(text: str, brief: Brief) -> str:
     return text.replace("{first_name}", PREVIEW_NAME).replace("{product_name}", brief.product_name)
 
@@ -239,12 +242,18 @@ def render_email(f: Dict[str, Any], brief: Brief, step_id: str, brand: Optional[
 def render_short(channel: str, f: Dict[str, Any], brief: Brief) -> Dict[str, Any]:
     d = brief.template_dialect
     if channel == "sms":
+        from engine.render import product_blocks
         text = f["text"].strip().replace("{product_name}", brief.product_name)
         if not text.lower().startswith(brief.product_name.lower()):
             text = f"{brief.product_name}: {text}"
+        back = product_blocks.return_url(brief, d, brand_for(brief).website)
+        link = f" {SMS_LINK_PREVIEW}" if back else ""          # cart and browse texts carry the way back; the platform shortens it
         if not has_opt_out(text):
-            text = f"{text} Reply STOP to opt out."
-        return {"text": _tokens(text, d, brief, escape=False, inline=True), "preview": _preview(text, brief)}
+            tail = " Reply STOP to opt out."
+        else:
+            tail = ""
+        rendered = _tokens(text, d, brief, escape=False, inline=True) + (f" {back}" if back else "") + tail
+        return {"text": rendered, "preview": _preview(text + link + tail, brief)}
     keys = ("title", "body") if channel == "push" else ("headline", "body", "cta_label")
     return ({k: _tokens(f[k], d, brief, escape=False, inline=True) for k in keys}
             | {"preview": {k: _preview(f[k], brief) for k in keys}})
@@ -361,7 +370,7 @@ def copy_brief(t: Touch, brief: Brief, plan: FlowPlan) -> str:
     core = brief.core_conversion_event
     lines = [
         f"Product: {brief.product_name}. Flow: {brief.flow_type}, touch {t.index} of {brief.touches}, day {t.day}, channel {t.channel}.",
-        f"Who: {('people who ' + brief.qualifying_event.describe() + ' and then went ' + str(brief.churn_threshold_days) + ' days without ' + (core.label or core.event)) if brief.flow_type == 'winback' else ('new users who ' + brief.qualifying_event.describe() + ' and have not yet ' + (core.label or core.event))}.",
+        f"Who: {_who(brief, core)}.",
         f"This message's job ({t.role.replace('_', ' ')}): {t.job}",
         f"Framework: {t.framework}. The single goal: {t.goal}.",
         f"Before this: " + ("; ".join(f"day {x.day} {x.channel} ({x.role.replace('_', ' ')})" for x in prior) if prior else "nothing; this is the first message") + ".",
@@ -369,13 +378,16 @@ def copy_brief(t: Touch, brief: Brief, plan: FlowPlan) -> str:
         f"Offer policy (binding): {brief.offer.describe()}"
         + ("" if _offer_allowed(brief, t.role, t.index) or not brief.offer.allows_offers else "; no offer in this touch") +
         ". Never invent a deadline, scarcity, a statistic, a customer or a feature.",
-        "Personalization: only {first_name} and {product_name} are available; write the template code nowhere, words only.",
+        "Personalization: " + _tokens_line(brief) + "; write the template code nowhere, words only."
+        + (" The cart or product itself is shown below the words by the product block, so do not list the items." if _has_items(brief) else ""),
     ]
     if t.channel == "email":
         lines.append("Email: subject carries the weight in the first 35 to 40 characters; preview text is a second, distinct promise; "
                      "one call to action; 2 to 4 short paragraphs; no images needed.")
     elif t.channel == "sms":
-        lines.append("SMS: one segment (160 GSM-7 characters) including the brand prefix and 'Reply STOP to opt out.', which are added for you; "
+        lines.append("SMS: one segment (160 GSM-7 characters) including the brand prefix and 'Reply STOP to opt out.'"
+                     + (", and the shortened link back (about 22 characters)" if _has_items(brief) and brief.flow_type in ("cart_abandon", "browse_abandon") else "")
+                     + ", which are added for you; "
                      "plain ASCII punctuation.")
     elif t.channel == "push":
         lines.append("Push: title up to about 50 characters, body up to about 150; one action.")
@@ -766,6 +778,34 @@ def _shorten(s: str, n: int) -> str:
     return cut + "..."
 
 
+def _has_items(brief: Brief) -> bool:
+    from engine.render.product_blocks import EVENT_FLOWS
+    return brief.flow_type in EVENT_FLOWS
+
+
+def _tokens_line(brief: Brief, short: bool = False) -> str:
+    """The merge fields a writer may use: the first item's name too when the trigger event carries items."""
+    if _has_items(brief):
+        return ("{first_name}, {product_name} and {item_name}" if short else
+                "{first_name}, {product_name} and {item_name} (the first item's name, from the trigger event) are available")
+    return "{first_name} and {product_name}" if short else "only {first_name} and {product_name} are available"
+
+
+def _who(brief: Brief, core: Any) -> str:
+    """Who receives the flow, in a sentence a copywriter can write to."""
+    did = core.label or core.event
+    if brief.flow_type == "winback":
+        return f"people who {brief.qualifying_event.describe()} and have not {did} in the last {brief.churn_threshold_days} days"
+    if brief.flow_type == "activation":
+        return f"new users who {brief.qualifying_event.describe()} and have not yet {did}"
+    from engine.flows.library import FLOWS
+    f = FLOWS[brief.flow_type]
+    trig, goal = f.trigger_event.get("*"), f.goal_event.get("*")
+    if trig and goal and trig != goal:
+        return f"people who {f.trigger_label.get('*', trig)} and have not {f.goal_label.get('*', goal)} since"
+    return f.summary
+
+
 def handoff_markdown(brief: Brief, copy_plan: List[TouchCopy]) -> str:
     shapes = {"email": {"subject": "", "preheader": "", "headline": "", "paragraphs": [""], "cta_label": "", "framework": "", "hypothesis": ""},
               "sms": {"text": "", "framework": "", "hypothesis": ""},
@@ -773,8 +813,8 @@ def handoff_markdown(brief: Brief, copy_plan: List[TouchCopy]) -> str:
               "in_app": {"headline": "", "body": "", "cta_label": "", "framework": "", "hypothesis": ""}}
     lines = [f"# Copy briefs: {brief.product_name} {brief.flow_type}", "",
              "Write the copy for each step below, then save it as drafts.json in this shape and re-run:",
-             "", "```text", f"python3 -m engine.pipeline.orchestrator plan --brief <brief> --drafts drafts.json", "```", "",
-             "Rules: words only; personalize only with {first_name} and {product_name}; no em dashes; follow the offer policy; "
+             "", "```text", f"lcm plan --brief <brief> --drafts drafts.json", "```", "",
+             f"Rules: words only; personalize only with {_tokens_line(brief, short=True)}; no em dashes; follow the offer policy; "
              "each variant gets a framework and a falsifiable hypothesis. The renderer adds the unsubscribe link, the address, "
              "SMS opt-out text and the template code.", ""]
     skeleton: Dict[str, Any] = {}

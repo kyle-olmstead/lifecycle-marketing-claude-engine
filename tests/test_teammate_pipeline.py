@@ -22,7 +22,10 @@ EM_DASH = chr(0x2014)
 
 @pytest.fixture(scope="module")
 def plan():
-    return orchestrator.run(load_brief(EXAMPLE), str(ROOT / "examples/brands/ridgeview_saas/data"), copy_mode="offline")
+    # the demo brief lives in the demo workspace, so it is read with that workspace's lmm.yaml, as lcm reads it there
+    from engine import workspace
+    defaults = workspace.brief_defaults(workspace.Workspace(ROOT / "examples/brands/ridgeview_saas"))
+    return orchestrator.run(load_brief(EXAMPLE, defaults=defaults), str(ROOT / "examples/brands/ridgeview_saas/data"), copy_mode="offline")
 
 
 def _all_checks_pass_except_known(p, allowed=("copy:", "holdout read", "compliance", "sending gate", "audience after the gate")):

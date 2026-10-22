@@ -1,0 +1,4 @@
+{
+  "text": "Northfield Coffee Roasters: Shipping shows at checkout before you pay, so there are no surprises. Your cart: {{ event.extra.checkout_url|default:organization.url }} Reply STOP to opt out.",
+  "preview": "Northfield Coffee Roasters: Shipping shows at checkout before you pay, so there are no surprises. Your cart: https://ex.co/a1B2c3d Reply STOP to opt out."
+}

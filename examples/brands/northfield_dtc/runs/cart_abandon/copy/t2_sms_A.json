@@ -1,0 +1,4 @@
+{
+  "text": "Northfield Coffee Roasters: Not sure which grind to pick? Reply with how you brew and we will tell you. {{ event.extra.checkout_url|default:organization.url }} Reply STOP to opt out.",
+  "preview": "Northfield Coffee Roasters: Not sure which grind to pick? Reply with how you brew and we will tell you. https://ex.co/a1B2c3d Reply STOP to opt out."
+}

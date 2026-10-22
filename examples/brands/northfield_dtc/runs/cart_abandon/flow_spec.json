@@ -1,0 +1,255 @@
+{
+  "flow": "Abandoned cart: Northfield Coffee Roasters",
+  "flow_type": "cart_abandon",
+  "message_class": "marketing",
+  "platform": "klaviyo",
+  "analytics": "warehouse (bigquery) and Klaviyo",
+  "template_dialect": "klaviyo",
+  "lifecycle_stage": "shopper to buyer",
+  "objective": "a 3-touch abandoned cart flow with email and SMS",
+  "clv_lever": "frequency",
+  "gate_required": "AMBER",
+  "trigger": {
+    "type": "event",
+    "definition": "checkout_started occurred, then 1 hour(s) without order_completed",
+    "source_object": "checkout_started sent to Klaviyo in real time, carrying in_holdout",
+    "re_entry": {
+      "mode": "cooldown",
+      "cooldown": "P7D",
+      "description": "allowed again P7D after entering"
+    },
+    "typed": {
+      "flow_id": "northfield_coffee_cart_abandon_1h",
+      "type": "event",
+      "event": {
+        "event": "checkout_started",
+        "where": {}
+      },
+      "abandon_after": "PT1H",
+      "exclude_if": [],
+      "re_entry": {
+        "mode": "cooldown",
+        "cooldown": "P7D"
+      },
+      "dedupe_key": "user_id + checkout_id",
+      "source": "esp_native"
+    }
+  },
+  "entry_filters": [
+    {
+      "condition": "is identified (has an email address on the profile); anonymous checkout_started events cannot enter",
+      "evaluated": "entry_only"
+    },
+    {
+      "condition": "has not done order_completed in the 1 hour(s) after checkout_started",
+      "evaluated": "entry_only"
+    },
+    {
+      "condition": "not in the program-wide global holdout (bucket of md5(user_id || ':lmm_global') under 5)",
+      "evaluated": "entry_only"
+    },
+    {
+      "condition": "the trigger is the person's own activity in the last day (a checkout, a product view, an order), which counts as engagement; anyone with no click, reply, order or session in 365 days is still excluded",
+      "evaluated": "entry_only"
+    }
+  ],
+  "ongoing_filters": [
+    {
+      "condition": "has not done order_completed since entering",
+      "evaluated": "every_step"
+    },
+    {
+      "condition": "can receive email marketing (subscribed, not bounced, not sunset-suppressed)",
+      "evaluated": "every_step"
+    }
+  ],
+  "suppressions": [
+    "unsubscribed from marketing email, or hard bounced",
+    "marked any message as spam (complaint), ever",
+    "sunset-suppressed (lcm_sunset is true); only a fresh opt-in lifts it",
+    "internal, test and seed addresses",
+    "currently in a higher-priority flow (by the frequency policy's flow_priority: billing, cart, post-purchase first)"
+  ],
+  "holdout": {
+    "percent": 10.0,
+    "persistent": true,
+    "unit": "user",
+    "assignment": "persistent, by user: bucket = first 7 hex digits of md5(user_id || ':northfield_coffee_cart_abandon_1h') mod 100; bucket < 10 is the holdout, added as in_holdout to the live checkout_started event by the system that sends it; holdout members enter, then exit at holdout_split, so both arms are the same population",
+    "sizing": "about 351 entrants a month (ESTIMATE), 31.3% return within 10 days with no flow (ESTIMATE), 20% relative lift (6.3 pts) worth acting on: 508 holdout entrants at 10%, 14.5 months of entries plus the 10-day outcome window, so the read lands about 14.8 months after launch (engine/measurement/stats.py feasible --entries-per-month 350.7 --holdout 0.1 --baseline 0.3132 --mde-rel 0.2 --outcome-window-days 10)",
+    "read": "directional only"
+  },
+  "frequency": {
+    "cap": "at most 4 email/sms/push message(s) per week; at most 1 sms message(s) per day across flows (Smart Sending)",
+    "caps": [
+      {
+        "channels": [
+          "email",
+          "sms",
+          "push"
+        ],
+        "max": 4,
+        "window": "P7D"
+      },
+      {
+        "channels": [
+          "sms"
+        ],
+        "max": 1,
+        "window": "P1D"
+      }
+    ],
+    "send_windows": [
+      {
+        "channel": "email",
+        "allowed_from": "08:00",
+        "allowed_until": "21:00",
+        "basis": "recipient_local"
+      },
+      {
+        "channel": "sms",
+        "allowed_from": "09:00",
+        "allowed_until": "20:00",
+        "basis": "recipient_local"
+      }
+    ],
+    "send_hour_local": null,
+    "priority": 1,
+    "collision_rule": "higher_priority_preempts"
+  },
+  "steps": [
+    {
+      "id": "holdout_split",
+      "wait": {
+        "type": "none"
+      },
+      "channel": "none",
+      "message": "-",
+      "goal": "-",
+      "branch": {
+        "condition": "in_holdout is true (property on the checkout_started trigger event, set by the system that sends it)",
+        "yes": "exit (holdout)",
+        "no": "t1_email"
+      }
+    },
+    {
+      "id": "t1_email",
+      "wait": {
+        "type": "fixed",
+        "duration": "PT1H"
+      },
+      "channel": "email",
+      "message": "cart reminder: Their cart, exactly as they left it (the product block), with one button back to checkout. No offer.",
+      "goal": "order_completed",
+      "respect_send_window": true,
+      "requires": [
+        "email_consent"
+      ]
+    },
+    {
+      "id": "t2_sms",
+      "wait": {
+        "type": "fixed",
+        "duration": "PT23H"
+      },
+      "channel": "sms",
+      "message": "cart objection: Answer the most common reason people stop at checkout (shipping cost, delivery time, returns), with the cart below.",
+      "goal": "order_completed",
+      "respect_send_window": true,
+      "requires": [
+        "sms_consent"
+      ],
+      "condition": "has SMS consent"
+    },
+    {
+      "id": "t2_email_fallback",
+      "wait": {
+        "type": "none"
+      },
+      "channel": "email",
+      "requires": [
+        "email_consent"
+      ],
+      "condition": "no SMS consent (fallback for t2_sms)",
+      "message": "cart objection (email version): Answer the most common reason people stop at checkout (shipping cost, delivery time, returns), with the cart below.",
+      "goal": "order_completed",
+      "respect_send_window": true
+    },
+    {
+      "id": "t3_email",
+      "wait": {
+        "type": "fixed",
+        "duration": "P2D"
+      },
+      "channel": "email",
+      "message": "cart last call: A last, short reminder that the cart is saved; the offer only if the offer policy allows one, and a deadline only if the offer has one.",
+      "goal": "order_completed",
+      "respect_send_window": true,
+      "requires": [
+        "email_consent"
+      ]
+    }
+  ],
+  "exit": {
+    "goal": "placed an order (order_completed)",
+    "unenroll_immediately": true,
+    "then": "normal lifecycle messaging"
+  },
+  "measurement": {
+    "primary_metric": "placed an order (order_completed) within 10 days of entry, treatment vs holdout, both arms counted from their entry date",
+    "read_after": "not inside 12 months at this volume (it would take about 15 months): keep the holdout, report against a pre/post baseline, and label every result directional",
+    "compared_against": "holdout",
+    "guardrails": [
+      "spam complaint rate per send below 0.1% (Gmail's target; 0.3% is its hard limit)",
+      "unsubscribe rate per send, against the 90-day median for your lifecycle sends; pause a touch running above twice it",
+      "hard bounce rate below 1%",
+      "SMS opt-out rate per send, against your SMS program's median"
+    ]
+  },
+  "data_dependencies": [
+    {
+      "name": "checkout_started",
+      "kind": "event",
+      "status": "verified",
+      "note": "qualifies a person for the flow; 3528 events from 1281 people"
+    },
+    {
+      "name": "order_completed",
+      "kind": "object",
+      "status": "verified",
+      "note": "the core action: entry clock, exit and primary metric; orders table (the transaction object): 1280 completed orders, 693 people"
+    },
+    {
+      "name": "email",
+      "kind": "attribute",
+      "status": "verified",
+      "fill_rate": 1.0,
+      "note": "address for every email touch; users.email filled 100%"
+    },
+    {
+      "name": "email_consent",
+      "kind": "attribute",
+      "status": "verified",
+      "fill_rate": 0.7575,
+      "note": "email marketing consent; users.email_consent_at filled 76%"
+    },
+    {
+      "name": "sms_consent",
+      "kind": "attribute",
+      "status": "verified",
+      "fill_rate": 0.1655,
+      "note": "SMS consent with an auditable record (10DLC); users.sms_consent_at filled 17%"
+    },
+    {
+      "name": "in_holdout",
+      "kind": "attribute",
+      "status": "unknown",
+      "note": "a property on the checkout_started event, added where it is sent (formula in the build steps)"
+    },
+    {
+      "name": "lcm_sunset",
+      "kind": "attribute",
+      "status": "unknown",
+      "note": "suppression flag the sunset step writes; create the property in the platform before launch"
+    }
+  ]
+}

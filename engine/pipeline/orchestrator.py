@@ -307,7 +307,7 @@ def _cli(argv: Optional[List[str]] = None) -> int:
 
     try:
         if a.cmd == "brief":
-            y = to_yaml(parse_text(a.text, a.product, sets(a.set) or None))
+            y = to_yaml(parse_text(a.text, a.product, sets(a.set) or None), thin=True)
             if a.out:
                 Path(a.out).parent.mkdir(parents=True, exist_ok=True)
                 Path(a.out).write_text(y, encoding="utf-8")

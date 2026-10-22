@@ -1,0 +1,92 @@
+{
+  "t1_email": [
+    {
+      "subject": "Your coffee is still in your cart",
+      "preheader": "We kept it exactly as you left it",
+      "headline": "Still thinking it over?",
+      "paragraphs": [
+        "Hi {first_name}, you left {item_name} in your cart. We saved it, so you can finish checking out whenever you are ready.",
+        "Every bag ships with its roast date on the label, so you will know exactly how fresh it is when it arrives."
+      ],
+      "cta_label": "Return to my cart",
+      "framework": "Plain reminder",
+      "hypothesis": "Showing the saved cart with one button recovers more checkouts than a generic reminder; falsified if B recovers as many or more within 72 hours."
+    },
+    {
+      "subject": "{item_name} is waiting for you",
+      "preheader": "Pick up right where you stopped",
+      "headline": "Your cart is saved",
+      "paragraphs": [
+        "Hi {first_name}, your cart at {product_name} is still here, with {item_name} in it.",
+        "If something stopped you at checkout, reply to this email and a person on our team will help."
+      ],
+      "cta_label": "Finish my order",
+      "framework": "Plain reminder",
+      "hypothesis": "Naming the item in the subject line lifts opens and recovery; falsified if A recovers as many or more within 72 hours."
+    }
+  ],
+  "t2_sms": [
+    {
+      "text": "Not sure which grind to pick? Reply with how you brew and we will tell you.",
+      "framework": "Objection handling",
+      "hypothesis": "Answering the grind question by text removes the most common coffee-specific hesitation; falsified if B recovers as many or more."
+    },
+    {
+      "text": "Shipping shows at checkout before you pay, so there are no surprises. Your cart:",
+      "framework": "Objection handling",
+      "hypothesis": "Naming when shipping cost appears answers the cost worry; falsified if A recovers as many or more."
+    }
+  ],
+  "t2_email_fallback": [
+    {
+      "subject": "Which grind should you choose?",
+      "preheader": "Tell us how you brew and we will tell you",
+      "headline": "The right grind for how you brew",
+      "paragraphs": [
+        "Hi {first_name}, the question we hear most at checkout is which grind to choose. Whole bean keeps longest if you have a grinder; otherwise pick the grind for your brewer: coarse for a French press, medium for drip, fine for espresso.",
+        "Not sure? Reply with how you make your coffee and a person on our team will tell you which to pick. Your cart is saved in the meantime."
+      ],
+      "cta_label": "Back to my cart",
+      "framework": "Objection handling",
+      "hypothesis": "A concrete grind answer converts people who stopped over the choice; falsified if B recovers as many or more within 72 hours."
+    },
+    {
+      "subject": "No surprises at checkout",
+      "preheader": "Shipping shows before you pay",
+      "headline": "See the full price before you pay",
+      "paragraphs": [
+        "Hi {first_name}, if you stopped because you were not sure what shipping would cost, the checkout page shows it before you enter any payment details.",
+        "Your cart is saved with {item_name} in it, and questions about an order go straight to a person on our team if you reply to this email."
+      ],
+      "cta_label": "See my total",
+      "framework": "Objection handling",
+      "hypothesis": "Saying where shipping cost appears answers the most common cost worry; falsified if A recovers as many or more within 72 hours."
+    }
+  ],
+  "t3_email": [
+    {
+      "subject": "Last reminder about your cart",
+      "preheader": "It is saved, if you still want it",
+      "headline": "One last note about your cart",
+      "paragraphs": [
+        "Hi {first_name}, this is the last reminder from us about the coffee in your cart. It is saved if you want to finish your order.",
+        "If now is not the right time, that is fine. You will not hear from us about this cart again."
+      ],
+      "cta_label": "Finish my order",
+      "framework": "Plain last reminder",
+      "hypothesis": "A short, honest last note recovers late buyers without an offer; falsified if B recovers as many or more within 7 days."
+    },
+    {
+      "subject": "Still want {item_name}?",
+      "preheader": "Your cart is saved for you",
+      "headline": "Your cart is still here",
+      "paragraphs": [
+        "Hi {first_name}, we will not keep reminding you, but your cart is still saved at {product_name} if you want it.",
+        "If you have a question before you order, reply and a person on our team will answer."
+      ],
+      "cta_label": "Return to my cart",
+      "framework": "Plain last reminder",
+      "hypothesis": "Naming the item one last time recovers more than a generic note; falsified if A recovers as many or more within 7 days."
+    }
+  ]
+}

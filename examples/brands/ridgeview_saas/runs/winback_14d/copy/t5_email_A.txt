@@ -1,11 +1,14 @@
 Do you still want these emails?
 
-Hi {{ customer.first_name | default: "there" }}, you have not opened Ridgeview in a while, so we want to check before we send more.
+Hi {{ customer.first_name | default: "there" }}, I have sent a few notes about Ridgeview reports and I do not want to fill your inbox with ones you do not read.
 
-If you want to keep hearing from us, click below. If not, do nothing: in two weeks we will stop these emails. Your account and data stay as they are.
+If you would like to keep hearing from us, click below. If you do nothing, I will stop sending these product emails. Your account and your reports stay exactly as they are.
 
-Yes, keep me subscribed: https://app.ridgeview.example/reports/new?utm_source=lifecycle&utm_medium=email&utm_campaign=ridgeview_winback_14d&utm_content=t5_email
+Keep me on the list: https://app.ridgeview.example/reports/new?utm_source=lifecycle&utm_medium=email&utm_campaign=ridgeview_winback_14d&utm_content=t5_email
 
 Dana Ortiz at Ridgeview
-100 Example Way, Suite 400, Springfield, OR 97477
+Ridgeview Analytics, Inc. (fictional), 100 Example Way, Suite 400, Springfield, OR 97477
+You are getting this because you have a Ridgeview account.
+Questions? Reply to this email and a person on our team will answer.
+LinkedIn: https://www.linkedin.example/company/ridgeview
 Unsubscribe: {% unsubscribe_url %}

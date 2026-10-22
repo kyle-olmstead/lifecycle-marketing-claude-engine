@@ -97,12 +97,11 @@
         "channel": "email",
         "allowed_from": "08:00",
         "allowed_until": "21:00",
-        "basis": "recipient_local",
-        "source": "engine default"
+        "basis": "recipient_local"
       }
     ],
     "send_hour_local": "10:00",
-    "priority": 9,
+    "priority": 5,
     "collision_rule": "higher_priority_preempts"
   },
   "steps": [
