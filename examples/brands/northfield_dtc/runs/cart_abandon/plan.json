@@ -1,6 +1,6 @@
 {
-  "run_id": "31ba925a69b2",
-  "generated_at": "2026-10-22T22:23:20+00:00",
+  "run_id": "d38d3952993b",
+  "generated_at": "2026-10-22T23:46:39+00:00",
   "engine_version": "3.0.0",
   "brief": {
     "product_name": "Northfield Coffee Roasters",
@@ -42,7 +42,7 @@
     "sender_name": "Sam at Northfield",
     "brand_voice": "warm, concrete and unhurried; talk about the coffee, the farm and the roast date, never about hype",
     "postal_address": "48 Example Street, Unit 2, Portland, ME 04101",
-    "brand_kit": "/home/claude/lifecycle-marketing-claude-engine/examples/brands/northfield_dtc/brand.yaml",
+    "brand_kit": "examples/brands/northfield_dtc/brand.yaml",
     "cta_url": null,
     "recipient_countries": [
       "US"

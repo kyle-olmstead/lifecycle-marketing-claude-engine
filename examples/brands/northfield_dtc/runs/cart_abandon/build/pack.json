@@ -1,0 +1,771 @@
+{
+  "platform": "klaviyo",
+  "platform_label": "Klaviyo",
+  "flow_type": "cart_abandon",
+  "flow": "Abandoned cart: Northfield Coffee Roasters",
+  "slug": "northfield_coffee_cart_abandon_1h",
+  "run_id": "d38d3952993b",
+  "status": "READY WITH WARNINGS",
+  "blocked_reasons": [],
+  "mode": "native_event",
+  "trigger": {
+    "mode": "native_event",
+    "type": "metric",
+    "event": "Started Checkout",
+    "summary": "Metric-triggered flow on Started Checkout",
+    "filters": [
+      "Klaviyo tracks events on known profiles only, so anonymous sessions cannot enter"
+    ],
+    "flow_filters": [
+      "Placed Order zero times since starting this flow"
+    ],
+    "exit_criteria": [
+      "flow filter: Placed Order zero times since starting this flow (checked before every action)"
+    ],
+    "re_entry": {
+      "plan": "allowed again P7D after entering",
+      "mode": "cooldown",
+      "setting": "Re-enter after a minimum time period: 1 week(s)",
+      "api": {
+        "duration": 1,
+        "unit": "week"
+      }
+    },
+    "segment": null,
+    "holdout": "Trigger split on the trigger event's in_holdout property (true goes to exit)",
+    "warehouse_alternative": null,
+    "native_alternative": null,
+    "confidence": "VERIFIED"
+  },
+  "steps": [
+    {
+      "id": "holdout_split",
+      "kind": "split",
+      "platform_action": "trigger-split",
+      "wait": null,
+      "channel": null,
+      "condition": null,
+      "content": null,
+      "split": {
+        "kind": "holdout",
+        "condition": "the trigger event's in_holdout is true",
+        "platform_action": "trigger-split",
+        "yes": "exit (holdout: no messages)",
+        "no": "t1_email",
+        "source": "trigger_event_property",
+        "note": null
+      },
+      "respect_send_window": false,
+      "window": null,
+      "manual": false,
+      "note": null
+    },
+    {
+      "id": "t1_email",
+      "kind": "send",
+      "platform_action": "send-email",
+      "wait": {
+        "iso": "PT1H",
+        "seconds": 3600,
+        "value": 60,
+        "unit": "minutes",
+        "label": "1 hour",
+        "until_local_time": null
+      },
+      "channel": "email",
+      "condition": null,
+      "content": {
+        "step_id": "t1_email",
+        "channel": "email",
+        "variants": {
+          "A": [
+            "t1_email_A.html",
+            "t1_email_A.mjml",
+            "t1_email_A.subject.txt",
+            "t1_email_A.txt"
+          ],
+          "B": [
+            "t1_email_B.html",
+            "t1_email_B.mjml",
+            "t1_email_B.subject.txt",
+            "t1_email_B.txt"
+          ]
+        },
+        "chosen": "A",
+        "subject": "Your coffee is still in your cart",
+        "preheader": "We kept it exactly as you left it"
+      },
+      "split": null,
+      "respect_send_window": true,
+      "window": "sends when the delay ends: Klaviyo has no hour window on an hours delay (the plan permits 08:00 to 21:00)",
+      "manual": false,
+      "note": null
+    },
+    {
+      "id": "t2_sms_consent",
+      "kind": "split",
+      "platform_action": "conditional-split realized as message filters: send-sms for people with sms consent, then send-email for everyone else (Klaviyo branches never rejoin, so the flow stays one path)",
+      "wait": {
+        "iso": "PT23H",
+        "seconds": 82800,
+        "value": 1380,
+        "unit": "minutes",
+        "label": "23 hours",
+        "until_local_time": null
+      },
+      "channel": null,
+      "condition": null,
+      "content": null,
+      "split": {
+        "kind": "consent",
+        "condition": "has sms consent",
+        "platform_action": "conditional-split realized as message filters: send-sms for people with sms consent, then send-email for everyone else (Klaviyo branches never rejoin, so the flow stays one path)",
+        "yes": "t2_sms",
+        "no": "t2_email_fallback",
+        "source": "consent",
+        "note": null
+      },
+      "respect_send_window": false,
+      "window": null,
+      "manual": false,
+      "note": null
+    },
+    {
+      "id": "t2_sms",
+      "kind": "send",
+      "platform_action": "send-sms",
+      "wait": null,
+      "channel": "sms",
+      "condition": "has SMS consent",
+      "content": {
+        "step_id": "t2_sms",
+        "channel": "sms",
+        "variants": {
+          "A": [
+            "t2_sms_A.json"
+          ],
+          "B": [
+            "t2_sms_B.json"
+          ]
+        },
+        "chosen": "A",
+        "subject": null,
+        "preheader": null
+      },
+      "split": null,
+      "respect_send_window": true,
+      "window": "sms_quiet_hours_enabled: true (Klaviyo's SMS quiet hours; the plan permits 09:00 to 20:00)",
+      "manual": false,
+      "note": null
+    },
+    {
+      "id": "t2_email_fallback",
+      "kind": "send",
+      "platform_action": "send-email",
+      "wait": null,
+      "channel": "email",
+      "condition": "no SMS consent (fallback for t2_sms)",
+      "content": {
+        "step_id": "t2_email_fallback",
+        "channel": "email",
+        "variants": {
+          "A": [
+            "t2_email_fallback_A.html",
+            "t2_email_fallback_A.mjml",
+            "t2_email_fallback_A.subject.txt",
+            "t2_email_fallback_A.txt"
+          ],
+          "B": [
+            "t2_email_fallback_B.html",
+            "t2_email_fallback_B.mjml",
+            "t2_email_fallback_B.subject.txt",
+            "t2_email_fallback_B.txt"
+          ]
+        },
+        "chosen": "A",
+        "subject": "Which grind should you choose?",
+        "preheader": "Tell us how you brew and we will tell you"
+      },
+      "split": null,
+      "respect_send_window": true,
+      "window": "sends when the delay ends: Klaviyo has no hour window on an hours delay (the plan permits 08:00 to 21:00)",
+      "manual": false,
+      "note": null
+    },
+    {
+      "id": "t3_email",
+      "kind": "send",
+      "platform_action": "send-email",
+      "wait": {
+        "iso": "P2D",
+        "seconds": 172800,
+        "value": 2880,
+        "unit": "minutes",
+        "label": "2 days",
+        "until_local_time": null
+      },
+      "channel": "email",
+      "condition": null,
+      "content": {
+        "step_id": "t3_email",
+        "channel": "email",
+        "variants": {
+          "A": [
+            "t3_email_A.html",
+            "t3_email_A.mjml",
+            "t3_email_A.subject.txt",
+            "t3_email_A.txt"
+          ],
+          "B": [
+            "t3_email_B.html",
+            "t3_email_B.mjml",
+            "t3_email_B.subject.txt",
+            "t3_email_B.txt"
+          ]
+        },
+        "chosen": "A",
+        "subject": "Last reminder about your cart",
+        "preheader": "It is saved, if you still want it"
+      },
+      "split": null,
+      "respect_send_window": true,
+      "window": "sends when the delay ends: Klaviyo has no hour window on an hours delay (the plan permits 08:00 to 21:00)",
+      "manual": false,
+      "note": null
+    }
+  ],
+  "settings": {
+    "goal": "placed an order (order_completed); flow filter: Placed Order zero times since starting this flow (checked before every action)",
+    "exit": "leaves immediately when the goal happens, at any step",
+    "re_entry": "Re-enter after a minimum time period: 1 week(s)",
+    "send_windows": [
+      "email: 08:00 to 21:00 recipient local (plan); sends when the delay ends: Klaviyo has no hour window on an hours delay (the plan permits 08:00 to 21:00)",
+      "sms: 09:00 to 20:00 recipient local (plan); sms_quiet_hours_enabled: true (Klaviyo's SMS quiet hours; the plan permits 09:00 to 20:00)"
+    ],
+    "frequency": [
+      "plan cap: at most 4 email/sms/push per P7D. Klaviyo: Smart Sending on for every message (smart_sending_enabled: true; email window 16 hours by default): a window, not a count, so the flow's own spacing keeps the cap",
+      "plan cap: at most 1 sms per P1D. Klaviyo: Smart Sending on for every message (smart_sending_enabled: true; email window 16 hours by default): a window, not a count, so the flow's own spacing keeps the cap"
+    ],
+    "status_on_create": "Draft (the flow and every action in draft; nothing sends until you set it live)"
+  },
+  "content": [
+    {
+      "step_id": "t1_email",
+      "channel": "email",
+      "variants": {
+        "A": [
+          "t1_email_A.html",
+          "t1_email_A.mjml",
+          "t1_email_A.subject.txt",
+          "t1_email_A.txt"
+        ],
+        "B": [
+          "t1_email_B.html",
+          "t1_email_B.mjml",
+          "t1_email_B.subject.txt",
+          "t1_email_B.txt"
+        ]
+      },
+      "chosen": "A",
+      "subject": "Your coffee is still in your cart",
+      "preheader": "We kept it exactly as you left it"
+    },
+    {
+      "step_id": "t2_sms",
+      "channel": "sms",
+      "variants": {
+        "A": [
+          "t2_sms_A.json"
+        ],
+        "B": [
+          "t2_sms_B.json"
+        ]
+      },
+      "chosen": "A",
+      "subject": null,
+      "preheader": null
+    },
+    {
+      "step_id": "t2_email_fallback",
+      "channel": "email",
+      "variants": {
+        "A": [
+          "t2_email_fallback_A.html",
+          "t2_email_fallback_A.mjml",
+          "t2_email_fallback_A.subject.txt",
+          "t2_email_fallback_A.txt"
+        ],
+        "B": [
+          "t2_email_fallback_B.html",
+          "t2_email_fallback_B.mjml",
+          "t2_email_fallback_B.subject.txt",
+          "t2_email_fallback_B.txt"
+        ]
+      },
+      "chosen": "A",
+      "subject": "Which grind should you choose?",
+      "preheader": "Tell us how you brew and we will tell you"
+    },
+    {
+      "step_id": "t3_email",
+      "channel": "email",
+      "variants": {
+        "A": [
+          "t3_email_A.html",
+          "t3_email_A.mjml",
+          "t3_email_A.subject.txt",
+          "t3_email_A.txt"
+        ],
+        "B": [
+          "t3_email_B.html",
+          "t3_email_B.mjml",
+          "t3_email_B.subject.txt",
+          "t3_email_B.txt"
+        ]
+      },
+      "chosen": "A",
+      "subject": "Last reminder about your cart",
+      "preheader": "It is saved, if you still want it"
+    }
+  ],
+  "checks": [
+    {
+      "id": "klaviyo.create_daily_limit",
+      "status": "pass",
+      "hard": false,
+      "requirement": "Create Flow and Create Segment are limited to 1 per second, 15 per minute and 100 per day",
+      "detail": "Create Flow and Create Segment are limited to 1 per second, 15 per minute and 100 per day: this pack makes 1 such create call(s)",
+      "source": "https://raw.githubusercontent.com/klaviyo/openapi/main/openapi/stable.json",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "klaviyo.definition_not_editable",
+      "status": "warn",
+      "hard": false,
+      "requirement": "A flow definition cannot be changed through the API after it is created (only its status): review the artifact before --create, then edit in the flow builder",
+      "detail": "A flow definition cannot be changed through the API after it is created (only its status): review the artifact before --create, then edit in the flow builder",
+      "source": "https://developers.klaviyo.com/en/reference/flows_api_overview",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "klaviyo.smart_sending_is_a_window",
+      "status": "warn",
+      "hard": false,
+      "requirement": "Smart Sending is a per-channel time window (email 16 hours by default), not a count: the plan's weekly cap is approximated by Smart Sending plus the flow's own spacing",
+      "detail": "Smart Sending is a per-channel time window (email 16 hours by default), not a count: the plan's weekly cap is approximated by Smart Sending plus the flow's own spacing",
+      "source": "https://help.klaviyo.com/hc/en-us/articles/115002779311",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "klaviyo.no_hour_window_on_delays",
+      "status": "warn",
+      "hard": false,
+      "requirement": "Klaviyo has no hour-range window on a minutes or hours delay: hour-level touches send when the delay ends (SMS still follows Klaviyo's SMS quiet hours setting)",
+      "detail": "Klaviyo has no hour-range window on a minutes or hours delay: hour-level touches send when the delay ends (SMS still follows Klaviyo's SMS quiet hours setting)",
+      "source": "https://help.klaviyo.com/hc/en-us/articles/115003885212",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "all.events_in_esp",
+      "status": "warn",
+      "hard": true,
+      "requirement": "Every event the flow reads inside the platform (the trigger, the exit, the exclusions) must reach the platform: account option events_in_esp lists them. A native absence trigger whose events are not in the platform needs --warehouse-job",
+      "detail": "Every event the flow reads inside the platform (the trigger, the exit, the exclusions) must reach the platform: account option events_in_esp lists them. A native absence trigger whose events are not in the platform needs --warehouse-job. Confirm these reach Klaviyo: checkout_started (as Started Checkout), order_completed (as Placed Order) (or list them in esp.options.events_in_esp)",
+      "source": "https://help.klaviyo.com/hc/en-us/articles/115002779051",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "all.content_dialect",
+      "status": "pass",
+      "hard": true,
+      "requirement": "The rendered copy must be in this platform's template dialect",
+      "detail": "The rendered copy must be in this platform's template dialect: klaviyo",
+      "source": "engine/models.py PLATFORM_DIALECT",
+      "confidence": "VERIFIED"
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "klaviyo_template_t1_email",
+      "kind": "create_request",
+      "path": "artifacts/klaviyo_template_t1_email.json",
+      "schema_ref": "klaviyo_template_create",
+      "method": "POST",
+      "url": "https://a.klaviyo.com/api/templates",
+      "headers": {
+        "Authorization": "Klaviyo-API-Key ${KLAVIYO_PRIVATE_KEY}",
+        "revision": "2026-10-15",
+        "Content-Type": "application/vnd.api+json",
+        "accept": "application/vnd.api+json"
+      },
+      "body": {
+        "data": {
+          "type": "template",
+          "attributes": {
+            "name": "northfield_coffee_cart_abandon_1h t1_email A",
+            "editor_type": "CODE",
+            "html": "<!-- dialect: klaviyo -->\n<!-- northfield_coffee_cart_abandon_1h / t1_email. Rendered by engine/agents/copywriter.py through MJML (engine/render/mjml_render.py); lint: python3 engine/render/template_lint.py --dialect klaviyo --email <this file> -->\n<!doctype html>\n<html lang=\"en-US\" dir=\"auto\" xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:o=\"urn:schemas-microsoft-com:office:office\">\n  <head>\n    <title>\n      Your coffee is still in your cart\n    </title>\n    <!--[if !mso]><!-->\n    <meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\">\n    <!--<![endif]-->\n    <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n    <style type=\"text/css\">\n      #outlook a { padding:0; }\n      body { margin:0;padding:0;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%; }\n      table, td { border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt; }\n      img { border:0;height:auto;line-height:100%; outline:none;text-decoration:none;-ms-interpolation-mode:bicubic; }\n      p { display:block;margin:13px 0; }\n    </style>\n    <!--[if mso]>\n    <noscript>\n    <xml>\n    <o:OfficeDocumentSettings>\n      <o:AllowPNG/>\n      <o:PixelsPerInch>96</o:PixelsPerInch>\n    </o:OfficeDocumentSettings>\n    </xml>\n    </noscript>\n    <![endif]-->\n    <!--[if lte mso 11]>\n    <style type=\"text/css\">\n      .mj-outlook-group-fix { width:100% !important; }\n    </style>\n    <![endif]-->\n    \n      <!--[if !mso]><!-->\n        <link href=\"https://fonts.googleapis.com/css2?family=Lora:wght@400;700&display=swap\" rel=\"stylesheet\" type=\"text/css\">\n        <style type=\"text/css\">\n          @import url(https://fonts.googleapis.com/css2?family=Lora:wght@400;700&display=swap);\n        </style>\n      <!--<![endif]-->\n\n    \n    \n    <style type=\"text/css\">\n      @media only screen and (min-width:480px) {\n          .mj-column-per-100 { width:100% !important; max-width: 100%; }\n      }\n    </style>\n    <style media=\"screen and (min-width:480px)\">\n        .moz-text-html .mj-column-per-100 { width:100% !important; max-width: 100%; }\n    </style>\n    \n    <style type=\"text/css\">\n      @media only screen and (max-width:479px) {\n              table.mj-full-width-mobile { width: 100% !important; }\n              td.mj-full-width-mobile { width: auto !important; }\n            }\n    </style>\n    <style type=\"text/css\">:root { color-scheme: light dark; supported-color-schemes: light dark; }\n      a { color: #6B3E26; }\n      @media (prefers-color-scheme: dark) {\n        body, .lcm-body { background-color: #15100C !important; }\n        .lcm-card, .lcm-card > table { background: #211913 !important; background-color: #211913 !important; }\n        .lcm-footer, .lcm-footer > table { background: #15100C !important; background-color: #15100C !important; }\n        .lcm-text div, .lcm-text h1 { color: #F3ECE4 !important; }\n        a { color: #E0A878 !important; }\n        .lcm-button td, .lcm-button a { background: #D9A066 !important; background-color: #D9A066 !important; }\n        .lcm-button a { color: #1A120C !important; }\n      }\n      [data-ogsc] .lcm-text div, [data-ogsc] .lcm-text h1 { color: #F3ECE4 !important; }\n      [data-ogsc] a { color: #E0A878 !important; }\n      [data-ogsc] .lcm-button a { color: #1A120C !important; }\n      [data-ogsb] .lcm-body { background-color: #15100C !important; }\n      [data-ogsb] .lcm-card, [data-ogsb] .lcm-card > table { background-color: #211913 !important; }\n      [data-ogsb] .lcm-footer, [data-ogsb] .lcm-footer > table { background-color: #15100C !important; }\n      [data-ogsb] .lcm-button td, [data-ogsb] .lcm-button a { background-color: #D9A066 !important; }</style>\n    \n\n\n<meta content=\"light dark\" name=\"color-scheme\"/>\n<meta content=\"light dark\" name=\"supported-color-schemes\"/>\n<meta name=\"x-apple-disable-message-reformatting\"/>\n<!--[if mso]><style type=\"text/css\">body, table, td, div, p, a, h1 { font-family: Georgia, 'Times New Roman', serif !important; }</style><![endif]-->\n\n  </head>\n  <body style=\"word-spacing:normal;background-color:#F6F1EA;\">\n    \n    <div aria-roledescription=\"email\" class=\"lcm-body\" style=\"background-color:#F6F1EA\" role=\"article\" lang=\"en-US\" dir=\"auto\" aria-label=\"Your coffee is still in your cart\"><div class=\"preheader\" style=\"display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;\">We kept it exactly as you left it&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;</div>\n            <!--[if mso | IE]>\n            <table\n              align=\"center\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" class=\"lcm-card-outlook\" role=\"presentation\" style=\"width:600px\" width=\"600\" bgcolor=\"#FFFFFF\"\n            >\n              <tr>\n                <td style=\"line-height:0px;font-size:0px;mso-line-height-rule:exactly;\">\n            <![endif]-->\n        <div class=\"lcm-card\" style=\"background:#FFFFFF;background-color:#FFFFFF;margin:0px auto;max-width:600px\">\n        \n        <table\n          align=\"center\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"width:100%;background:#FFFFFF;background-color:#FFFFFF\"\n        >\n          <tbody>\n            <tr>\n              <td\n                style=\"direction:ltr;font-size:0px;padding:24px 0 0 0;text-align:center\"\n              >\n                <!--[if mso | IE]>\n                  <table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\">\n                \n              <tr>\n            \n                <td style=\"vertical-align:top;width:600px\">\n              <![endif]-->\n                <div class=\"mj-column-per-100 mj-outlook-group-fix\" style=\"font-size:0px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%\">\n                <table border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"vertical-align:top\" width=\"100%\">\n            <tbody>\n                <tr>\n              <td align=\"left\" style=\"font-size:0px;padding:0 24px;word-break:break-word\">\n                \n          <table border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"border-collapse:collapse;border-spacing:0px\" >\n            <tbody>\n              <tr>\n                <td style=\"width:160px\" >\n                  \n                <a href=\"https://www.northfieldcoffee.example\" target=\"_blank\">\n                  <img alt=\"Northfield Coffee Roasters\" height=\"40\" src=\"https://www.northfieldcoffee.example/email/northfield-wordmark-320x80.png\" style=\"border:0;display:block;outline:none;text-decoration:none;height:40px;width:100%;font-size:13px\" width=\"160\" />\n                </a>\n            \n                </td>\n              </tr>\n            </tbody>\n          </table>\n              </td>\n            </tr>\n            </tbody>\n        </table>\n            </div>\n              <!--[if mso | IE]>\n                </td>\n              \n              </tr>\n            \n                  </table>\n                <![endif]-->\n              </td>\n            </tr>\n          </tbody>\n        </table>\n        \n      </div>\n            <!--[if mso | IE]>\n                </td>\n              </tr>\n            </table>\n            \n            <table\n              align=\"center\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" class=\"lcm-card-outlook\" role=\"presentation\" style=\"width:600px\" width=\"600\" bgcolor=\"#FFFFFF\"\n            >\n              <tr>\n                <td style=\"line-height:0px;font-size:0px;mso-line-height-rule:exactly;\">\n            <![endif]-->\n        <div class=\"lcm-card\" style=\"background:#FFFFFF;background-color:#FFFFFF;margin:0px auto;max-width:600px\">\n        \n        <table\n          align=\"center\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"width:100%;background:#FFFFFF;background-color:#FFFFFF\"\n        >\n          <tbody>\n            <tr>\n              <td\n                style=\"direction:ltr;font-size:0px;padding:16px 0 0 0;text-align:center\"\n              >\n                <!--[if mso | IE]>\n                  <table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\">\n                \n              <tr>\n            \n                <td style=\"vertical-align:top;width:600px\">\n              <![endif]-->\n                <div class=\"mj-column-per-100 mj-outlook-group-fix\" style=\"font-size:0px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%\">\n                <table border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"vertical-align:top\" width=\"100%\">\n            <tbody>\n                <tr>\n              <td align=\"left\" class=\"lcm-text\" style=\"font-size:0px;padding:0 24px 16px 24px;word-break:break-word\">\n                <div style=\"font-family:Lora, Georgia, 'Times New Roman', serif;font-size:16px;line-height:1.5;text-align:left;color:#2B2118\"><h1 style=\"margin:0;font-family:Lora, Georgia, 'Times New Roman', serif;font-size:22px;line-height:1.3;font-weight:bold;\">Still thinking it over?</h1></div>\n              </td>\n            </tr><tr>\n              <td align=\"left\" class=\"lcm-text\" style=\"font-size:0px;padding:0 24px 16px 24px;word-break:break-word\">\n                <div style=\"font-family:Lora, Georgia, 'Times New Roman', serif;font-size:16px;line-height:1.5;text-align:left;color:#2B2118\">Hi {{ first_name|default:'there' }}, you left {{ event.extra.line_items.0.product.title|default:'your cart' }} in your cart. We saved it, so you can finish checking out whenever you are ready.</div>\n              </td>\n            </tr><tr>\n              <td align=\"left\" class=\"lcm-text\" style=\"font-size:0px;padding:0 24px 16px 24px;word-break:break-word\">\n                <div style=\"font-family:Lora, Georgia, 'Times New Roman', serif;font-size:16px;line-height:1.5;text-align:left;color:#2B2118\">Every bag ships with its roast date on the label, so you will know exactly how fresh it is when it arrives.</div>\n              </td>\n            </tr>\n            </tbody>\n        </table>\n            </div>\n              <!--[if mso | IE]>\n                </td>\n              \n              </tr>\n            \n                  </table>\n                <![endif]-->\n              </td>\n            </tr>\n          </tbody>\n        </table>\n        \n      </div>\n            <!--[if mso | IE]>\n                </td>\n              </tr>\n            </table>\n            \n            <table\n              align=\"center\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" class=\"lcm-card-outlook\" role=\"presentation\" style=\"width:600px\" width=\"600\" bgcolor=\"#FFFFFF\"\n            >\n              <tr>\n                <td style=\"line-height:0px;font-size:0px;mso-line-height-rule:exactly;\">\n            <![endif]-->\n        <div class=\"lcm-card\" style=\"background:#FFFFFF;background-color:#FFFFFF;margin:0px auto;max-width:600px\">\n        \n        <table\n          align=\"center\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"width:100%;background:#FFFFFF;background-color:#FFFFFF\"\n        >\n          <tbody>\n            <tr>\n              <td\n                style=\"direction:ltr;font-size:0px;padding:0 0 32px 0;text-align:center\"\n              >\n                <!--[if mso | IE]>\n                  <table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\">\n                \n              <tr>\n            \n                <td style=\"vertical-align:top;width:600px\">\n              <![endif]-->\n                <div class=\"mj-column-per-100 mj-outlook-group-fix\" style=\"font-size:0px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%\">\n                <table border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"vertical-align:top\" width=\"100%\">\n            <tbody>\n                <tr>\n              <td align=\"left\" class=\"lcm-button\" style=\"font-size:0px;padding:8px 24px 0 24px;word-break:break-word\">\n                \n            <table border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"border-collapse:separate;line-height:100%\" >\n              <tr>\n                <td align=\"center\" bgcolor=\"#6B3E26\" role=\"presentation\" style=\"border:none;border-radius:6px;cursor:auto;mso-padding-alt:12px 20px;background:#6B3E26\" valign=\"middle\" >\n                  <a href=\"{{ event.extra.checkout_url|default:organization.url }}\" style=\"display:inline-block;background:#6B3E26;color:#FFFFFF;font-family:Lora, Georgia, 'Times New Roman', serif;font-size:16px;font-weight:bold;line-height:1.25;margin:0;text-decoration:none;text-transform:none;padding:12px 20px;mso-padding-alt:0px;border-radius:6px\" target=\"_blank\" >\n                    Return to my cart\n                  </a>\n                </td>\n              </tr>\n            </table>\n        \n              </td>\n            </tr>\n            </tbody>\n        </table>\n            </div>\n              <!--[if mso | IE]>\n                </td>\n              \n              </tr>\n            \n                  </table>\n                <![endif]-->\n              </td>\n            </tr>\n          </tbody>\n        </table>\n        \n      </div>\n            <!--[if mso | IE]>\n                </td>\n              </tr>\n            </table>\n            \n            <table\n              align=\"center\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" class=\"lcm-footer-outlook\" role=\"presentation\" style=\"width:600px\" width=\"600\" bgcolor=\"#F6F1EA\"\n            >\n              <tr>\n                <td style=\"line-height:0px;font-size:0px;mso-line-height-rule:exactly;\">\n            <![endif]-->\n        <div class=\"lcm-footer\" style=\"background:#F6F1EA;background-color:#F6F1EA;margin:0px auto;max-width:600px\">\n        \n        <table\n          align=\"center\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"width:100%;background:#F6F1EA;background-color:#F6F1EA\"\n        >\n          <tbody>\n            <tr>\n              <td\n                style=\"direction:ltr;font-size:0px;padding:16px 0 24px 0;text-align:center\"\n              >\n                <!--[if mso | IE]>\n                  <table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\">\n                \n              <tr>\n            \n                <td style=\"vertical-align:top;width:600px\">\n              <![endif]-->\n                <div class=\"mj-column-per-100 mj-outlook-group-fix\" style=\"font-size:0px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%\">\n                <table border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"vertical-align:top\" width=\"100%\">\n            <tbody>\n                <tr>\n              <td align=\"left\" class=\"lcm-text\" style=\"font-size:0px;padding:0 24px;word-break:break-word\">\n                <div style=\"font-family:Lora, Georgia, 'Times New Roman', serif;font-size:12px;line-height:1.5;text-align:left;color:#2B2118\">Sam at Northfield<br/>\n          {{ organization.name }}, {{ organization.full_address }}<br/>\n          You are getting this because you bought from us or joined the roast list.<br/>\n          Questions about an order? Reply to this email and a person on our team will answer.<br/>\n<a href=\"https://www.instagram.example/northfieldcoffee\">Instagram</a> | <a href=\"https://www.northfieldcoffee.example/brew\">Brew guides</a><br/>\n          {% unsubscribe 'Unsubscribe' %}</div>\n              </td>\n            </tr>\n            </tbody>\n        </table>\n            </div>\n              <!--[if mso | IE]>\n                </td>\n              \n              </tr>\n            \n                  </table>\n                <![endif]-->\n              </td>\n            </tr>\n          </tbody>\n        </table>\n        \n      </div>\n            <!--[if mso | IE]>\n                </td>\n              </tr>\n            </table>\n            <![endif]--></div>\n  </body>\n</html>",
+            "text": "Still thinking it over?\n\nHi {{ first_name|default:'there' }}, you left {{ event.extra.line_items.0.product.title|default:'your cart' }} in your cart. We saved it, so you can finish checking out whenever you are ready.\n\nEvery bag ships with its roast date on the label, so you will know exactly how fresh it is when it arrives.\n\nReturn to my cart: {{ event.extra.checkout_url|default:organization.url }}\n\nSam at Northfield\n{{ organization.name }}, {{ organization.full_address }}\nYou are getting this because you bought from us or joined the roast list.\nQuestions about an order? Reply to this email and a person on our team will answer.\nInstagram: https://www.instagram.example/northfieldcoffee\nBrew guides: https://www.northfieldcoffee.example/brew\nUnsubscribe: {% unsubscribe_link %}\n"
+          }
+        }
+      },
+      "order": 1,
+      "produces": "<<klaviyo_template:t1_email>>",
+      "creates_status": "a CODE template (no status)",
+      "valid": true,
+      "errors": [],
+      "unverified_fields": [],
+      "placeholders": [],
+      "note": null
+    },
+    {
+      "name": "klaviyo_template_t2_email_fallback",
+      "kind": "create_request",
+      "path": "artifacts/klaviyo_template_t2_email_fallback.json",
+      "schema_ref": "klaviyo_template_create",
+      "method": "POST",
+      "url": "https://a.klaviyo.com/api/templates",
+      "headers": {
+        "Authorization": "Klaviyo-API-Key ${KLAVIYO_PRIVATE_KEY}",
+        "revision": "2026-10-15",
+        "Content-Type": "application/vnd.api+json",
+        "accept": "application/vnd.api+json"
+      },
+      "body": {
+        "data": {
+          "type": "template",
+          "attributes": {
+            "name": "northfield_coffee_cart_abandon_1h t2_email_fallback A",
+            "editor_type": "CODE",
+            "html": "<!-- dialect: klaviyo -->\n<!-- northfield_coffee_cart_abandon_1h / t2_email_fallback. Rendered by engine/agents/copywriter.py through MJML (engine/render/mjml_render.py); lint: python3 engine/render/template_lint.py --dialect klaviyo --email <this file> -->\n<!doctype html>\n<html lang=\"en-US\" dir=\"auto\" xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:o=\"urn:schemas-microsoft-com:office:office\">\n  <head>\n    <title>\n      Which grind should you choose?\n    </title>\n    <!--[if !mso]><!-->\n    <meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\">\n    <!--<![endif]-->\n    <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n    <style type=\"text/css\">\n      #outlook a { padding:0; }\n      body { margin:0;padding:0;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%; }\n      table, td { border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt; }\n      img { border:0;height:auto;line-height:100%; outline:none;text-decoration:none;-ms-interpolation-mode:bicubic; }\n      p { display:block;margin:13px 0; }\n    </style>\n    <!--[if mso]>\n    <noscript>\n    <xml>\n    <o:OfficeDocumentSettings>\n      <o:AllowPNG/>\n      <o:PixelsPerInch>96</o:PixelsPerInch>\n    </o:OfficeDocumentSettings>\n    </xml>\n    </noscript>\n    <![endif]-->\n    <!--[if lte mso 11]>\n    <style type=\"text/css\">\n      .mj-outlook-group-fix { width:100% !important; }\n    </style>\n    <![endif]-->\n    \n      <!--[if !mso]><!-->\n        <link href=\"https://fonts.googleapis.com/css2?family=Lora:wght@400;700&display=swap\" rel=\"stylesheet\" type=\"text/css\">\n        <style type=\"text/css\">\n          @import url(https://fonts.googleapis.com/css2?family=Lora:wght@400;700&display=swap);\n        </style>\n      <!--<![endif]-->\n\n    \n    \n    <style type=\"text/css\">\n      @media only screen and (min-width:480px) {\n          .mj-column-per-100 { width:100% !important; max-width: 100%; }\n      }\n    </style>\n    <style media=\"screen and (min-width:480px)\">\n        .moz-text-html .mj-column-per-100 { width:100% !important; max-width: 100%; }\n    </style>\n    \n    <style type=\"text/css\">\n      @media only screen and (max-width:479px) {\n              table.mj-full-width-mobile { width: 100% !important; }\n              td.mj-full-width-mobile { width: auto !important; }\n            }\n    </style>\n    <style type=\"text/css\">:root { color-scheme: light dark; supported-color-schemes: light dark; }\n      a { color: #6B3E26; }\n      @media (prefers-color-scheme: dark) {\n        body, .lcm-body { background-color: #15100C !important; }\n        .lcm-card, .lcm-card > table { background: #211913 !important; background-color: #211913 !important; }\n        .lcm-footer, .lcm-footer > table { background: #15100C !important; background-color: #15100C !important; }\n        .lcm-text div, .lcm-text h1 { color: #F3ECE4 !important; }\n        a { color: #E0A878 !important; }\n        .lcm-button td, .lcm-button a { background: #D9A066 !important; background-color: #D9A066 !important; }\n        .lcm-button a { color: #1A120C !important; }\n      }\n      [data-ogsc] .lcm-text div, [data-ogsc] .lcm-text h1 { color: #F3ECE4 !important; }\n      [data-ogsc] a { color: #E0A878 !important; }\n      [data-ogsc] .lcm-button a { color: #1A120C !important; }\n      [data-ogsb] .lcm-body { background-color: #15100C !important; }\n      [data-ogsb] .lcm-card, [data-ogsb] .lcm-card > table { background-color: #211913 !important; }\n      [data-ogsb] .lcm-footer, [data-ogsb] .lcm-footer > table { background-color: #15100C !important; }\n      [data-ogsb] .lcm-button td, [data-ogsb] .lcm-button a { background-color: #D9A066 !important; }</style>\n    \n\n\n<meta content=\"light dark\" name=\"color-scheme\"/>\n<meta content=\"light dark\" name=\"supported-color-schemes\"/>\n<meta name=\"x-apple-disable-message-reformatting\"/>\n<!--[if mso]><style type=\"text/css\">body, table, td, div, p, a, h1 { font-family: Georgia, 'Times New Roman', serif !important; }</style><![endif]-->\n\n  </head>\n  <body style=\"word-spacing:normal;background-color:#F6F1EA;\">\n    \n    <div aria-roledescription=\"email\" class=\"lcm-body\" style=\"background-color:#F6F1EA\" role=\"article\" lang=\"en-US\" dir=\"auto\" aria-label=\"Which grind should you choose?\"><div class=\"preheader\" style=\"display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;\">Tell us how you brew and we will tell you&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;</div>\n            <!--[if mso | IE]>\n            <table\n              align=\"center\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" class=\"lcm-card-outlook\" role=\"presentation\" style=\"width:600px\" width=\"600\" bgcolor=\"#FFFFFF\"\n            >\n              <tr>\n                <td style=\"line-height:0px;font-size:0px;mso-line-height-rule:exactly;\">\n            <![endif]-->\n        <div class=\"lcm-card\" style=\"background:#FFFFFF;background-color:#FFFFFF;margin:0px auto;max-width:600px\">\n        \n        <table\n          align=\"center\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"width:100%;background:#FFFFFF;background-color:#FFFFFF\"\n        >\n          <tbody>\n            <tr>\n              <td\n                style=\"direction:ltr;font-size:0px;padding:24px 0 0 0;text-align:center\"\n              >\n                <!--[if mso | IE]>\n                  <table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\">\n                \n              <tr>\n            \n                <td style=\"vertical-align:top;width:600px\">\n              <![endif]-->\n                <div class=\"mj-column-per-100 mj-outlook-group-fix\" style=\"font-size:0px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%\">\n                <table border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"vertical-align:top\" width=\"100%\">\n            <tbody>\n                <tr>\n              <td align=\"left\" style=\"font-size:0px;padding:0 24px;word-break:break-word\">\n                \n          <table border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"border-collapse:collapse;border-spacing:0px\" >\n            <tbody>\n              <tr>\n                <td style=\"width:160px\" >\n                  \n                <a href=\"https://www.northfieldcoffee.example\" target=\"_blank\">\n                  <img alt=\"Northfield Coffee Roasters\" height=\"40\" src=\"https://www.northfieldcoffee.example/email/northfield-wordmark-320x80.png\" style=\"border:0;display:block;outline:none;text-decoration:none;height:40px;width:100%;font-size:13px\" width=\"160\" />\n                </a>\n            \n                </td>\n              </tr>\n            </tbody>\n          </table>\n              </td>\n            </tr>\n            </tbody>\n        </table>\n            </div>\n              <!--[if mso | IE]>\n                </td>\n              \n              </tr>\n            \n                  </table>\n                <![endif]-->\n              </td>\n            </tr>\n          </tbody>\n        </table>\n        \n      </div>\n            <!--[if mso | IE]>\n                </td>\n              </tr>\n            </table>\n            \n            <table\n              align=\"center\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" class=\"lcm-card-outlook\" role=\"presentation\" style=\"width:600px\" width=\"600\" bgcolor=\"#FFFFFF\"\n            >\n              <tr>\n                <td style=\"line-height:0px;font-size:0px;mso-line-height-rule:exactly;\">\n            <![endif]-->\n        <div class=\"lcm-card\" style=\"background:#FFFFFF;background-color:#FFFFFF;margin:0px auto;max-width:600px\">\n        \n        <table\n          align=\"center\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"width:100%;background:#FFFFFF;background-color:#FFFFFF\"\n        >\n          <tbody>\n            <tr>\n              <td\n                style=\"direction:ltr;font-size:0px;padding:16px 0 0 0;text-align:center\"\n              >\n                <!--[if mso | IE]>\n                  <table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\">\n                \n              <tr>\n            \n                <td style=\"vertical-align:top;width:600px\">\n              <![endif]-->\n                <div class=\"mj-column-per-100 mj-outlook-group-fix\" style=\"font-size:0px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%\">\n                <table border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"vertical-align:top\" width=\"100%\">\n            <tbody>\n                <tr>\n              <td align=\"left\" class=\"lcm-text\" style=\"font-size:0px;padding:0 24px 16px 24px;word-break:break-word\">\n                <div style=\"font-family:Lora, Georgia, 'Times New Roman', serif;font-size:16px;line-height:1.5;text-align:left;color:#2B2118\"><h1 style=\"margin:0;font-family:Lora, Georgia, 'Times New Roman', serif;font-size:22px;line-height:1.3;font-weight:bold;\">The right grind for how you brew</h1></div>\n              </td>\n            </tr><tr>\n              <td align=\"left\" class=\"lcm-text\" style=\"font-size:0px;padding:0 24px 16px 24px;word-break:break-word\">\n                <div style=\"font-family:Lora, Georgia, 'Times New Roman', serif;font-size:16px;line-height:1.5;text-align:left;color:#2B2118\">Hi {{ first_name|default:'there' }}, the question we hear most at checkout is which grind to choose. Whole bean keeps longest if you have a grinder; otherwise pick the grind for your brewer: coarse for a French press, medium for drip, fine for espresso.</div>\n              </td>\n            </tr><tr>\n              <td align=\"left\" class=\"lcm-text\" style=\"font-size:0px;padding:0 24px 16px 24px;word-break:break-word\">\n                <div style=\"font-family:Lora, Georgia, 'Times New Roman', serif;font-size:16px;line-height:1.5;text-align:left;color:#2B2118\">Not sure? Reply with how you make your coffee and a person on our team will tell you which to pick. Your cart is saved in the meantime.</div>\n              </td>\n            </tr>\n            </tbody>\n        </table>\n            </div>\n              <!--[if mso | IE]>\n                </td>\n              \n              </tr>\n            \n                  </table>\n                <![endif]-->\n              </td>\n            </tr>\n          </tbody>\n        </table>\n        \n      </div>\n            <!--[if mso | IE]>\n                </td>\n              </tr>\n            </table>\n            \n            <table\n              align=\"center\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" class=\"lcm-card-outlook\" role=\"presentation\" style=\"width:600px\" width=\"600\" bgcolor=\"#FFFFFF\"\n            >\n              <tr>\n                <td style=\"line-height:0px;font-size:0px;mso-line-height-rule:exactly;\">\n            <![endif]-->\n        <div class=\"lcm-card\" style=\"background:#FFFFFF;background-color:#FFFFFF;margin:0px auto;max-width:600px\">\n        \n        <table\n          align=\"center\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"width:100%;background:#FFFFFF;background-color:#FFFFFF\"\n        >\n          <tbody>\n            <tr>\n              <td\n                style=\"direction:ltr;font-size:0px;padding:0 0 32px 0;text-align:center\"\n              >\n                <!--[if mso | IE]>\n                  <table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\">\n                \n              <tr>\n            \n                <td style=\"vertical-align:top;width:600px\">\n              <![endif]-->\n                <div class=\"mj-column-per-100 mj-outlook-group-fix\" style=\"font-size:0px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%\">\n                <table border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"vertical-align:top\" width=\"100%\">\n            <tbody>\n                <tr>\n              <td align=\"left\" class=\"lcm-button\" style=\"font-size:0px;padding:8px 24px 0 24px;word-break:break-word\">\n                \n            <table border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"border-collapse:separate;line-height:100%\" >\n              <tr>\n                <td align=\"center\" bgcolor=\"#6B3E26\" role=\"presentation\" style=\"border:none;border-radius:6px;cursor:auto;mso-padding-alt:12px 20px;background:#6B3E26\" valign=\"middle\" >\n                  <a href=\"{{ event.extra.checkout_url|default:organization.url }}\" style=\"display:inline-block;background:#6B3E26;color:#FFFFFF;font-family:Lora, Georgia, 'Times New Roman', serif;font-size:16px;font-weight:bold;line-height:1.25;margin:0;text-decoration:none;text-transform:none;padding:12px 20px;mso-padding-alt:0px;border-radius:6px\" target=\"_blank\" >\n                    Back to my cart\n                  </a>\n                </td>\n              </tr>\n            </table>\n        \n              </td>\n            </tr>\n            </tbody>\n        </table>\n            </div>\n              <!--[if mso | IE]>\n                </td>\n              \n              </tr>\n            \n                  </table>\n                <![endif]-->\n              </td>\n            </tr>\n          </tbody>\n        </table>\n        \n      </div>\n            <!--[if mso | IE]>\n                </td>\n              </tr>\n            </table>\n            \n            <table\n              align=\"center\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" class=\"lcm-footer-outlook\" role=\"presentation\" style=\"width:600px\" width=\"600\" bgcolor=\"#F6F1EA\"\n            >\n              <tr>\n                <td style=\"line-height:0px;font-size:0px;mso-line-height-rule:exactly;\">\n            <![endif]-->\n        <div class=\"lcm-footer\" style=\"background:#F6F1EA;background-color:#F6F1EA;margin:0px auto;max-width:600px\">\n        \n        <table\n          align=\"center\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"width:100%;background:#F6F1EA;background-color:#F6F1EA\"\n        >\n          <tbody>\n            <tr>\n              <td\n                style=\"direction:ltr;font-size:0px;padding:16px 0 24px 0;text-align:center\"\n              >\n                <!--[if mso | IE]>\n                  <table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\">\n                \n              <tr>\n            \n                <td style=\"vertical-align:top;width:600px\">\n              <![endif]-->\n                <div class=\"mj-column-per-100 mj-outlook-group-fix\" style=\"font-size:0px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%\">\n                <table border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"vertical-align:top\" width=\"100%\">\n            <tbody>\n                <tr>\n              <td align=\"left\" class=\"lcm-text\" style=\"font-size:0px;padding:0 24px;word-break:break-word\">\n                <div style=\"font-family:Lora, Georgia, 'Times New Roman', serif;font-size:12px;line-height:1.5;text-align:left;color:#2B2118\">Sam at Northfield<br/>\n          {{ organization.name }}, {{ organization.full_address }}<br/>\n          You are getting this because you bought from us or joined the roast list.<br/>\n          Questions about an order? Reply to this email and a person on our team will answer.<br/>\n<a href=\"https://www.instagram.example/northfieldcoffee\">Instagram</a> | <a href=\"https://www.northfieldcoffee.example/brew\">Brew guides</a><br/>\n          {% unsubscribe 'Unsubscribe' %}</div>\n              </td>\n            </tr>\n            </tbody>\n        </table>\n            </div>\n              <!--[if mso | IE]>\n                </td>\n              \n              </tr>\n            \n                  </table>\n                <![endif]-->\n              </td>\n            </tr>\n          </tbody>\n        </table>\n        \n      </div>\n            <!--[if mso | IE]>\n                </td>\n              </tr>\n            </table>\n            <![endif]--></div>\n  </body>\n</html>",
+            "text": "The right grind for how you brew\n\nHi {{ first_name|default:'there' }}, the question we hear most at checkout is which grind to choose. Whole bean keeps longest if you have a grinder; otherwise pick the grind for your brewer: coarse for a French press, medium for drip, fine for espresso.\n\nNot sure? Reply with how you make your coffee and a person on our team will tell you which to pick. Your cart is saved in the meantime.\n\nBack to my cart: {{ event.extra.checkout_url|default:organization.url }}\n\nSam at Northfield\n{{ organization.name }}, {{ organization.full_address }}\nYou are getting this because you bought from us or joined the roast list.\nQuestions about an order? Reply to this email and a person on our team will answer.\nInstagram: https://www.instagram.example/northfieldcoffee\nBrew guides: https://www.northfieldcoffee.example/brew\nUnsubscribe: {% unsubscribe_link %}\n"
+          }
+        }
+      },
+      "order": 1,
+      "produces": "<<klaviyo_template:t2_email_fallback>>",
+      "creates_status": "a CODE template (no status)",
+      "valid": true,
+      "errors": [],
+      "unverified_fields": [],
+      "placeholders": [],
+      "note": null
+    },
+    {
+      "name": "klaviyo_template_t3_email",
+      "kind": "create_request",
+      "path": "artifacts/klaviyo_template_t3_email.json",
+      "schema_ref": "klaviyo_template_create",
+      "method": "POST",
+      "url": "https://a.klaviyo.com/api/templates",
+      "headers": {
+        "Authorization": "Klaviyo-API-Key ${KLAVIYO_PRIVATE_KEY}",
+        "revision": "2026-10-15",
+        "Content-Type": "application/vnd.api+json",
+        "accept": "application/vnd.api+json"
+      },
+      "body": {
+        "data": {
+          "type": "template",
+          "attributes": {
+            "name": "northfield_coffee_cart_abandon_1h t3_email A",
+            "editor_type": "CODE",
+            "html": "<!-- dialect: klaviyo -->\n<!-- northfield_coffee_cart_abandon_1h / t3_email. Rendered by engine/agents/copywriter.py through MJML (engine/render/mjml_render.py); lint: python3 engine/render/template_lint.py --dialect klaviyo --email <this file> -->\n<!doctype html>\n<html lang=\"en-US\" dir=\"auto\" xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:o=\"urn:schemas-microsoft-com:office:office\">\n  <head>\n    <title>\n      Last reminder about your cart\n    </title>\n    <!--[if !mso]><!-->\n    <meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\">\n    <!--<![endif]-->\n    <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n    <style type=\"text/css\">\n      #outlook a { padding:0; }\n      body { margin:0;padding:0;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%; }\n      table, td { border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt; }\n      img { border:0;height:auto;line-height:100%; outline:none;text-decoration:none;-ms-interpolation-mode:bicubic; }\n      p { display:block;margin:13px 0; }\n    </style>\n    <!--[if mso]>\n    <noscript>\n    <xml>\n    <o:OfficeDocumentSettings>\n      <o:AllowPNG/>\n      <o:PixelsPerInch>96</o:PixelsPerInch>\n    </o:OfficeDocumentSettings>\n    </xml>\n    </noscript>\n    <![endif]-->\n    <!--[if lte mso 11]>\n    <style type=\"text/css\">\n      .mj-outlook-group-fix { width:100% !important; }\n    </style>\n    <![endif]-->\n    \n      <!--[if !mso]><!-->\n        <link href=\"https://fonts.googleapis.com/css2?family=Lora:wght@400;700&display=swap\" rel=\"stylesheet\" type=\"text/css\">\n        <style type=\"text/css\">\n          @import url(https://fonts.googleapis.com/css2?family=Lora:wght@400;700&display=swap);\n        </style>\n      <!--<![endif]-->\n\n    \n    \n    <style type=\"text/css\">\n      @media only screen and (min-width:480px) {\n          .mj-column-per-100 { width:100% !important; max-width: 100%; }\n      }\n    </style>\n    <style media=\"screen and (min-width:480px)\">\n        .moz-text-html .mj-column-per-100 { width:100% !important; max-width: 100%; }\n    </style>\n    \n    <style type=\"text/css\">\n      @media only screen and (max-width:479px) {\n              table.mj-full-width-mobile { width: 100% !important; }\n              td.mj-full-width-mobile { width: auto !important; }\n            }\n    </style>\n    <style type=\"text/css\">:root { color-scheme: light dark; supported-color-schemes: light dark; }\n      a { color: #6B3E26; }\n      @media (prefers-color-scheme: dark) {\n        body, .lcm-body { background-color: #15100C !important; }\n        .lcm-card, .lcm-card > table { background: #211913 !important; background-color: #211913 !important; }\n        .lcm-footer, .lcm-footer > table { background: #15100C !important; background-color: #15100C !important; }\n        .lcm-text div, .lcm-text h1 { color: #F3ECE4 !important; }\n        a { color: #E0A878 !important; }\n        .lcm-button td, .lcm-button a { background: #D9A066 !important; background-color: #D9A066 !important; }\n        .lcm-button a { color: #1A120C !important; }\n      }\n      [data-ogsc] .lcm-text div, [data-ogsc] .lcm-text h1 { color: #F3ECE4 !important; }\n      [data-ogsc] a { color: #E0A878 !important; }\n      [data-ogsc] .lcm-button a { color: #1A120C !important; }\n      [data-ogsb] .lcm-body { background-color: #15100C !important; }\n      [data-ogsb] .lcm-card, [data-ogsb] .lcm-card > table { background-color: #211913 !important; }\n      [data-ogsb] .lcm-footer, [data-ogsb] .lcm-footer > table { background-color: #15100C !important; }\n      [data-ogsb] .lcm-button td, [data-ogsb] .lcm-button a { background-color: #D9A066 !important; }</style>\n    \n\n\n<meta content=\"light dark\" name=\"color-scheme\"/>\n<meta content=\"light dark\" name=\"supported-color-schemes\"/>\n<meta name=\"x-apple-disable-message-reformatting\"/>\n<!--[if mso]><style type=\"text/css\">body, table, td, div, p, a, h1 { font-family: Georgia, 'Times New Roman', serif !important; }</style><![endif]-->\n\n  </head>\n  <body style=\"word-spacing:normal;background-color:#F6F1EA;\">\n    \n    <div aria-roledescription=\"email\" class=\"lcm-body\" style=\"background-color:#F6F1EA\" role=\"article\" lang=\"en-US\" dir=\"auto\" aria-label=\"Last reminder about your cart\"><div class=\"preheader\" style=\"display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;\">It is saved, if you still want it&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;</div>\n            <!--[if mso | IE]>\n            <table\n              align=\"center\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" class=\"lcm-card-outlook\" role=\"presentation\" style=\"width:600px\" width=\"600\" bgcolor=\"#FFFFFF\"\n            >\n              <tr>\n                <td style=\"line-height:0px;font-size:0px;mso-line-height-rule:exactly;\">\n            <![endif]-->\n        <div class=\"lcm-card\" style=\"background:#FFFFFF;background-color:#FFFFFF;margin:0px auto;max-width:600px\">\n        \n        <table\n          align=\"center\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"width:100%;background:#FFFFFF;background-color:#FFFFFF\"\n        >\n          <tbody>\n            <tr>\n              <td\n                style=\"direction:ltr;font-size:0px;padding:24px 0 0 0;text-align:center\"\n              >\n                <!--[if mso | IE]>\n                  <table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\">\n                \n              <tr>\n            \n                <td style=\"vertical-align:top;width:600px\">\n              <![endif]-->\n                <div class=\"mj-column-per-100 mj-outlook-group-fix\" style=\"font-size:0px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%\">\n                <table border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"vertical-align:top\" width=\"100%\">\n            <tbody>\n                <tr>\n              <td align=\"left\" style=\"font-size:0px;padding:0 24px;word-break:break-word\">\n                \n          <table border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"border-collapse:collapse;border-spacing:0px\" >\n            <tbody>\n              <tr>\n                <td style=\"width:160px\" >\n                  \n                <a href=\"https://www.northfieldcoffee.example\" target=\"_blank\">\n                  <img alt=\"Northfield Coffee Roasters\" height=\"40\" src=\"https://www.northfieldcoffee.example/email/northfield-wordmark-320x80.png\" style=\"border:0;display:block;outline:none;text-decoration:none;height:40px;width:100%;font-size:13px\" width=\"160\" />\n                </a>\n            \n                </td>\n              </tr>\n            </tbody>\n          </table>\n              </td>\n            </tr>\n            </tbody>\n        </table>\n            </div>\n              <!--[if mso | IE]>\n                </td>\n              \n              </tr>\n            \n                  </table>\n                <![endif]-->\n              </td>\n            </tr>\n          </tbody>\n        </table>\n        \n      </div>\n            <!--[if mso | IE]>\n                </td>\n              </tr>\n            </table>\n            \n            <table\n              align=\"center\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" class=\"lcm-card-outlook\" role=\"presentation\" style=\"width:600px\" width=\"600\" bgcolor=\"#FFFFFF\"\n            >\n              <tr>\n                <td style=\"line-height:0px;font-size:0px;mso-line-height-rule:exactly;\">\n            <![endif]-->\n        <div class=\"lcm-card\" style=\"background:#FFFFFF;background-color:#FFFFFF;margin:0px auto;max-width:600px\">\n        \n        <table\n          align=\"center\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"width:100%;background:#FFFFFF;background-color:#FFFFFF\"\n        >\n          <tbody>\n            <tr>\n              <td\n                style=\"direction:ltr;font-size:0px;padding:16px 0 0 0;text-align:center\"\n              >\n                <!--[if mso | IE]>\n                  <table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\">\n                \n              <tr>\n            \n                <td style=\"vertical-align:top;width:600px\">\n              <![endif]-->\n                <div class=\"mj-column-per-100 mj-outlook-group-fix\" style=\"font-size:0px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%\">\n                <table border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"vertical-align:top\" width=\"100%\">\n            <tbody>\n                <tr>\n              <td align=\"left\" class=\"lcm-text\" style=\"font-size:0px;padding:0 24px 16px 24px;word-break:break-word\">\n                <div style=\"font-family:Lora, Georgia, 'Times New Roman', serif;font-size:16px;line-height:1.5;text-align:left;color:#2B2118\"><h1 style=\"margin:0;font-family:Lora, Georgia, 'Times New Roman', serif;font-size:22px;line-height:1.3;font-weight:bold;\">One last note about your cart</h1></div>\n              </td>\n            </tr><tr>\n              <td align=\"left\" class=\"lcm-text\" style=\"font-size:0px;padding:0 24px 16px 24px;word-break:break-word\">\n                <div style=\"font-family:Lora, Georgia, 'Times New Roman', serif;font-size:16px;line-height:1.5;text-align:left;color:#2B2118\">Hi {{ first_name|default:'there' }}, this is the last reminder from us about the coffee in your cart. It is saved if you want to finish your order.</div>\n              </td>\n            </tr><tr>\n              <td align=\"left\" class=\"lcm-text\" style=\"font-size:0px;padding:0 24px 16px 24px;word-break:break-word\">\n                <div style=\"font-family:Lora, Georgia, 'Times New Roman', serif;font-size:16px;line-height:1.5;text-align:left;color:#2B2118\">If now is not the right time, that is fine. You will not hear from us about this cart again.</div>\n              </td>\n            </tr>\n            </tbody>\n        </table>\n            </div>\n              <!--[if mso | IE]>\n                </td>\n              \n              </tr>\n            \n                  </table>\n                <![endif]-->\n              </td>\n            </tr>\n          </tbody>\n        </table>\n        \n      </div>\n            <!--[if mso | IE]>\n                </td>\n              </tr>\n            </table>\n            \n            <table\n              align=\"center\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" class=\"lcm-card-outlook\" role=\"presentation\" style=\"width:600px\" width=\"600\" bgcolor=\"#FFFFFF\"\n            >\n              <tr>\n                <td style=\"line-height:0px;font-size:0px;mso-line-height-rule:exactly;\">\n            <![endif]-->\n        <div class=\"lcm-card\" style=\"background:#FFFFFF;background-color:#FFFFFF;margin:0px auto;max-width:600px\">\n        \n        <table\n          align=\"center\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"width:100%;background:#FFFFFF;background-color:#FFFFFF\"\n        >\n          <tbody>\n            <tr>\n              <td\n                style=\"direction:ltr;font-size:0px;padding:0 0 32px 0;text-align:center\"\n              >\n                <!--[if mso | IE]>\n                  <table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\">\n                \n              <tr>\n            \n                <td style=\"vertical-align:top;width:600px\">\n              <![endif]-->\n                <div class=\"mj-column-per-100 mj-outlook-group-fix\" style=\"font-size:0px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%\">\n                <table border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"vertical-align:top\" width=\"100%\">\n            <tbody>\n                <tr>\n              <td align=\"left\" class=\"lcm-button\" style=\"font-size:0px;padding:8px 24px 0 24px;word-break:break-word\">\n                \n            <table border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"border-collapse:separate;line-height:100%\" >\n              <tr>\n                <td align=\"center\" bgcolor=\"#6B3E26\" role=\"presentation\" style=\"border:none;border-radius:6px;cursor:auto;mso-padding-alt:12px 20px;background:#6B3E26\" valign=\"middle\" >\n                  <a href=\"{{ event.extra.checkout_url|default:organization.url }}\" style=\"display:inline-block;background:#6B3E26;color:#FFFFFF;font-family:Lora, Georgia, 'Times New Roman', serif;font-size:16px;font-weight:bold;line-height:1.25;margin:0;text-decoration:none;text-transform:none;padding:12px 20px;mso-padding-alt:0px;border-radius:6px\" target=\"_blank\" >\n                    Finish my order\n                  </a>\n                </td>\n              </tr>\n            </table>\n        \n              </td>\n            </tr>\n            </tbody>\n        </table>\n            </div>\n              <!--[if mso | IE]>\n                </td>\n              \n              </tr>\n            \n                  </table>\n                <![endif]-->\n              </td>\n            </tr>\n          </tbody>\n        </table>\n        \n      </div>\n            <!--[if mso | IE]>\n                </td>\n              </tr>\n            </table>\n            \n            <table\n              align=\"center\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" class=\"lcm-footer-outlook\" role=\"presentation\" style=\"width:600px\" width=\"600\" bgcolor=\"#F6F1EA\"\n            >\n              <tr>\n                <td style=\"line-height:0px;font-size:0px;mso-line-height-rule:exactly;\">\n            <![endif]-->\n        <div class=\"lcm-footer\" style=\"background:#F6F1EA;background-color:#F6F1EA;margin:0px auto;max-width:600px\">\n        \n        <table\n          align=\"center\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"width:100%;background:#F6F1EA;background-color:#F6F1EA\"\n        >\n          <tbody>\n            <tr>\n              <td\n                style=\"direction:ltr;font-size:0px;padding:16px 0 24px 0;text-align:center\"\n              >\n                <!--[if mso | IE]>\n                  <table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\">\n                \n              <tr>\n            \n                <td style=\"vertical-align:top;width:600px\">\n              <![endif]-->\n                <div class=\"mj-column-per-100 mj-outlook-group-fix\" style=\"font-size:0px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%\">\n                <table border=\"0\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"vertical-align:top\" width=\"100%\">\n            <tbody>\n                <tr>\n              <td align=\"left\" class=\"lcm-text\" style=\"font-size:0px;padding:0 24px;word-break:break-word\">\n                <div style=\"font-family:Lora, Georgia, 'Times New Roman', serif;font-size:12px;line-height:1.5;text-align:left;color:#2B2118\">Sam at Northfield<br/>\n          {{ organization.name }}, {{ organization.full_address }}<br/>\n          You are getting this because you bought from us or joined the roast list.<br/>\n          Questions about an order? Reply to this email and a person on our team will answer.<br/>\n<a href=\"https://www.instagram.example/northfieldcoffee\">Instagram</a> | <a href=\"https://www.northfieldcoffee.example/brew\">Brew guides</a><br/>\n          {% unsubscribe 'Unsubscribe' %}</div>\n              </td>\n            </tr>\n            </tbody>\n        </table>\n            </div>\n              <!--[if mso | IE]>\n                </td>\n              \n              </tr>\n            \n                  </table>\n                <![endif]-->\n              </td>\n            </tr>\n          </tbody>\n        </table>\n        \n      </div>\n            <!--[if mso | IE]>\n                </td>\n              </tr>\n            </table>\n            <![endif]--></div>\n  </body>\n</html>",
+            "text": "One last note about your cart\n\nHi {{ first_name|default:'there' }}, this is the last reminder from us about the coffee in your cart. It is saved if you want to finish your order.\n\nIf now is not the right time, that is fine. You will not hear from us about this cart again.\n\nFinish my order: {{ event.extra.checkout_url|default:organization.url }}\n\nSam at Northfield\n{{ organization.name }}, {{ organization.full_address }}\nYou are getting this because you bought from us or joined the roast list.\nQuestions about an order? Reply to this email and a person on our team will answer.\nInstagram: https://www.instagram.example/northfieldcoffee\nBrew guides: https://www.northfieldcoffee.example/brew\nUnsubscribe: {% unsubscribe_link %}\n"
+          }
+        }
+      },
+      "order": 1,
+      "produces": "<<klaviyo_template:t3_email>>",
+      "creates_status": "a CODE template (no status)",
+      "valid": true,
+      "errors": [],
+      "unverified_fields": [],
+      "placeholders": [],
+      "note": null
+    },
+    {
+      "name": "klaviyo_flow",
+      "kind": "create_request",
+      "path": "artifacts/klaviyo_flow.json",
+      "schema_ref": "klaviyo_flow_create",
+      "method": "POST",
+      "url": "https://a.klaviyo.com/api/flows",
+      "headers": {
+        "Authorization": "Klaviyo-API-Key ${KLAVIYO_PRIVATE_KEY}",
+        "revision": "2026-10-15",
+        "Content-Type": "application/vnd.api+json",
+        "accept": "application/vnd.api+json"
+      },
+      "body": {
+        "data": {
+          "type": "flow",
+          "attributes": {
+            "name": "LCM Abandoned cart: Northfield Coffee Roasters",
+            "definition": {
+              "triggers": [
+                {
+                  "type": "metric",
+                  "id": "<<klaviyo_metric:Started Checkout>>"
+                }
+              ],
+              "profile_filter": {
+                "condition_groups": [
+                  {
+                    "conditions": [
+                      {
+                        "type": "profile-metric",
+                        "metric_id": "<<klaviyo_metric:Placed Order>>",
+                        "measurement": "count",
+                        "measurement_filter": {
+                          "type": "numeric",
+                          "operator": "equals",
+                          "value": 0
+                        },
+                        "timeframe_filter": {
+                          "type": "date",
+                          "operator": "flow-start"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "actions": [
+                {
+                  "temporary_id": "holdout_split",
+                  "type": "trigger-split",
+                  "links": {
+                    "next_if_true": null,
+                    "next_if_false": "t1_email_wait"
+                  },
+                  "data": {
+                    "trigger_filter": {
+                      "condition_groups": [
+                        {
+                          "conditions": [
+                            {
+                              "type": "metric-property",
+                              "metric_id": "<<klaviyo_metric:Started Checkout>>",
+                              "field": "in_holdout",
+                              "filter": {
+                                "type": "boolean",
+                                "operator": "equals",
+                                "value": true
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "trigger_id": "<<klaviyo_metric:Started Checkout>>",
+                    "trigger_type": "metric"
+                  }
+                },
+                {
+                  "temporary_id": "t1_email_wait",
+                  "type": "time-delay",
+                  "links": {
+                    "next": "t1_email"
+                  },
+                  "data": {
+                    "unit": "hours",
+                    "value": 1,
+                    "timezone": "profile"
+                  }
+                },
+                {
+                  "temporary_id": "t1_email",
+                  "type": "send-email",
+                  "links": {
+                    "next": "t2_sms_consent_wait"
+                  },
+                  "data": {
+                    "status": "draft",
+                    "message": {
+                      "from_email": "roastlist@example.com",
+                      "from_label": "Northfield Coffee",
+                      "subject_line": "Your coffee is still in your cart",
+                      "preview_text": "We kept it exactly as you left it",
+                      "template_id": "<<klaviyo_template:t1_email>>",
+                      "smart_sending_enabled": true,
+                      "transactional": false,
+                      "add_tracking_params": true,
+                      "name": "t1_email"
+                    }
+                  }
+                },
+                {
+                  "temporary_id": "t2_sms_consent_wait",
+                  "type": "time-delay",
+                  "links": {
+                    "next": "t2_sms"
+                  },
+                  "data": {
+                    "unit": "hours",
+                    "value": 23,
+                    "timezone": "profile"
+                  }
+                },
+                {
+                  "temporary_id": "t2_sms",
+                  "type": "send-sms",
+                  "links": {
+                    "next": "t2_email_fallback"
+                  },
+                  "data": {
+                    "status": "draft",
+                    "message": {
+                      "body": "Northfield Coffee Roasters: Not sure which grind to pick? Reply with how you brew and we will tell you. {{ event.extra.checkout_url|default:organization.url }} Reply STOP to opt out.",
+                      "smart_sending_enabled": true,
+                      "sms_quiet_hours_enabled": true,
+                      "transactional": false,
+                      "add_tracking_params": true,
+                      "additional_filters": {
+                        "condition_groups": [
+                          {
+                            "conditions": [
+                              {
+                                "type": "profile-marketing-consent",
+                                "consent": {
+                                  "channel": "sms",
+                                  "can_receive_marketing": true,
+                                  "consent_status": {
+                                    "subscription": "subscribed"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      "name": "t2_sms"
+                    }
+                  }
+                },
+                {
+                  "temporary_id": "t2_email_fallback",
+                  "type": "send-email",
+                  "links": {
+                    "next": "t3_email_wait"
+                  },
+                  "data": {
+                    "status": "draft",
+                    "message": {
+                      "from_email": "roastlist@example.com",
+                      "from_label": "Northfield Coffee",
+                      "subject_line": "Which grind should you choose?",
+                      "preview_text": "Tell us how you brew and we will tell you",
+                      "template_id": "<<klaviyo_template:t2_email_fallback>>",
+                      "smart_sending_enabled": true,
+                      "transactional": false,
+                      "add_tracking_params": true,
+                      "name": "t2_email_fallback",
+                      "additional_filters": {
+                        "condition_groups": [
+                          {
+                            "conditions": [
+                              {
+                                "type": "profile-marketing-consent",
+                                "consent": {
+                                  "channel": "sms",
+                                  "can_receive_marketing": false,
+                                  "consent_status": {
+                                    "subscription": "any"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "temporary_id": "t3_email_wait",
+                  "type": "time-delay",
+                  "links": {
+                    "next": "t3_email"
+                  },
+                  "data": {
+                    "unit": "days",
+                    "value": 2,
+                    "timezone": "profile"
+                  }
+                },
+                {
+                  "temporary_id": "t3_email",
+                  "type": "send-email",
+                  "links": {
+                    "next": null
+                  },
+                  "data": {
+                    "status": "draft",
+                    "message": {
+                      "from_email": "roastlist@example.com",
+                      "from_label": "Northfield Coffee",
+                      "subject_line": "Last reminder about your cart",
+                      "preview_text": "It is saved, if you still want it",
+                      "template_id": "<<klaviyo_template:t3_email>>",
+                      "smart_sending_enabled": true,
+                      "transactional": false,
+                      "add_tracking_params": true,
+                      "name": "t3_email"
+                    }
+                  }
+                }
+              ],
+              "entry_action_id": "holdout_split",
+              "reentry_criteria": {
+                "duration": 1,
+                "unit": "week"
+              }
+            }
+          }
+        }
+      },
+      "order": 3,
+      "produces": null,
+      "creates_status": "Draft: the flow and every action in draft",
+      "valid": true,
+      "errors": [],
+      "unverified_fields": [
+        "data.attributes.definition.reentry_criteria (LIKELY): alltime 0 is read as 'Re-enter whenever they re-qualify' from the field description"
+      ],
+      "placeholders": [
+        "<<klaviyo_metric:Placed Order>>",
+        "<<klaviyo_metric:Started Checkout>>",
+        "<<klaviyo_template:t1_email>>",
+        "<<klaviyo_template:t2_email_fallback>>",
+        "<<klaviyo_template:t3_email>>"
+      ],
+      "note": "the definition cannot be edited through the API after creation: change it in the flow builder"
+    }
+  ],
+  "inputs_required": {
+    "<<klaviyo_metric:Placed Order>>": "the Klaviyo metric id of 'Placed Order' (lcm build --create finds it by name with GET /api/metrics)",
+    "<<klaviyo_metric:Started Checkout>>": "the Klaviyo metric id of 'Started Checkout' (lcm build --create finds it by name with GET /api/metrics)",
+    "<<klaviyo_template:t1_email>>": "the Klaviyo template id for t1_email (lcm build --create creates it from the rendered copy first)",
+    "<<klaviyo_template:t2_email_fallback>>": "the Klaviyo template id for t2_email_fallback (lcm build --create creates it from the rendered copy first)",
+    "<<klaviyo_template:t3_email>>": "the Klaviyo template id for t3_email (lcm build --create creates it from the rendered copy first)"
+  },
+  "manual_steps": [
+    "Entry filters to confirm (checked once at entry): is identified (has an email address on the profile); anonymous checkout_started events cannot enter; has not done order_completed in the 1 hour(s) after checkout_started; not in the program-wide global holdout (bucket of md5(user_id || ':lmm_global') under 5); the trigger is the person's own activity in the last day (a checkout, a product view, an order), which counts as engagement; anyone with no click, reply, order or session in 365 days is still excluded",
+    "Suppressions on every step: unsubscribed from marketing email, or hard bounced; marked any message as spam (complaint), ever; sunset-suppressed (lcm_sunset is true); only a fresh opt-in lifts it; internal, test and seed addresses; currently in a higher-priority flow (by the frequency policy's flow_priority: billing, cart, post-purchase first)",
+    "Before going live: send every message to a seed list, run `lcm simulate` on flow_spec.json, and get approval"
+  ],
+  "unverified": [
+    {
+      "fact": "klaviyo_flow: data.attributes.definition.reentry_criteria: alltime 0 is read as 'Re-enter whenever they re-qualify' from the field description",
+      "source": "https://raw.githubusercontent.com/klaviyo/openapi/main/openapi/stable.json",
+      "confidence": "LIKELY"
+    }
+  ],
+  "account": {
+    "platform": "klaviyo",
+    "tier": null,
+    "options": []
+  },
+  "automatic": "lcm build --create --approve makes 3 email template(s), the flow, in Draft through Klaviyo's API"
+}

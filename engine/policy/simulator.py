@@ -410,7 +410,8 @@ def payload_platform(req: Dict[str, Any]) -> Optional[str]:
     url = req.get("url", "")
     for host, name in (("klaviyo.com", "klaviyo_create_event"), ("hubapi.com/events", "hubspot_send_events"),
                        ("braze.com/users/track", "braze_users_track"), ("cdp.customer.io", "customerio_pipelines_track"),
-                       ("cdp-eu.customer.io", "customerio_pipelines_track"), ("track.customer.io", "customerio_track_v1")):
+                       ("cdp-eu.customer.io", "customerio_pipelines_track"), ("track.customer.io", "customerio_track_v1"),
+                       ("iterable.com/api/events/track", "iterable_track_event")):
         if host in url:
             if name == "hubspot_send_events" and url.rstrip("/").endswith("/batch"):
                 return "hubspot_send_events_batch"

@@ -102,3 +102,20 @@ def test_the_question_count_in_prose_matches_the_bank():
     for p in PROSE:
         for m in re.finditer(r"\b(\d+) questions\b", p.read_text(encoding="utf-8")):
             assert int(m.group(1)) == n, f"{_rel(p)}: says {m.group(0)}, the bank has {n}"
+
+
+def test_no_file_carries_a_path_from_the_authors_machine():
+    import subprocess
+    try:
+        files = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.split()
+    except Exception:  # noqa: BLE001 - outside a git checkout there is nothing committed to check
+        pytest.skip("not a git checkout")
+    leaks = []
+    for name in files:
+        p = ROOT / name
+        if p.suffix not in (".py", ".md", ".json", ".yaml", ".yml", ".sql", ".txt", ".html", ".mjml", ".csv") or not p.is_file():
+            continue
+        text = p.read_text(encoding="utf-8", errors="ignore")
+        if re.search(r"/home/[a-z]|/Users/[A-Za-z]|C:\\\\Users\\\\", text):
+            leaks.append(name)
+    assert not leaks, leaks

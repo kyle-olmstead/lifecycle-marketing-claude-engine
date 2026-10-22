@@ -105,7 +105,12 @@ def brief_defaults(ws: Optional[Workspace] = None) -> Dict[str, Any]:
     elif gate not in (None, ""):
         out["sending_gate"] = gate
     if cfg.get("brand_kit"):
-        out["brand_kit"] = str((ws.root / cfg["brand_kit"]).resolve())
+        kit = (ws.root / cfg["brand_kit"]).resolve()
+        from engine.paths import ROOT
+        try:          # inside the engine's own repository (the demo brands): relative, so committed runs carry no local path
+            out["brand_kit"] = str(kit.relative_to(ROOT))
+        except ValueError:
+            out["brand_kit"] = str(kit)
     m = cfg.get("measurement") or {}
     for key in ("randomization_unit", "global_holdout_pct", "stopping_rule"):
         if m.get(key) not in (None, ""):

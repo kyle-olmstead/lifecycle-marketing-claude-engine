@@ -1,0 +1,56 @@
+[
+  {
+    "id": "klaviyo.create_daily_limit",
+    "status": "pass",
+    "hard": false,
+    "requirement": "Create Flow and Create Segment are limited to 1 per second, 15 per minute and 100 per day",
+    "detail": "Create Flow and Create Segment are limited to 1 per second, 15 per minute and 100 per day: this pack makes 1 such create call(s)",
+    "source": "https://raw.githubusercontent.com/klaviyo/openapi/main/openapi/stable.json",
+    "confidence": "VERIFIED"
+  },
+  {
+    "id": "klaviyo.definition_not_editable",
+    "status": "warn",
+    "hard": false,
+    "requirement": "A flow definition cannot be changed through the API after it is created (only its status): review the artifact before --create, then edit in the flow builder",
+    "detail": "A flow definition cannot be changed through the API after it is created (only its status): review the artifact before --create, then edit in the flow builder",
+    "source": "https://developers.klaviyo.com/en/reference/flows_api_overview",
+    "confidence": "VERIFIED"
+  },
+  {
+    "id": "klaviyo.smart_sending_is_a_window",
+    "status": "warn",
+    "hard": false,
+    "requirement": "Smart Sending is a per-channel time window (email 16 hours by default), not a count: the plan's weekly cap is approximated by Smart Sending plus the flow's own spacing",
+    "detail": "Smart Sending is a per-channel time window (email 16 hours by default), not a count: the plan's weekly cap is approximated by Smart Sending plus the flow's own spacing",
+    "source": "https://help.klaviyo.com/hc/en-us/articles/115002779311",
+    "confidence": "VERIFIED"
+  },
+  {
+    "id": "klaviyo.no_hour_window_on_delays",
+    "status": "warn",
+    "hard": false,
+    "requirement": "Klaviyo has no hour-range window on a minutes or hours delay: hour-level touches send when the delay ends (SMS still follows Klaviyo's SMS quiet hours setting)",
+    "detail": "Klaviyo has no hour-range window on a minutes or hours delay: hour-level touches send when the delay ends (SMS still follows Klaviyo's SMS quiet hours setting)",
+    "source": "https://help.klaviyo.com/hc/en-us/articles/115003885212",
+    "confidence": "VERIFIED"
+  },
+  {
+    "id": "all.events_in_esp",
+    "status": "warn",
+    "hard": true,
+    "requirement": "Every event the flow reads inside the platform (the trigger, the exit, the exclusions) must reach the platform: account option events_in_esp lists them. A native absence trigger whose events are not in the platform needs --warehouse-job",
+    "detail": "Every event the flow reads inside the platform (the trigger, the exit, the exclusions) must reach the platform: account option events_in_esp lists them. A native absence trigger whose events are not in the platform needs --warehouse-job. Confirm these reach Klaviyo: checkout_started (as Started Checkout), order_completed (as Placed Order) (or list them in esp.options.events_in_esp)",
+    "source": "https://help.klaviyo.com/hc/en-us/articles/115002779051",
+    "confidence": "VERIFIED"
+  },
+  {
+    "id": "all.content_dialect",
+    "status": "pass",
+    "hard": true,
+    "requirement": "The rendered copy must be in this platform's template dialect",
+    "detail": "The rendered copy must be in this platform's template dialect: klaviyo",
+    "source": "engine/models.py PLATFORM_DIALECT",
+    "confidence": "VERIFIED"
+  }
+]

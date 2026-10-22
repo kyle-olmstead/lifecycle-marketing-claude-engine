@@ -1,6 +1,6 @@
 # Win-back: Ridgeview, 14 days since the core action (created a report)
 
-**Status: READY WITH ASSUMPTIONS** | Customer.io | generated 2026-10-22T22:19:55+00:00 | run 0226c72c9f2e | LMM Engine 3.0.0
+**Status: READY WITH ASSUMPTIONS** | Customer.io | generated 2026-10-22T23:46:38+00:00 | run 11f5fd8ab2ee | LMM Engine 3.0.0
 
 ## In one paragraph
 
@@ -96,19 +96,20 @@ Every step: has not done feature_used where feature = reports since entering; ca
 ## Build it in Customer.io
 
 1. Create the ledger once (cohort/job/ledger_postgres.sql). Then schedule the daily job after the warehouse load: run cohort/job/queue_postgres.sql; read the rows from cohort/job/pending_postgres.sql and send one core_action_lapsed_14d event per row with adapters/destinations/event_payloads.py (customerio), or lcm send --approve, holdout members included; after each request succeeds, run cohort/job/mark_postgres.sql for every row it carried. Rows whose request failed stay pending and go out on the next run. Do not push from cohort/entry_postgres.sql: it does not write the ledger, so the same lapse would go out on several days.
-2. Create an event-triggered campaign and leave every message in Draft until it is approved. Trigger: core_action_lapsed_14d.
-3. Entry filters (checked once at entry): completed onboarding (onboarding_step_completed where step_index = 3) at least once; clicked or replied to any email in the last 90 days (opens do not count: privacy proxies inflate them).
-4. Checked before every step (Exit condition (conversion goal, exit on conversion)): has not done feature_used where feature = reports since entering; can receive email marketing (subscribed, not bounced, not sunset-suppressed).
-5. First step, True/False branch: in_holdout is true goes to exit; everyone else continues. Nothing sends before this split.
-6. Re-entry: allowed after the person leaves the flow.
-7. Time delay to day 0 at 10:00 recipient local, then email message t1_email: value reminder.
-8. Time delay to day 3 at 10:00 recipient local, then email message t2_email: friction removal.
-9. Time delay to day 7 at 10:00 recipient local, then in-app message t3_in_app: whats new.
-10. Time delay to day 12 at 10:00 recipient local, then email message t4_email: social proof.
-11. Time delay to day 18 at 10:00 recipient local, then email message t5_email: repermission.
-12. Time delay 14 days, then: if no click on the re-permission email, update the person: lcm_sunset = true. Make lcm_sunset a suppression in every marketing send.
-13. Frequency: at most 3 email/sms/push message(s) per week across flows (the workspace message limit). Permitted send windows, recipient local: email 08:00 to 21:00. Priority 5 of the program's flows (higher priority preempts).
-14. Before enabling: run lcm simulate on flow_spec.json (engine/policy/simulator.py), send every message to a seed list, and get approval. Exit on feature_used where feature = reports must be live before the first send.
+2. Or skip the job: `lcm build --run <this plan's folder>` writes the Customer.io build pack with a native trigger (a segment or a daily scheduled audience), the segment to create and its holdout property; keep the job when feature_used does not reach Customer.io (docs/ESP_BUILD_PACKS.md)
+3. Create an event-triggered campaign and leave every message in Draft until it is approved. Trigger: core_action_lapsed_14d.
+4. Entry filters (checked once at entry): completed onboarding (onboarding_step_completed where step_index = 3) at least once; clicked or replied to any email in the last 90 days (opens do not count: privacy proxies inflate them).
+5. Checked before every step (Exit condition (conversion goal, exit on conversion)): has not done feature_used where feature = reports since entering; can receive email marketing (subscribed, not bounced, not sunset-suppressed).
+6. First step, True/False branch: in_holdout is true goes to exit; everyone else continues. Nothing sends before this split.
+7. Re-entry: allowed after the person leaves the flow.
+8. Time delay to day 0 at 10:00 recipient local, then email message t1_email: value reminder.
+9. Time delay to day 3 at 10:00 recipient local, then email message t2_email: friction removal.
+10. Time delay to day 7 at 10:00 recipient local, then in-app message t3_in_app: whats new.
+11. Time delay to day 12 at 10:00 recipient local, then email message t4_email: social proof.
+12. Time delay to day 18 at 10:00 recipient local, then email message t5_email: repermission.
+13. Time delay 14 days, then: if no click on the re-permission email, update the person: lcm_sunset = true. Make lcm_sunset a suppression in every marketing send.
+14. Frequency: at most 3 email/sms/push message(s) per week across flows (the workspace message limit). Permitted send windows, recipient local: email 08:00 to 21:00. Priority 5 of the program's flows (higher priority preempts).
+15. Before enabling: run lcm simulate on flow_spec.json (engine/policy/simulator.py), send every message to a seed list, and get approval. Exit on feature_used where feature = reports must be live before the first send.
 
 ## The copy
 

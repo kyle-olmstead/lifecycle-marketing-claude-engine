@@ -1,0 +1,47 @@
+[
+  {
+    "id": "customerio.no_create_api",
+    "status": "pass",
+    "hard": false,
+    "requirement": "The App API cannot create campaigns (only update an existing action): the pack is a build sheet",
+    "detail": "The App API cannot create campaigns (only update an existing action): the pack is a build sheet",
+    "source": "https://docs.customer.io/integrations/api/app/tag/automations",
+    "confidence": "VERIFIED"
+  },
+  {
+    "id": "customerio.message_limits_opt_in",
+    "status": "warn",
+    "hard": false,
+    "requirement": "Message limits apply only to workflows that opt in: turn the limit on in this campaign's settings, or the plan's cap is not enforced across campaigns",
+    "detail": "Message limits apply only to workflows that opt in: turn the limit on in this campaign's settings, or the plan's cap is not enforced across campaigns",
+    "source": "https://docs.customer.io/messaging/send/message-limits/overview/",
+    "confidence": "VERIFIED"
+  },
+  {
+    "id": "customerio.latest_liquid",
+    "status": "warn",
+    "hard": true,
+    "requirement": "The templates use the default filter, which legacy Liquid lacks: the workspace must be on latest Liquid (accounts from 28 Nov 2023 are)",
+    "detail": "The templates use the default filter, which legacy Liquid lacks: the workspace must be on latest Liquid (accounts from 28 Nov 2023 are). Unknown for this account: set esp.options.liquid",
+    "source": "https://docs.customer.io/messaging/liquid/",
+    "confidence": "VERIFIED"
+  },
+  {
+    "id": "all.events_in_esp",
+    "status": "warn",
+    "hard": true,
+    "requirement": "Every event the flow reads inside the platform (the trigger, the exit, the exclusions) must reach the platform: account option events_in_esp lists them. A native absence trigger whose events are not in the platform needs --warehouse-job",
+    "detail": "Every event the flow reads inside the platform (the trigger, the exit, the exclusions) must reach the platform: account option events_in_esp lists them. A native absence trigger whose events are not in the platform needs --warehouse-job. Confirm these reach Customer.io: onboarding_step_completed (as onboarding_step_completed), feature_used (as feature_used) (or list them in esp.options.events_in_esp)",
+    "source": "https://help.klaviyo.com/hc/en-us/articles/115002779051",
+    "confidence": "VERIFIED"
+  },
+  {
+    "id": "all.content_dialect",
+    "status": "pass",
+    "hard": true,
+    "requirement": "The rendered copy must be in this platform's template dialect",
+    "detail": "The rendered copy must be in this platform's template dialect: customerio",
+    "source": "engine/models.py PLATFORM_DIALECT",
+    "confidence": "VERIFIED"
+  }
+]

@@ -988,7 +988,7 @@
       "platform": "klaviyo",
       "when": "send_window",
       "kind": "advisory",
-      "requirement": "Klaviyo has no hour-range window on a minutes or hours delay: hour-level touches send when the delay ends (SMS keeps its quiet hours)",
+      "requirement": "Klaviyo has no hour-range window on a minutes or hours delay: hour-level touches send when the delay ends (SMS still follows Klaviyo's SMS quiet hours setting)",
       "source": "https://help.klaviyo.com/hc/en-us/articles/115003885212",
       "confidence": "VERIFIED"
     },

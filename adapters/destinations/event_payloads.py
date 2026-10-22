@@ -155,17 +155,8 @@ def batches(platform: str, events: Iterable[Dict[str, Any]], hub_id: str = "0000
 
 
 def validate_request(req: Dict[str, Any]) -> Tuple[Optional[str], List[str]]:
-    """(schema name, error messages) for one request this module built, against config/esp_payload_schemas.json.
-
-    Iterable is checked here; every other endpoint goes to engine/policy/simulator.validate_request, which predates Iterable."""
-    if "iterable.com/api/events/track" in str(req.get("url", "")):
-        import jsonschema
-        from engine.paths import ESP_PAYLOAD_SCHEMAS
-        from engine.schemas import FORMAT_CHECKER
-        cfg = json.loads(ESP_PAYLOAD_SCHEMAS.read_text(encoding="utf-8"))
-        sub = {"$schema": cfg["$schema"], "$defs": cfg["$defs"], "$ref": "#/$defs/iterable_track_event"}
-        v = jsonschema.Draft202012Validator(sub, format_checker=FORMAT_CHECKER)
-        return "iterable_track_event", [f"{'/'.join(map(str, e.path)) or '(body)'}: {e.message}" for e in v.iter_errors(req.get("body"))]
+    """(schema name, error messages) for one request this module built, against config/esp_payload_schemas.json
+    (engine/policy/simulator.validate_request, which `lcm simulate --payloads` uses too)."""
     from engine.policy import simulator
     return simulator.validate_request(req)
 

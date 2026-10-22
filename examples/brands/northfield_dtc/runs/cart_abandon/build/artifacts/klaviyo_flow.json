@@ -1,0 +1,238 @@
+{
+  "method": "POST",
+  "url": "https://a.klaviyo.com/api/flows",
+  "headers": {
+    "Authorization": "Klaviyo-API-Key ${KLAVIYO_PRIVATE_KEY}",
+    "revision": "2026-10-15",
+    "Content-Type": "application/vnd.api+json",
+    "accept": "application/vnd.api+json"
+  },
+  "body": {
+    "data": {
+      "type": "flow",
+      "attributes": {
+        "name": "LCM Abandoned cart: Northfield Coffee Roasters",
+        "definition": {
+          "triggers": [
+            {
+              "type": "metric",
+              "id": "<<klaviyo_metric:Started Checkout>>"
+            }
+          ],
+          "profile_filter": {
+            "condition_groups": [
+              {
+                "conditions": [
+                  {
+                    "type": "profile-metric",
+                    "metric_id": "<<klaviyo_metric:Placed Order>>",
+                    "measurement": "count",
+                    "measurement_filter": {
+                      "type": "numeric",
+                      "operator": "equals",
+                      "value": 0
+                    },
+                    "timeframe_filter": {
+                      "type": "date",
+                      "operator": "flow-start"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "actions": [
+            {
+              "temporary_id": "holdout_split",
+              "type": "trigger-split",
+              "links": {
+                "next_if_true": null,
+                "next_if_false": "t1_email_wait"
+              },
+              "data": {
+                "trigger_filter": {
+                  "condition_groups": [
+                    {
+                      "conditions": [
+                        {
+                          "type": "metric-property",
+                          "metric_id": "<<klaviyo_metric:Started Checkout>>",
+                          "field": "in_holdout",
+                          "filter": {
+                            "type": "boolean",
+                            "operator": "equals",
+                            "value": true
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "trigger_id": "<<klaviyo_metric:Started Checkout>>",
+                "trigger_type": "metric"
+              }
+            },
+            {
+              "temporary_id": "t1_email_wait",
+              "type": "time-delay",
+              "links": {
+                "next": "t1_email"
+              },
+              "data": {
+                "unit": "hours",
+                "value": 1,
+                "timezone": "profile"
+              }
+            },
+            {
+              "temporary_id": "t1_email",
+              "type": "send-email",
+              "links": {
+                "next": "t2_sms_consent_wait"
+              },
+              "data": {
+                "status": "draft",
+                "message": {
+                  "from_email": "roastlist@example.com",
+                  "from_label": "Northfield Coffee",
+                  "subject_line": "Your coffee is still in your cart",
+                  "preview_text": "We kept it exactly as you left it",
+                  "template_id": "<<klaviyo_template:t1_email>>",
+                  "smart_sending_enabled": true,
+                  "transactional": false,
+                  "add_tracking_params": true,
+                  "name": "t1_email"
+                }
+              }
+            },
+            {
+              "temporary_id": "t2_sms_consent_wait",
+              "type": "time-delay",
+              "links": {
+                "next": "t2_sms"
+              },
+              "data": {
+                "unit": "hours",
+                "value": 23,
+                "timezone": "profile"
+              }
+            },
+            {
+              "temporary_id": "t2_sms",
+              "type": "send-sms",
+              "links": {
+                "next": "t2_email_fallback"
+              },
+              "data": {
+                "status": "draft",
+                "message": {
+                  "body": "Northfield Coffee Roasters: Not sure which grind to pick? Reply with how you brew and we will tell you. {{ event.extra.checkout_url|default:organization.url }} Reply STOP to opt out.",
+                  "smart_sending_enabled": true,
+                  "sms_quiet_hours_enabled": true,
+                  "transactional": false,
+                  "add_tracking_params": true,
+                  "additional_filters": {
+                    "condition_groups": [
+                      {
+                        "conditions": [
+                          {
+                            "type": "profile-marketing-consent",
+                            "consent": {
+                              "channel": "sms",
+                              "can_receive_marketing": true,
+                              "consent_status": {
+                                "subscription": "subscribed"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "name": "t2_sms"
+                }
+              }
+            },
+            {
+              "temporary_id": "t2_email_fallback",
+              "type": "send-email",
+              "links": {
+                "next": "t3_email_wait"
+              },
+              "data": {
+                "status": "draft",
+                "message": {
+                  "from_email": "roastlist@example.com",
+                  "from_label": "Northfield Coffee",
+                  "subject_line": "Which grind should you choose?",
+                  "preview_text": "Tell us how you brew and we will tell you",
+                  "template_id": "<<klaviyo_template:t2_email_fallback>>",
+                  "smart_sending_enabled": true,
+                  "transactional": false,
+                  "add_tracking_params": true,
+                  "name": "t2_email_fallback",
+                  "additional_filters": {
+                    "condition_groups": [
+                      {
+                        "conditions": [
+                          {
+                            "type": "profile-marketing-consent",
+                            "consent": {
+                              "channel": "sms",
+                              "can_receive_marketing": false,
+                              "consent_status": {
+                                "subscription": "any"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "temporary_id": "t3_email_wait",
+              "type": "time-delay",
+              "links": {
+                "next": "t3_email"
+              },
+              "data": {
+                "unit": "days",
+                "value": 2,
+                "timezone": "profile"
+              }
+            },
+            {
+              "temporary_id": "t3_email",
+              "type": "send-email",
+              "links": {
+                "next": null
+              },
+              "data": {
+                "status": "draft",
+                "message": {
+                  "from_email": "roastlist@example.com",
+                  "from_label": "Northfield Coffee",
+                  "subject_line": "Last reminder about your cart",
+                  "preview_text": "It is saved, if you still want it",
+                  "template_id": "<<klaviyo_template:t3_email>>",
+                  "smart_sending_enabled": true,
+                  "transactional": false,
+                  "add_tracking_params": true,
+                  "name": "t3_email"
+                }
+              }
+            }
+          ],
+          "entry_action_id": "holdout_split",
+          "reentry_criteria": {
+            "duration": 1,
+            "unit": "week"
+          }
+        }
+      }
+    }
+  }
+}

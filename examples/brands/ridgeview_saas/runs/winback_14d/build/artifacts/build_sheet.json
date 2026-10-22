@@ -1,0 +1,238 @@
+{
+  "platform": "customerio",
+  "flow": "Win-back: Ridgeview, 14 days since the core action (created a report)",
+  "slug": "ridgeview_winback_14d",
+  "mode": "native_segment",
+  "status_on_create": "Draft",
+  "trigger": {
+    "type": "Attribute or Segment",
+    "event": null,
+    "summary": "Segment-triggered campaign on 'LCM Win-back: ridgeview_winback_14d' (Every re-match)",
+    "filters": [],
+    "flow_filters": [
+      "has not done feature_used since entering"
+    ],
+    "exit_criteria": [
+      "conversion goal: performs feature_used; exit when the person converts"
+    ],
+    "re_entry": {
+      "plan": "allowed after the person leaves the flow",
+      "mode": "after_exit",
+      "setting": "Every re-match"
+    },
+    "holdout": "split on the person property lcm_holdout_ridgeview_winback_14d (true goes to exit), written once and then weekly by the holdout sync (build/holdout_sync_<dialect>.sql, then lcm send --profile-updates): a segment trigger carries no event to read in_holdout from",
+    "segment": {
+      "name": "LCM Win-back: ridgeview_winback_14d",
+      "kind": "Customer.io data-driven segment",
+      "conditions": [
+        "has performed onboarding_step_completed at least once",
+        "has not performed onboarding_step_completed within the past 14 days",
+        "has not performed feature_used within the past 14 days"
+      ],
+      "refresh": "people enter the campaign when they match (Every re-match)",
+      "data_prerequisites": [
+        "onboarding_step_completed and feature_used are tracked as Customer.io events"
+      ],
+      "confidence": "LIKELY"
+    }
+  },
+  "steps": [
+    {
+      "n": 1,
+      "id": "holdout_split",
+      "kind": "split",
+      "action": "True/False branch",
+      "wait": null,
+      "channel": null,
+      "content": null,
+      "condition": null,
+      "split": {
+        "kind": "holdout",
+        "condition": "lcm_holdout_ridgeview_winback_14d is true",
+        "platform_action": "True/False branch",
+        "yes": "exit (holdout: no messages)",
+        "no": "t1_email",
+        "source": "profile_property"
+      },
+      "window": null,
+      "manual": false,
+      "note": null
+    },
+    {
+      "n": 2,
+      "id": "t1_email",
+      "kind": "send",
+      "action": "Send email",
+      "wait": {
+        "seconds": 0,
+        "value": 0,
+        "unit": "hours",
+        "label": "until 10:00 recipient local time"
+      },
+      "channel": "email",
+      "content": [
+        "copy/t1_email_A.html",
+        "copy/t1_email_A.mjml",
+        "copy/t1_email_A.subject.txt",
+        "copy/t1_email_A.txt"
+      ],
+      "condition": null,
+      "split": null,
+      "window": null,
+      "manual": false,
+      "note": null
+    },
+    {
+      "n": 3,
+      "id": "t2_email",
+      "kind": "send",
+      "action": "Send email",
+      "wait": {
+        "seconds": 259200,
+        "value": 72,
+        "unit": "hours",
+        "label": "3 days"
+      },
+      "channel": "email",
+      "content": [
+        "copy/t2_email_A.html",
+        "copy/t2_email_A.mjml",
+        "copy/t2_email_A.subject.txt",
+        "copy/t2_email_A.txt"
+      ],
+      "condition": null,
+      "split": null,
+      "window": null,
+      "manual": false,
+      "note": null
+    },
+    {
+      "n": 4,
+      "id": "t3_in_app",
+      "kind": "send",
+      "action": "Send in-app message",
+      "wait": {
+        "seconds": 345600,
+        "value": 96,
+        "unit": "hours",
+        "label": "4 days"
+      },
+      "channel": "in_app",
+      "content": [
+        "copy/t3_in_app_A.json"
+      ],
+      "condition": null,
+      "split": null,
+      "window": null,
+      "manual": false,
+      "note": null
+    },
+    {
+      "n": 5,
+      "id": "t4_email",
+      "kind": "send",
+      "action": "Send email",
+      "wait": {
+        "seconds": 432000,
+        "value": 120,
+        "unit": "hours",
+        "label": "5 days"
+      },
+      "channel": "email",
+      "content": [
+        "copy/t4_email_A.html",
+        "copy/t4_email_A.mjml",
+        "copy/t4_email_A.subject.txt",
+        "copy/t4_email_A.txt"
+      ],
+      "condition": null,
+      "split": null,
+      "window": null,
+      "manual": false,
+      "note": null
+    },
+    {
+      "n": 6,
+      "id": "t5_email",
+      "kind": "send",
+      "action": "Send email",
+      "wait": {
+        "seconds": 518400,
+        "value": 144,
+        "unit": "hours",
+        "label": "6 days"
+      },
+      "channel": "email",
+      "content": [
+        "copy/t5_email_A.html",
+        "copy/t5_email_A.mjml",
+        "copy/t5_email_A.subject.txt",
+        "copy/t5_email_A.txt"
+      ],
+      "condition": null,
+      "split": null,
+      "window": null,
+      "manual": false,
+      "note": null
+    },
+    {
+      "n": 7,
+      "id": "sunset",
+      "kind": "split",
+      "action": "True/False branch on the re-permission email click",
+      "wait": {
+        "seconds": 1209600,
+        "value": 336,
+        "unit": "hours",
+        "label": "14 days"
+      },
+      "channel": null,
+      "content": null,
+      "condition": null,
+      "split": {
+        "kind": "sunset",
+        "condition": "clicked the re-permission email since entering",
+        "platform_action": "True/False branch on the re-permission email click",
+        "yes": "exit (stays subscribed)",
+        "no": "sunset_update",
+        "source": "engagement"
+      },
+      "window": null,
+      "manual": false,
+      "note": null
+    },
+    {
+      "n": 8,
+      "id": "sunset_update",
+      "kind": "update_profile",
+      "action": "Create or update person (LIKELY)",
+      "wait": null,
+      "channel": null,
+      "content": null,
+      "condition": null,
+      "split": null,
+      "window": null,
+      "manual": false,
+      "note": "set lcm_sunset = true: suppressed from marketing, record kept, lifted only by a fresh opt-in"
+    }
+  ],
+  "settings": {
+    "goal": "created a report (feature_used where feature = reports); conversion goal: performs feature_used; exit when the person converts",
+    "re_entry": "Every re-match",
+    "send_windows": [
+      "email: 08:00 to 21:00 recipient local (plan); a Time Window delay just before the message: 08:00 to 21:00, in the person's timezone attribute"
+    ],
+    "frequency": [
+      "Message limit: 3 messages across email/sms/push per 7 day(s), with this campaign opted in to message limits"
+    ]
+  },
+  "manual_steps": [
+    "Create the person property lcm_holdout_ridgeview_winback_14d (true or false). Run build/holdout_sync_postgres.sql and send its rows with `lcm send --profile-updates <results.csv> --platform customerio --approve`; repeat weekly so new people carry it before they can qualify",
+    "Data needed for the segment: onboarding_step_completed and feature_used are tracked as Customer.io events",
+    "Create the Customer.io data-driven segment 'LCM Win-back: ridgeview_winback_14d': has performed onboarding_step_completed at least once; has not performed onboarding_step_completed within the past 14 days; has not performed feature_used within the past 14 days",
+    "Make lcm_sunset = true a suppression in every marketing send",
+    "Entry filters to confirm (checked once at entry): completed onboarding (onboarding_step_completed where step_index = 3) at least once; clicked or replied to any email in the last 90 days (opens do not count: privacy proxies inflate them)",
+    "Suppressions on every step: unsubscribed from marketing email, or hard bounced; marked any message as spam (complaint), ever; sunset-suppressed (lcm_sunset is true); only a fresh opt-in lifts it; internal, test and seed addresses; currently in a higher-priority flow (by the frequency policy's flow_priority: billing, cart, post-purchase first); received a re-permission ask from any flow in the last 180 days",
+    "Before going live: send every message to a seed list, run `lcm simulate` on flow_spec.json, and get approval"
+  ]
+}

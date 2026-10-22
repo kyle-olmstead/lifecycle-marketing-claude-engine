@@ -37,7 +37,7 @@ sender_name: Sam at Northfield
 brand_voice: warm, concrete and unhurried; talk about the coffee, the farm and the
   roast date, never about hype
 postal_address: 48 Example Street, Unit 2, Portland, ME 04101
-brand_kit: /home/claude/lifecycle-marketing-claude-engine/examples/brands/northfield_dtc/brand.yaml
+brand_kit: examples/brands/northfield_dtc/brand.yaml
 recipient_countries:
 - US
 offer_policy:

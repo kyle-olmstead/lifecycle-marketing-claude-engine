@@ -419,6 +419,10 @@ def load_brand(path_or_none: Union[str, Path, None] = None) -> BrandKit:
     if path_or_none is None:
         return DEFAULT_BRAND
     path = Path(path_or_none).expanduser()
+    if not path.is_file() and not path.is_absolute():
+        from engine.paths import ROOT
+        if (ROOT / path).is_file():          # a demo brand's kit, named relative to the repository
+            path = ROOT / path
     if not path.is_file():
         raise BrandKitError(str(path), ["no such file; copy templates/brand/brand.yaml to start one"])
     try:
