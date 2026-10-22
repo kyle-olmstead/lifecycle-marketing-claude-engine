@@ -298,9 +298,20 @@ def _blast_evidence(b: Brief, data: str, as_of: Optional[str] = None) -> List[st
 
 def _fix_candidates(audits: List[Dict[str, Any]], engagement: Optional[Dict[str, Any]],
                     deliverability: Optional[Dict[str, Dict[str, Any]]], data: str = "<exports>",
-                    tracking: Optional[Dict[str, Any]] = None) -> (List[Opportunity], List[str]):
+                    tracking: Optional[Dict[str, Any]] = None, monitor: Optional[Dict[str, Any]] = None) -> (List[Opportunity], List[str]):
     fixes: List[Opportunity] = []
     also: List[str] = []
+    today = (monitor or {}).get("today") or {}
+    if today.get("verdict") in ("STOP", "DROP BACK"):
+        # the daily monitor applied the abort rules (engine/deliverability/warmup.py ABORT_RULES) to yesterday's sends
+        fixes.append(Opportunity(key="fix_monitor", kind="fix", title=f"Deliverability monitor says {today['verdict']}: fix sending first",
+                                 why=[f"{today['day']}: " + "; ".join(today.get("reasons", [])[:3])] +
+                                     [f"{prov}: {v}" for prov, v in (today.get("providers") or {}).items() if v in ("STOP", "DROP BACK")][:3],
+                                 confidence="high", effort="M", effort_why="bounce, complaint and block causes, classified by the monitor",
+                                 next_step=f"lcm deliverability monitor --data {data} --markdown"))
+    elif today.get("verdict") == "HOLD":
+        also.append(f"the deliverability monitor says HOLD for {today.get('day')}: keep volume flat until it reads CONTINUE "
+                    f"(lcm deliverability monitor --data {data} --markdown)")
     for domain, r in (deliverability or {}).items():
         verdict = r["gate"]["verdict"]
         crit = [f for f in r["findings"] if f["severity"] == "critical"]
@@ -385,7 +396,7 @@ def run(data: str, briefs: Optional[List[Brief]] = None, live: Optional[List[Bri
         top: int = 3, value: Optional[float] = None, lift_low: float = LIFT_LOW, lift_high: float = LIFT_HIGH,
         audits: Optional[List[Dict[str, Any]]] = None, engagement: Optional[Dict[str, Any]] = None,
         deliverability: Optional[Dict[str, Dict[str, Any]]] = None, out: Optional[Path] = None,
-        tracking: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        tracking: Optional[Dict[str, Any]] = None, monitor: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """briefs: extra core actions to consider (default: the live flows' own, else the example); live: the flows already
     running (default: briefs/active/). top: how many builds, after any fixes."""
     from engine.agents import cohort_analyst
@@ -450,7 +461,7 @@ def run(data: str, briefs: Optional[List[Brief]] = None, live: Optional[List[Bri
             if value_label != "SUPPLIED" and value is not None and len(builds) > 1:
                 notes.append("the post-purchase build is valued at the average order; the others at one month of revenue per paying "
                              "customer. Give --value-per-conversion to put every build on one footing")
-    fixes, also = _fix_candidates(audits or [], engagement, deliverability, data, tracking)
+    fixes, also = _fix_candidates(audits or [], engagement, deliverability, data, tracking, monitor)
     ranked = rank(fixes + builds, 0)
     fixed = [o for o in ranked if o.kind == "fix"]
     built = [o for o in ranked if o.kind == "build"]

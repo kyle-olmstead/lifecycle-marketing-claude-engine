@@ -404,3 +404,17 @@ def test_engagement_suppresses_only_hard_bounces(tmp_path):
     rows = {r[0]: r[2] for r in con.execute(engagement.tiers_sql("duckdb", "2026-06-02")).fetchall()}
     assert rows["u0"] == "suppressed" and rows["u3"] == "suppressed"
     assert rows["u1"] != "suppressed" and rows["u2"] != "suppressed"
+
+
+def test_a_monitor_stop_is_a_fix_before_any_build_and_hold_is_a_note():
+    from engine.agents import priorities
+    stop = {"today": {"day": "2026-10-18", "verdict": "STOP", "gate": "RED", "reasons": ["hard bounces 2.4% of sent"],
+                      "providers": {"gmail": "STOP", "yahoo": "CONTINUE"}}}
+    fixes, also = priorities._fix_candidates([], None, None, "data", None, stop)
+    assert fixes and fixes[0].key == "fix_monitor" and "STOP" in fixes[0].title and "gmail: STOP" in fixes[0].why
+    hold = {"today": {"day": "2026-10-18", "verdict": "HOLD", "reasons": [], "providers": {}}}
+    fixes, also = priorities._fix_candidates([], None, None, "data", None, hold)
+    assert not fixes and any("HOLD" in a for a in also)
+    from adapters.destinations import sheets
+    rows = sheets.monitor_rows(stop, "2026-10-19T05:00:00Z")["Deliverability Monitor"]
+    assert [r["provider"] for r in rows] == ["all", "gmail", "yahoo"] and set(rows[0]) == set(sheets.TABS["Deliverability Monitor"]["header"])

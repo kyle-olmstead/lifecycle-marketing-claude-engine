@@ -199,6 +199,7 @@ def run(mode: str = "demo", data: Optional[str] = None, briefs_dir: Optional[Pat
     issues: List[Dict[str, Any]] = []
     audits: List[Dict[str, Any]] = []
     extra: Dict[str, List[Dict[str, Any]]] = {}
+    monitor_r: Optional[Dict[str, Any]] = None
 
     briefs, note = active_briefs(briefs_dir)
     if note:
@@ -272,6 +273,7 @@ def run(mode: str = "demo", data: Optional[str] = None, briefs_dir: Optional[Pat
         try:
             from engine.deliverability import monitor as deliverability_monitor
             mon = deliverability_monitor_step(data, out, warmup, mx)
+            monitor_r = mon
             if mon is None:
                 status["deliverability_monitor"] = {"status": "skipped",
                                                     "reason": "message_events carries no bounce or deferral detail (smtp_status or diagnostic)"}
@@ -282,6 +284,7 @@ def run(mode: str = "demo", data: Optional[str] = None, briefs_dir: Optional[Pat
                 status["deliverability_monitor"] = {"status": "ok", "as_of": t["day"], "verdict": t["verdict"], "gate": t["gate"],
                                                     "providers": t["providers"], "reasons": t["reasons"][:5]}
                 md += [deliverability_monitor.render_markdown(mon), ""]
+                sheets_sync._merge(extra, sheets_sync.monitor_rows(mon, logged_at))
                 if t["verdict"] in ("DROP BACK", "STOP"):
                     issues.append({"title": f"Deliverability monitor: {t['verdict']} on {t['day']}", "label": "deliverability",
                                    "body_path": str(out / "deliverability_monitor" / "monitor.md")})
@@ -314,7 +317,7 @@ def run(mode: str = "demo", data: Optional[str] = None, briefs_dir: Optional[Pat
         try:
             live = [] if note else [load_brief(p) for p in briefs]
             pr = priorities.run(data, briefs=[load_brief(p) for p in briefs], live=live, top=3, audits=audits, engagement=eng_summary,
-                                deliverability=analyses, out=out, tracking=tracking_r)
+                                deliverability=analyses, out=out, tracking=tracking_r, monitor=monitor_r)
             section = priorities.render(pr)
             (out / "priorities.md").write_text(section, encoding="utf-8")
             (out / "priorities.json").write_text(json.dumps(priorities.to_json(pr), indent=2, default=str), encoding="utf-8")

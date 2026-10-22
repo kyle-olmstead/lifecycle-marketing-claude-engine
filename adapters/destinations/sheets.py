@@ -58,6 +58,8 @@ TABS: Dict[str, Dict[str, Any]] = {
     "Priorities": {"key": ["as_of", "rank"], "header": [
         "as_of", "rank", "kind", "title", "monthly_low", "monthly_high", "conversions_low", "conversions_high", "confidence", "effort",
         "why", "next_step", "logged_at"]},
+    "Deliverability Monitor": {"key": ["as_of", "provider"], "header": [
+        "as_of", "provider", "verdict", "gate", "reasons", "logged_at"]},
     "Deliverability": {"key": ["as_of", "domain"], "header": [
         "as_of", "domain", "gate", "auth_state", "dmarc_policy", "dmarc_effective_policy", "spf_lookups", "dkim_keys_found",
         "mta_sts_mode", "critical", "high", "primary_cause", "top_finding", "logged_at"]},
@@ -101,6 +103,18 @@ def engagement_rows(summary: Dict[str, Any], audience: str = "email subscribers"
     return {"Engagement": [{"as_of": summary["as_of"], "audience": audience, "people": summary["people"], "mailable": summary["mailable"],
                             **{k: t.get(k, 0) for k in ("suppressed", "engaged_30d", "engaged_90d", "engaged_180d", "unengaged", "new")},
                             "unengaged_share": summary["unengaged_share"], "gate_band": summary["gate_band"], "logged_at": logged_at}]}
+
+
+def monitor_rows(r: Dict[str, Any], logged_at: str) -> Dict[str, List[Dict[str, Any]]]:
+    """The deliverability monitor's day: one row for all providers, one per provider with its own verdict."""
+    t = r.get("today") or {}
+    if not t:
+        return {}
+    rows = [{"as_of": t.get("day"), "provider": "all", "verdict": t.get("verdict"), "gate": t.get("gate"),
+             "reasons": "; ".join(t.get("reasons", [])[:5]), "logged_at": logged_at}]
+    rows += [{"as_of": t.get("day"), "provider": prov, "verdict": v, "gate": "", "reasons": "", "logged_at": logged_at}
+             for prov, v in sorted((t.get("providers") or {}).items())]
+    return {"Deliverability Monitor": rows}
 
 
 def priority_rows(p: Dict[str, Any], logged_at: str = "") -> Dict[str, List[Dict[str, Any]]]:
