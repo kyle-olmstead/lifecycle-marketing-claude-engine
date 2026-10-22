@@ -487,11 +487,13 @@ def text_to_image(html_src: str) -> Dict[str, Any]:
     result: Dict[str, Any] = {"visible_text_chars": chars, "images": p.images, "large_images": p.large_images,
                               "images_without_alt": p.images_no_alt,
                               "chars_per_image": None if not p.images else round(chars / p.images), "errors": [], "warnings": []}
-    # every image counts toward image-only; only images wider than SMALL_IMAGE_PX (or of unknown width) count toward
-    # image-heavy, since a logo and a product thumbnail sit beside the text rather than replacing it
-    if p.images and chars < 200:
+    # only images wider than SMALL_IMAGE_PX (or of unknown width) can make an email image-only or image-heavy: a logo and a
+    # product thumbnail sit beside the text rather than replacing it
+    if p.large_images and chars < 200:
         result["errors"].append(f"image-only email: {chars} characters of readable text with {p.images} image(s). Filters cannot read it and "
                                 "recipients with images off see nothing; put the message in live text")
+    elif p.images and not p.large_images and chars < 100:
+        result["warnings"].append(f"very little live text ({chars} characters): say in words what the images show")
     elif p.large_images and chars / p.large_images < 250:
         result["warnings"].append(f"image-heavy: about {chars // p.large_images} characters of text per large image; keep the message "
                                   "readable with images off")

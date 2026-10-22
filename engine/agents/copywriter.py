@@ -213,7 +213,7 @@ def render_email_mjml(f: Dict[str, Any], brief: Brief, step_id: str, brand: Opti
     from engine.render import product_blocks
     paragraphs = [p for p in f["paragraphs"] if p.strip() != "{product_block}"]
     wants_block = len(paragraphs) != len(f["paragraphs"])
-    block_mjml, block_text = product_blocks.block(brief, d) if wants_block else (None, "")
+    block_mjml, block_text = product_blocks.block(brief, d, kit.website) if wants_block else (None, "")
     if product_items is None and block_mjml:
         product_items = block_mjml
     content = mjml_render.EmailContent(

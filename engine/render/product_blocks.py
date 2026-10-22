@@ -102,20 +102,25 @@ def return_url(brief: Brief, dialect: str, fallback: Optional[str]) -> Optional[
     return None
 
 
-def block(brief: Brief, dialect: str) -> Tuple[Optional[str], str]:
+def block(brief: Brief, dialect: str, website: Optional[str] = None) -> Tuple[Optional[str], str]:
     """(MJML for the product slot, plain-text version). (None, '') when the flow's trigger carries no items."""
     if brief.flow_type not in EVENT_FLOWS:
         return None, ""
     src = source(brief)
     fb = _fb(brief)
     if brief.flow_type == "browse_abandon" and dialect in ("customerio", "braze"):
-        # one viewed product, carried on the product_viewed event itself (config/tracking_plan.json), not an items[] list
-        f = (lambda k: "{{ event." + k + " }}") if dialect == "customerio" else (lambda k: "{{context.${" + k + "}}}")
-        name = ("{{ event.name | default: '" + fb + "' }}") if dialect == "customerio" else ("{{context.${name} | default: '" + fb + "'}}")
-        return _row_mjml(name, f("url"), f("image_url"), f("price")), f"{name}: {f('url')}"
+        # one viewed product, carried on the product_viewed event itself (config/tracking_plan.json), not an items[] list;
+        # every field has a fallback, the link falls back to the store's home page
+        home = website or ""
+        if dialect == "customerio":
+            f = lambda k, d="": "{{ event." + k + " | default: '" + d + "' }}"   # noqa: E731
+        else:
+            f = lambda k, d="": "{{context.${" + k + "} | default: '" + d + "'}}"  # noqa: E731
+        return _row_mjml(f("name", fb), f("url", home), f("image_url"), f("price")), f"{f('name', fb)}: {f('url', home)}"
     if dialect == "klaviyo" and src == "shopify_viewed_product":
-        row = _row_mjml("{{ event.Name|default:'" + fb + "' }}", "{{ event.URL }}", "{{ event.ImageURL }}", "{{ event.Price }}")
-        return row, "{{ event.Name|default:'" + fb + "' }}: {{ event.URL }}"
+        row = _row_mjml("{{ event.Name|default:'" + fb + "' }}", "{{ event.URL|default:organization.url }}", "{{ event.ImageURL|default:'' }}",
+                        "{{ event.Price|default:'' }}")
+        return row, "{{ event.Name|default:'" + fb + "' }}: {{ event.URL|default:organization.url }}"
     if dialect == "klaviyo":
         if src == "shopify_line_items":
             coll, name, url, image, price = ("event.extra.line_items", "{{ item.product.title }}",
