@@ -336,7 +336,7 @@ def test_mcp_config():
 def test_payload_config_is_a_valid_schema_with_sources():
     cfg = json.loads((ROOT / "config/esp_payload_schemas.json").read_text())
     jsonschema.Draft202012Validator.check_schema(cfg)
-    assert all(d["x-endpoint"]["docs"] and d["x-endpoint"]["checked"] == "2026-10-20" for d in cfg["$defs"].values())
+    assert all(d["x-endpoint"]["docs"] and d["x-endpoint"]["checked"] >= "2026-10-20" for d in cfg["$defs"].values())
 
 
 def test_daily_workflow():

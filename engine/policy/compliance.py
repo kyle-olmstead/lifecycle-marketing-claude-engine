@@ -84,7 +84,7 @@ def _sms(copy_plan: List[TouchCopy]) -> List[Tuple[str, str]]:
 
 
 ADDRESS = re.compile(r"organization\.(full_address|street_address)|site_settings\.company_street_address_1|%%member_addr%%|"
-                     r"\$\{email_footer\}|\d+\s+\w+.*\b(St|Street|Ave|Avenue|Rd|Road|Blvd|Suite|Way|Dr|Drive|Lane|Ln)\b", re.I)
+                     r"\$\{email_footer\}|\{\{\{?~?\s*physicalAddress\s*~?\}?\}\}|\d+\s+\w+.*\b(St|Street|Ave|Avenue|Rd|Road|Blvd|Suite|Way|Dr|Drive|Lane|Ln)\b", re.I)
 UNSUB = re.compile(r"unsubscribe", re.I)
 
 

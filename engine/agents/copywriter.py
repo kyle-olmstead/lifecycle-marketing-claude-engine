@@ -6,7 +6,7 @@ in-app fields, each variant with a framework and a falsifiable hypothesis. This 
 everything that must never be guessed:
 
   * renders the words into the platform's template dialect (Customer.io and Braze Liquid, Klaviyo's
-    Django-style language, HubL, AMPscript) with a fallback on every personalization token
+    Django-style language, HubL, AMPscript, Iterable Handlebars) with a fallback on every personalization token
   * adds the unsubscribe link and postal address the dialect requires, SMS opt-out language, a
     preheader and dark-mode metadata, so compliance does not depend on the writer remembering
   * lints every template with engine/render/template_lint.py, counts SMS segments with engine/render/sms.py, and
@@ -116,6 +116,8 @@ FIRST_NAME = {
     "klaviyo": "{{ first_name|default:'there' }}",
     "hubl": '{{ personalization_token("contact.firstname", "there") }}',
     "ampscript": "%%=v(@fn)=%%",
+    # Iterable: defaultIfEmpty covers null, undefined and empty (support.iterable.com/hc/en-us/articles/205480365)
+    "handlebars": '{{defaultIfEmpty firstName "there"}}',
 }
 # short channels have no room for a declaration block, so AMPscript uses one inline expression with the fallback
 INLINE_AMPSCRIPT_NAME = '%%=IIf(Empty(AttributeValue("FirstName")), "there", AttributeValue("FirstName"))=%%'
@@ -127,7 +129,9 @@ def unsubscribe_html(d: str) -> str:
             "braze": '<a href="{{${set_user_to_unsubscribed_url}}}">Unsubscribe</a>',
             "klaviyo": "{% unsubscribe 'Unsubscribe' %}",
             "hubl": '<a href="{{ unsubscribe_link }}">Unsubscribe</a>',
-            "ampscript": '<a href="%%unsub_center_url%%">Unsubscribe</a>'}[d]
+            "ampscript": '<a href="%%unsub_center_url%%">Unsubscribe</a>',
+            # Iterable's built-in unsubscribe merge tag (support.iterable.com/hc/articles/206514205)
+            "handlebars": '<a href="{{unsubscribeUrl}}">Unsubscribe</a>'}[d]
 
 
 def address_html(d: str, brief: Brief) -> str:
@@ -142,6 +146,9 @@ def address_html(d: str, brief: Brief) -> str:
         return html.escape(brief.postal_address)
     if d == "braze":
         return "{{${email_footer}}}"
+    if d == "handlebars":
+        # the mailing address set on Iterable's Project Settings page ({{companyName}} is the project name, so it is not used)
+        return "{{physicalAddress}}"
     return "POSTAL ADDRESS REQUIRED: add it to the brief (postal_address) before sending"
 
 
@@ -193,7 +200,7 @@ def render_email_mjml(f: Dict[str, Any], brief: Brief, step_id: str, brand: Opti
     addr_brief = brief if (brief.postal_address or not kit.footer.postal_address) else brief.model_copy(
         update={"postal_address": kit.footer.postal_address})
     address = address_html(d, addr_brief)
-    if kit.footer.legal_name and addr_brief.postal_address and d in ("customerio", "braze"):
+    if kit.footer.legal_name and addr_brief.postal_address and d in ("customerio", "braze", "handlebars"):
         address = f"{html.escape(kit.footer.legal_name)}, {address}"   # the token dialects already print the organization name
     sender = brief.sender_name or kit.brand_name or brief.product_name
     extra = [_tokens(x, d, brief) for x in kit.footer.extra_lines]
@@ -213,7 +220,8 @@ def render_email_mjml(f: Dict[str, Any], brief: Brief, step_id: str, brand: Opti
         extra_lines=tuple(extra), file_start=file_start, product_items=product_items)
     mjml_source, body = mjml_render.render(content, kit)
     unsub_text = {"customerio": "{% unsubscribe_url %}", "braze": "{{${set_user_to_unsubscribed_url}}}",
-                  "klaviyo": "{% unsubscribe_link %}", "hubl": "{{ unsubscribe_link }}", "ampscript": "%%unsub_center_url%%"}[d]
+                  "klaviyo": "{% unsubscribe_link %}", "hubl": "{{ unsubscribe_link }}", "ampscript": "%%unsub_center_url%%",
+                  "handlebars": "{{unsubscribeUrl}}"}[d]
     footer = [sender, html.unescape(address)] + [_tokens(x, d, brief, escape=False) for x in kit.footer.extra_lines]
     footer += [f"{s.label}: {s.url}" for s in kit.social] + [f"Unsubscribe: {unsub_text}"]
     text = head + "\n\n".join(

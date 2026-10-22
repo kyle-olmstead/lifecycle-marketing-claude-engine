@@ -17,6 +17,11 @@ the platform, and this linter checks each dialect with a real parser where one e
   ampscript    Salesforce Marketing Cloud AMPscript. No public parser exists; this checks block and
                inline delimiters, IF/ENDIF and FOR/NEXT balance, string termination and variable
                naming. Treat a pass as structural, not semantic.
+  handlebars   Iterable's Handlebars ({{field}}, {{defaultIfEmpty field "fallback"}}, {{#each items}}...{{/each}}).
+               No maintained Python Handlebars parser is pinned, so this checks structure: balanced braces,
+               block helpers opened and closed in order ({{#if}}...{{/if}}, {{#each}}...{{/each}}), {{else}}
+               only inside a block, terminated strings, and defaultIfEmpty's two arguments. Treat a pass as
+               structural, not semantic (support.iterable.com/hc/en-us/articles/205480365 and /36531450481300).
   liquid       plain Shopify Liquid.
 
 Errors are syntax that will fail to render or will be rejected. Warnings are rules from the
@@ -41,9 +46,9 @@ import sys
 from html import unescape as html_unescape
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
-DIALECTS = ("braze", "customerio", "customerio_legacy", "klaviyo", "hubl", "ampscript", "liquid")
+DIALECTS = ("braze", "customerio", "customerio_legacy", "klaviyo", "hubl", "ampscript", "handlebars", "liquid")
 GMAIL_CLIP_BYTES = 102 * 1024
 
 CIO_TAGS = ("unsubscribe_url", "unsubscribe", "manage_subscription_preferences_url", "tracking_consent_url", "subscription_topic_name",
@@ -67,6 +72,8 @@ UNSUBSCRIBE_TOKENS = {
     "klaviyo": [r"\{%-?\s*unsubscribe(_link)?\b", r"\{%-?\s*manage_preferences(_link)?\b"],
     "hubl": [r"\bunsubscribe_link\b", r"\bunsubscribe_section\b"],
     "ampscript": [r"%%unsub_center_url%%", r"%%profile_center_url%%", r"%%subscription_center_url%%", r"unsub_center_url", r"profile_center_url"],
+    # Iterable's built-in merge tags (support.iterable.com/hc/articles/206514205, Handlebars Reference: Built-In Merge Tags)
+    "handlebars": [r"\{\{\{?~?\s*(unsubscribeUrl|unsubscribeMessageTypeUrl|hostedUnsubscribeUrl)\s*~?\}?\}\}"],
     "liquid": [r"unsubscribe"],
 }
 ADDRESS_TOKENS = {
@@ -74,6 +81,7 @@ ADDRESS_TOKENS = {
     "hubl": r"site_settings\.company_street_address_1",
     "ampscript": r"member_addr",
     "braze": r"\$\{email_footer\}",
+    "handlebars": r"\{\{\{?~?\s*physicalAddress\s*~?\}?\}\}",   # set on Iterable's Project Settings page (same source)
 }
 BRAZE_SYSTEM_ATTRS = ("set_user_to_unsubscribed_url", "set_user_to_subscribed_url", "set_user_to_opted_in_url", "email_footer",
                       "user_id", "braze_id", "date_of_birth")  # always present, or system links: no fallback needed
@@ -383,6 +391,121 @@ def _ampscript_strip_strings(code: str, r: LintResult) -> str:
 
 
 # ----------------------------------------------------------------------------------------------
+# Handlebars (Iterable), structural
+# ----------------------------------------------------------------------------------------------
+
+# Iterable built-in merge tags that are always filled by the platform, so they need no fallback
+# (support.iterable.com/hc/articles/206514205).
+HANDLEBARS_SYSTEM = {"unsubscribeUrl", "unsubscribeMessageTypeUrl", "hostedUnsubscribeUrl", "unsubscribeByPhoneUrl", "physicalAddress",
+                     "companyName", "viewInBrowserUrl", "email", "this", "@index", "@first", "@last", "@key"}
+HB_TOKEN = re.compile(r"\{\{\{(.*?)\}\}\}|\{\{!--(.*?)--\}\}|\{\{(.*?)\}\}", re.S)
+HB_STRING = re.compile(r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'')
+
+
+def _hb_args(expr: str, r: LintResult) -> List[str]:
+    """Split a Handlebars expression into words, keeping quoted strings and [bracketed names] whole."""
+    out, i, n = [], 0, len(expr)
+    while i < n:
+        c = expr[i]
+        if c.isspace():
+            i += 1
+            continue
+        if c in ("'", '"'):
+            j = i + 1
+            while j < n and expr[j] != c:
+                j += 2 if expr[j] == "\\" else 1
+            if j >= n:
+                r["errors"].append(f"unterminated string in {{{{{expr.strip()}}}}}")
+                return out
+            out.append(expr[i:j + 1])
+            i = j + 1
+            continue
+        j = i
+        while j < n and not expr[j].isspace():
+            if expr[j] == "[":
+                k = expr.find("]", j)
+                if k == -1:
+                    r["errors"].append(f"unclosed [bracketed name] in {{{{{expr.strip()}}}}}")
+                    return out
+                j = k + 1
+                continue
+            j += 1
+        out.append(expr[i:j])
+        i = j
+    return out
+
+
+def lint_handlebars(src: str) -> LintResult:
+    r = _result("handlebars")
+    stack: List[Tuple[str, List[str]]] = []          # (helper name, its arguments)
+    rest = HB_TOKEN.sub(" ", src)
+    if "{{" in rest or "}}" in rest:
+        r["errors"].append("unbalanced Handlebars braces: a '{{' without '}}' (or the reverse)")
+    for m in HB_TOKEN.finditer(src):
+        if m.group(2) is not None:                     # {{!-- comment --}}
+            continue
+        raw = m.group(1) if m.group(1) is not None else m.group(3)
+        expr = raw.strip().strip("~").strip()
+        if "{{" in expr or "}}" in expr:
+            r["errors"].append(f"nested braces inside a Handlebars tag: {m.group(0)[:60]}")
+            continue
+        if not expr:
+            r["errors"].append("empty Handlebars tag {{}}")
+            continue
+        if expr.startswith("!"):
+            continue
+        head = expr[0]
+        if head in "#^":
+            words = _hb_args(expr[1:], r)
+            if not words:
+                r["errors"].append(f"block tag without a helper name: {m.group(0)}")
+                continue
+            stack.append((words[0], words[1:]))
+            if words[0] in ("if", "unless", "each", "with") and len(words) < 2:
+                r["errors"].append(f"{{{{#{words[0]}}}}} needs an argument")
+            continue
+        if head == "/":
+            name = expr[1:].strip()
+            if not stack:
+                r["errors"].append(f"{{{{/{name}}}}} closes a block that was never opened")
+            elif stack[-1][0] != name:
+                r["errors"].append(f"{{{{/{name}}}}} closes {{{{#{stack[-1][0]}}}}}: blocks must close in order")
+                stack.pop()
+            else:
+                stack.pop()
+            continue
+        if expr == "else" or expr.startswith("else "):
+            if not stack:
+                r["errors"].append("{{else}} outside a block helper")
+            continue
+        if head == ">":
+            r["warnings"].append(f"partial {m.group(0)[:40]}: Iterable reuses content through snippets, not partials; confirm it renders")
+            continue
+        words = _hb_args(expr, r)
+        if not words:
+            continue
+        r["outputs"] += 1
+        if words[0] == "defaultIfEmpty":
+            if len(words) != 3:
+                r["errors"].append(f"defaultIfEmpty takes a field and a fallback: {m.group(0)}")
+            continue
+        if len(words) > 1:
+            continue                                   # another helper call: its own arguments decide the output
+        path = words[0]
+        if HB_STRING.fullmatch(path) or re.fullmatch(r"-?\d+(\.\d+)?", path):
+            continue
+        root = re.split(r"[.\[]", path, maxsplit=1)[0] or path
+        scoped = any(name in ("each", "with") for name, _ in stack)
+        guarded = any(name in ("if", "unless") and args and args[0] in (path, root) for name, args in stack)
+        if path in HANDLEBARS_SYSTEM or root in HANDLEBARS_SYSTEM or root.startswith(("@", "../")) or scoped or guarded:
+            continue
+        r["warnings"].append(f"output {{{{{path}}}}} has no fallback; write {{{{defaultIfEmpty {path} \"...\"}}}} or guard it with {{{{#if {path}}}}}")
+    for name, _ in reversed(stack):
+        r["errors"].append(f"{{{{#{name}}}}} block never closed ({{{{/{name}}}}} missing)")
+    return r
+
+
+# ----------------------------------------------------------------------------------------------
 # email HTML checks
 # ----------------------------------------------------------------------------------------------
 
@@ -465,6 +588,7 @@ def text_to_image(html_src: str) -> Dict[str, Any]:
     as an image and never as nothing."""
     src = re.sub(r"<!--.*?-->", "", html_src, flags=re.S)
     src = re.sub(r"\{%.*?%\}|%%\[.*?\]%%", " ", src, flags=re.S)
+    src = re.sub(r"\{\{~?\s*(?:[#/^!>]|else\b).*?\}\}", " ", src, flags=re.S)     # Handlebars block, comment and else tags are logic
     src = re.sub(r"\{\{.*?\}\}\}?|%%=.*?=%%|%%\w+%%", " mergefield ", src, flags=re.S)
     p = _Visible()
     p.feed(src)
@@ -523,6 +647,8 @@ def lint(src: str, dialect: str, email: bool = False) -> LintResult:
         r = lint_klaviyo(src)
     elif dialect == "hubl":
         r = lint_hubl(src)
+    elif dialect == "handlebars":
+        r = lint_handlebars(src)
     else:
         r = lint_ampscript(src)
     if email:

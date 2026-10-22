@@ -15,7 +15,8 @@ from engine.render.mjml_render import DIALECTS, MjmlRenderError, compile_mjml, f
 
 RIDGEVIEW = load_brand(ROOT / "examples/brands/ridgeview_saas/brand.yaml")
 NORTHFIELD = load_brand(ROOT / "examples/brands/northfield_dtc/brand.yaml")
-PLATFORM = {"customerio": "customerio", "braze": "braze", "klaviyo": "klaviyo", "hubl": "hubspot", "ampscript": "sfmc"}
+PLATFORM = {"customerio": "customerio", "braze": "braze", "klaviyo": "klaviyo", "hubl": "hubspot", "ampscript": "sfmc",
+            "handlebars": "iterable"}
 EM_DASH = chr(0x2014)
 FIELDS = {"subject": "Your reports are waiting, {first_name}", "preheader": "Two minutes to pick up again",
           "headline": "Pick up where you left off",
@@ -31,6 +32,8 @@ FIDELITY = {
     "braze": [("{{${set_user_to_unsubscribed_url}}}", True), ("{{ ${first_name} | default: 'there' }}", True)],
     "customerio": [("{% unsubscribe_url %}", True), ('{{ customer.first_name | default: "there" }}', True),
                    ("{% if customer.plan_size > 0 %}team{% endif %}", True)],
+    "handlebars": [("{{unsubscribeUrl}}", True), ('{{defaultIfEmpty firstName "there"}}', True), ("{{{hostedUnsubscribeUrl}}}", True),
+                   ("{{#if plan}}team{{else}}you{{/if}}", True), ("{{!-- note --}}", False)],
 }
 
 

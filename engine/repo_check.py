@@ -5,7 +5,7 @@ Walks every Markdown, SQL, JSON, XML and HTML file and fails on:
   * a fenced ```sql <dialect>``` block that does not parse in its dialect, or a PostgreSQL SELECT
     block that does not run on the DuckDB fixtures
   * a fenced template block (```liquid braze```, ```liquid customerio```, ```django klaviyo```,
-    ```hubl```, ```ampscript```) with a syntax error in its dialect
+    ```hubl```, ```ampscript```, ```handlebars```) with a syntax error in its dialect
   * a ```json``` block or .json file that does not load; a JSON Schema that is not a valid 2020-12 schema
   * an .xml file or ```xml``` block that is not well formed
   * an HTML email template that fails the template linter in its declared dialect
@@ -36,7 +36,7 @@ TEXT_SUFFIXES = {".md", ".sql", ".json", ".xml", ".html", ".py", ".yml", ".yaml"
 FENCE = re.compile(r"^```([^\n`]*)\n(.*?)^```\s*$", re.S | re.M)
 TEMPLATE_FENCES = {("liquid", "braze"): "braze", ("liquid", "customerio"): "customerio", ("liquid", "customerio_legacy"): "customerio_legacy",
                    ("liquid", ""): "liquid", ("django", "klaviyo"): "klaviyo", ("hubl", ""): "hubl", ("jinja", "hubl"): "hubl",
-                   ("ampscript", ""): "ampscript"}
+                   ("ampscript", ""): "ampscript", ("handlebars", ""): "handlebars", ("handlebars", "iterable"): "handlebars"}
 
 
 def files() -> List[Path]:
@@ -94,7 +94,7 @@ def check(verbose: bool = False) -> Tuple[List[str], Dict[str, int]]:
                         errors.append(f"{where}: sql ({dialect}) does not parse: {msg}")
                     elif dialect == "postgres" and re.match(r"\s*(--[^\n]*\n\s*)*(WITH|SELECT)\b", code, re.I) and "-- no-run" not in code:
                         run_sql(code, where)
-                elif (lang, tag) in TEMPLATE_FENCES or (lang, "") in TEMPLATE_FENCES and lang in ("hubl", "ampscript"):
+                elif (lang, tag) in TEMPLATE_FENCES or (lang, "") in TEMPLATE_FENCES and lang in ("hubl", "ampscript", "handlebars"):
                     dialect = TEMPLATE_FENCES.get((lang, tag)) or TEMPLATE_FENCES[(lang, "")]
                     r = template_lint.lint(code, dialect)
                     counts["templates"] += 1

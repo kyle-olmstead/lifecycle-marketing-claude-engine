@@ -145,6 +145,12 @@ VOCAB = {
     "sfmc": {"container": "a journey", "trigger": "API Event entry source", "delay": "Wait by Duration", "split": "Decision Split",
              "every_step": "Goal and exit criteria", "draft": "keep the journey in draft until it is approved", "freq": "the send-frequency setting",
              "window": "Send Time Optimization off and a Wait Until time of day"},
+    # Iterable journeys (support.iterable.com/hc/articles/15934993720468 entry, /8120791290260 exit rules, /14319818758036 Delay
+    # tile, /15342990564372 Frequency Management, /16928857601940 Quiet Hours)
+    "iterable": {"container": "a journey", "trigger": "Journey entry source (Event occurs)", "delay": "Delay tile", "split": "Yes/No Split",
+                 "every_step": "Journey exit rules", "draft": "leave the journey unpublished until it is approved",
+                 "freq": "Frequency Management in project settings (off by default)",
+                 "window": "Quiet Hours on each send tile (Delivery and Compliance)"},
 }
 
 

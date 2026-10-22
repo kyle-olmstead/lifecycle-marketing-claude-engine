@@ -770,6 +770,79 @@
           }
         }
       }
+    },
+    "iterable_track_event": {
+      "x-endpoint": {
+        "method": "POST",
+        "url": "https://api.iterable.com/api/events/track",
+        "headers": {
+          "Api-Key": "<project API key>",
+          "Content-Type": "application/json"
+        },
+        "idempotency": "id: an event that repeats an id updates the existing event (an upsert), so retries never add a second event",
+        "limits": "rate limits are per project for this endpoint; 429 on the limit, retry with exponential backoff; allow 60 seconds between updates to the same user before relying on them",
+        "confidence": {
+          "endpoint": "VERIFIED",
+          "rate_and_retry": "VERIFIED",
+          "body_field_names": "LIKELY (API mirror)",
+          "id_upsert": "LIKELY (API mirror)",
+          "Api-Key_header": "LIKELY (keys in the query string or body face stricter limits since 2025-11-10, so the header is used)"
+        },
+        "docs": [
+          "https://support.iterable.com/hc/en-us/articles/41044692130196-Getting-Started-with-Iterable-s-API",
+          "https://www.withone.ai/knowledge/iterable/conn_mod_def%3A%3AGMpa_AAb4JM%3A%3AFyDNEPtOQXemxSpKtQdOrg"
+        ],
+        "checked": "2026-10-21"
+      },
+      "type": "object",
+      "required": [
+        "eventName"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "email"
+          ]
+        },
+        {
+          "required": [
+            "userId"
+          ]
+        }
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "eventName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "email": {
+          "type": "string",
+          "minLength": 3
+        },
+        "userId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "createdAt": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dataFields": {
+          "type": "object"
+        },
+        "campaignId": {
+          "type": "integer"
+        },
+        "templateId": {
+          "type": "integer"
+        }
+      }
     }
   },
   "anyOf": [
@@ -799,6 +872,9 @@
     },
     {
       "$ref": "#/$defs/customerio_pipelines_batch"
+    },
+    {
+      "$ref": "#/$defs/iterable_track_event"
     }
   ]
 }

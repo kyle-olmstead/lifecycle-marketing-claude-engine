@@ -60,6 +60,8 @@ PLATFORM_PATTERNS = {
                   "Holdout: True/False branch on the event attribute in_holdout.",
     "sfmc": "Journey Builder with an API Event entry fed by the daily job. Goal and exit criteria: {core} recorded in the data extension. "
             "Holdout: Decision Split on in_holdout from the entry event.",
+    "iterable": "Journey with an Event occurs entry on the pushed custom event {trigger}; people finish before re-entering, so a person "
+                "who lapses again re-enters. Exit rule: performs {core}. Holdout: Yes/No Split on the triggering event's in_holdout field.",
 }
 ACTIVATION_PATTERNS = {
     "klaviyo": "Metric-triggered flow on {trigger}{filter}. Flow filter (every step): has not done {core} since starting this flow. "
@@ -72,6 +74,8 @@ ACTIVATION_PATTERNS = {
                   "Holdout: True/False branch on the event attribute in_holdout.",
     "sfmc": "Journey Builder with an API Event entry on {trigger}{filter}. Goal and exit criteria: {core}. "
             "Holdout: Decision Split on in_holdout from the entry event.",
+    "iterable": "Journey with an Event occurs entry on {trigger}{filter}, Maximum entries 1. Exit rule: performs {core}. "
+                "Holdout: Yes/No Split on this journey's triggering event field in_holdout.",
 }
 CATCH_UP_DAYS = 3
 LEDGER = "lcm_flow_entries"
