@@ -203,6 +203,9 @@ Details, and the path for every tool without a connector: [`CONNECTORS.md`](CONN
 | "did the win-back flow actually work?" | Credited versus true lift, with the read labeled honestly |
 | "how many people do we need to test this?" | Test and holdout sizing, and how long the test must run |
 | "write the welcome email for Klaviyo" | Copy in Klaviyo's template language, checked |
+| "is our data ready to plan on?" | Every table and column checked: missing, late, malformed, future-dated or orphaned rows, each with a fix |
+| "do our flows collide, or could one person get too many emails a week?" | Every live flow simulated together against your one frequency policy, with the rule that would hold the cap |
+| "plan an abandoned cart flow with email and SMS" | The cart shown from your platform's own event, a link back to that checkout, an SMS answer for people with consent |
 
 These are a sample. The [question bank](docs/QUESTION_BANK.md) lists 27 questions by cadence (daily, weekly, monthly, quarterly, annual), each with what you get, the data it needs, and what it cannot answer. Every one ends the same way: it shows what it found and what it would build. Nothing is sent or changed until you say yes, and even then the engine hands you files and instructions; it has no way to send a message.
 
