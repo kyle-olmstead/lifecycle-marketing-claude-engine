@@ -438,28 +438,34 @@ def _render_list(doc: Dict[str, Any]) -> str:
 
 
 def _cli(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="The experiment registry: add, list, check, record-look")
+    ap = argparse.ArgumentParser(prog="lcm experiments", description="The experiment registry: add, list, check, record-look")
     ap.add_argument("--workspace", help="workspace root (default: LCM_WORKSPACE or the nearest lmm.yaml)")
-    sub = ap.add_subparsers(dest="cmd", required=True)
-    a_ = sub.add_parser("add", help="register an experiment from an entry file, or from an experiment design with --from-design")
-    a_.add_argument("input")
+    sub = ap.add_subparsers(dest="cmd", required=True, help="what to do with the registry")
+    a_ = sub.add_parser("add", help="register an experiment from an entry file, or from an experiment design with --from-design",
+                        description="Register an experiment before it starts, from an entry or an experiment design JSON")
+    a_.add_argument("input", help="JSON file: a registry entry (schemas/experiment.schema.json), or a design with --from-design")
     a_.add_argument("--from-design", action="store_true", help="input is an ExperimentDesign (the agent's output), not an entry")
     a_.add_argument("--flow", help="flow slug (with --from-design)")
     a_.add_argument("--event", help="the event the primary metric counts (with --from-design)")
     a_.add_argument("--launch", help="launch date YYYY-MM-DD (with --from-design), sets read_on")
     a_.add_argument("--id", help="experiment id (with --from-design)")
-    sub.add_parser("list")
-    c = sub.add_parser("check")
+    sub.add_parser("list", help="list every registered experiment with its status, holdout, read date and looks",
+                   description="List every registered experiment")
+    c = sub.add_parser("check", help="find peeking, salt collisions, overdue reads and other problems (exit 1 on errors)",
+                       description="Check the registry for problems a schema cannot see; exits 1 when any is an error")
     c.add_argument("--today", help="YYYY-MM-DD (default: today)")
-    r = sub.add_parser("record-look", help="record a look; the decision follows the experiment's stopping rule")
-    r.add_argument("experiment_id")
-    r.add_argument("--kind", choices=("primary", "guardrail_only"), default="primary")
+    r = sub.add_parser("record-look", help="record a look; the decision follows the experiment's stopping rule",
+                       description="Record a look at a registered experiment; the decision follows its stopping rule")
+    r.add_argument("experiment_id", help="the registered experiment's id (see `lcm experiments list`)")
+    r.add_argument("--kind", choices=("primary", "guardrail_only"), default="primary",
+                   help="primary reads the main metric; guardrail_only checks sample ratio and guardrails, never peeking (default: primary)")
     r.add_argument("--at", help="YYYY-MM-DD (default: today)")
-    for k in ("xt", "nt", "xc", "nc"):
-        r.add_argument(f"--{k}", type=int)
-    r.add_argument("--z", type=float)
+    for k, h in (("xt", "conversions in treatment"), ("nt", "people in treatment"),
+                 ("xc", "conversions in the holdout"), ("nc", "people in the holdout")):
+        r.add_argument(f"--{k}", type=int, help=f"{h} so far (a count)")
+    r.add_argument("--z", type=float, help="the primary metric's z statistic, instead of counts")
     r.add_argument("--t", type=float, help="information fraction (with --z)")
-    r.add_argument("--final", action="store_true")
+    r.add_argument("--final", action="store_true", help="this is the planned final look (group-sequential tests spend all remaining alpha)")
     a = ap.parse_args(argv)
     try:
         if a.cmd in ("list", "check"):

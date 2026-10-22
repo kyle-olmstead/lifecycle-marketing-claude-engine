@@ -38,7 +38,7 @@ def email_library(brief: Brief) -> Dict[str, List[Dict[str, Any]]]:
             {"subject": "{first_name}, here is where most people start", "preheader": "One step, about two minutes",
              "headline": "Start with one thing",
              "paragraphs": [f"Hi {{first_name}}, there is a lot in {P}. You do not need all of it.",
-                            "Start with the one thing most new customers choose first. If it is not right for you, reply and tell us."],
+                            "Start with the one thing most first-time buyers choose first. If it is not right for you, reply and tell us."],
              "cta_label": "See where to start", "framework": "Curated first step",
              "hypothesis": "Naming a single first step raises the goal rate within 14 days more than a brand welcome because it removes the "
                            "choice; falsified if A converts as well or better."},
@@ -46,14 +46,14 @@ def email_library(brief: Brief) -> Dict[str, List[Dict[str, Any]]]:
         "best_sellers": [
             {"subject": "What most people pick first", "preheader": "The safe first choice, and why",
              "headline": "Where most people start",
-             "paragraphs": ["Hi {first_name}, if you are not sure where to begin, start with the picks most new customers choose first.",
+             "paragraphs": ["Hi {first_name}, if you are not sure where to begin, start with the picks most first-time buyers choose first.",
                             "They are on one page, and each one is a safe first choice. If you want help choosing, reply to this email."],
              "cta_label": "Shop the favorites", "framework": "Curated choice: reduce options to the safe first pick",
              "hypothesis": "Showing the most-chosen products raises first orders because it lowers the risk of a wrong pick; falsified if B "
                            "converts as well or better."},
             {"subject": "Not sure what to choose?", "preheader": "A short guide to the first order",
              "headline": "A short guide to choosing",
-             "paragraphs": [f"Hi {{first_name}}, the question we hear most from new customers is where to start with {P}.",
+             "paragraphs": [f"Hi {{first_name}}, the question we hear most from first-time buyers is where to start with {P}.",
                             "Our answer: start small, with something you will use every day. The usual first choices are one click away."],
              "cta_label": "Help me choose", "framework": "Question-led guidance",
              "hypothesis": "Leading with the reader's own question raises clicks more than a product list because it meets them at the "
@@ -68,7 +68,7 @@ def email_library(brief: Brief) -> Dict[str, List[Dict[str, Any]]]:
              "cta_label": "Get started", "framework": "Risk reversal through clarity",
              "hypothesis": "Answering delivery and returns questions before they are asked raises first orders; falsified if B converts as "
                            "well or better."},
-            {"subject": "The questions new customers ask us", "preheader": "Shipping, timing, and what if it is not right",
+            {"subject": "The questions first-time buyers ask us", "preheader": "Shipping, timing, and what if it is not right",
              "headline": "Your questions, answered",
              "paragraphs": ["Hi {first_name}, before a first order most people want to know three things: how long it takes, what it "
                             "costs to ship, and what happens if it is not right.",
@@ -118,7 +118,7 @@ def email_library(brief: Brief) -> Dict[str, List[Dict[str, Any]]]:
                             "The answers to all three are one click away. Your cart is saved below.", "{product_block}"],
              "cta_label": "See the answers", "framework": "Objection handling: the specific answer, not reassurance",
              "hypothesis": "Answering checkout objections recovers more carts than a second reminder; falsified if B recovers as many or more."},
-            {"subject": "Here is what other customers say", "preheader": "About the items in your cart",
+            {"subject": "What people who bought these say", "preheader": "About the items in your cart",
              "headline": "Still deciding?",
              "paragraphs": ["Hi {first_name}, if you are weighing whether {item_name} is right for you, the reviews from people who bought "
                             "it are the fastest way to decide.", "{product_block}"],
@@ -165,7 +165,7 @@ def email_library(brief: Brief) -> Dict[str, List[Dict[str, Any]]]:
              "hypothesis": "A side-by-side comparison raises orders among undecided viewers; falsified if B converts as well or better."},
             {"subject": "Most people choose this one", "preheader": "And here is why",
              "headline": "The usual choice",
-             "paragraphs": ["Hi {first_name}, if you are deciding between options, most customers who looked at {item_name} chose it in "
+             "paragraphs": ["Hi {first_name}, if you are deciding between options, most people who looked at {item_name} chose it in "
                             "the end. Here it is again.", "{product_block}"],
              "cta_label": "See why", "framework": "Default choice",
              "hypothesis": "Naming the common choice raises orders more than a comparison because it removes the decision; falsified if A "
@@ -191,7 +191,7 @@ def email_library(brief: Brief) -> Dict[str, List[Dict[str, Any]]]:
         "how_to_use": [
             {"subject": "One tip for {item_name}", "preheader": "Small change, better results",
              "headline": "A small tip",
-             "paragraphs": ["Hi {first_name}, now that your order has arrived, here is the one tip customers tell us made the biggest "
+             "paragraphs": ["Hi {first_name}, now that your order has arrived, here is the one tip people tell us made the biggest "
                             "difference.", "It is on one short page, with pictures."],
              "cta_label": "See the tip", "framework": "Education that increases value delivered",
              "hypothesis": "A usage tip raises second orders within 30 days because value drives repurchase; falsified if B converts as "
@@ -210,7 +210,7 @@ def email_library(brief: Brief) -> Dict[str, List[Dict[str, Any]]]:
                             "It takes about a minute, and you can say whatever you like."],
              "cta_label": "Write a review", "framework": "Reciprocity, honestly asked",
              "hypothesis": "A plain, honest ask yields more reviews than a product-focused one; falsified if B's review rate is equal or higher."},
-            {"subject": "What did you think of {item_name}?", "preheader": "Your review helps other customers",
+            {"subject": "What did you think of {item_name}?", "preheader": "Your review helps the next person decide",
              "headline": "Your opinion counts",
              "paragraphs": ["Hi {first_name}, you have had {item_name} for a couple of weeks now. What did you think?",
                             "A short review helps other people choose well."],
@@ -221,7 +221,7 @@ def email_library(brief: Brief) -> Dict[str, List[Dict[str, Any]]]:
         "cross_sell": [
             {"subject": "Goes well with your last order", "preheader": "A natural next pick",
              "headline": "A good pairing",
-             "paragraphs": ["Hi {first_name}, customers who bought what you bought often add one more thing next.",
+             "paragraphs": ["Hi {first_name}, people who bought what you bought often add one more thing next.",
                             "We put the most common pairings on one page."],
              "cta_label": "See the pairing", "framework": "Complement, not upsell",
              "hypothesis": "Showing complements raises second orders within 30 days; falsified if B converts as well or better."},
@@ -446,7 +446,7 @@ def short_library(brief: Brief) -> Dict[str, Dict[str, List[Any]]]:
         "in_app": [(title, body, cta), (title, body, cta)]}
     return {
         "welcome_promise": generic("Welcome", "Thanks for joining. Here is the best place to start", "Start here"),
-        "best_sellers": generic("Where most people start", "The picks new customers choose first", "See them"),
+        "best_sellers": generic("Where most people start", "The picks first-time buyers choose first", "See them"),
         "how_it_works": generic("How it works", "What you get, when, and what if it is not right", "Learn more"),
         "first_order_nudge": generic("Whenever you are ready", "The easiest place to start your first order", "Shop now"),
         "cart_reminder": {"sms": ["You left something in your cart. It is saved for you.", "Your cart is saved. Pick up where you stopped."],
@@ -456,16 +456,16 @@ def short_library(brief: Brief) -> Dict[str, Dict[str, List[Any]]]:
         "cart_objection": {"sms": ["Questions about shipping or returns? Reply here and we will answer.",
                                    "Your cart is saved. Shipping and returns answers are on our site."],
                            "push": [("Questions about your order?", "Shipping, delivery and returns, answered."),
-                                    ("Before you decide", "Read what other customers say.")],
+                                    ("Before you decide", "Read what people who bought it say.")],
                            "in_app": [("Questions about your order?", "Shipping, delivery and returns, answered.", "See answers"),
-                                      ("Before you decide", "Read what other customers say.", "Read reviews")]},
+                                      ("Before you decide", "Read what people who bought it say.", "Read reviews")]},
         "cart_last_call": generic("Your cart is still saved", "Last reminder about your cart", "Complete order"),
         "browse_reminder": generic("Take another look", "Here is what you were looking at", "See it"),
         "browse_alternatives": generic("Compare your options", "A few picks people compare side by side", "Compare"),
         "order_thanks": generic("Thank you", "Thanks for your first order. We will tell you when it ships", "View order"),
-        "how_to_use": generic("One tip for your order", "The tip customers say made the biggest difference", "See the tip"),
+        "how_to_use": generic("One tip for your order", "The tip people say made the biggest difference", "See the tip"),
         "review_request": generic("How did we do?", "A short review helps the next customer decide", "Review"),
-        "cross_sell": generic("Goes well with your order", "What customers usually add next", "See it"),
+        "cross_sell": generic("Goes well with your order", "What people usually add next", "See it"),
         "replenish_reminder": {"sms": ["Running low? Reorder your usual in one click.", "Your usual is ready to reorder whenever you are."],
                                "push": [("Time for more?", "Reorder your usual in one click."), ("Before you run out", "Your usual is one click away.")],
                                "in_app": [("Time for more?", "Reorder your usual in one click.", "Reorder"),

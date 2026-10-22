@@ -1117,21 +1117,25 @@ def render_markdown(r: Dict[str, Any]) -> str:
 
 
 def _cli(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    sub = ap.add_subparsers(dest="cmd", required=True)
-    a = sub.add_parser("analyze")
-    a.add_argument("input")
-    a.add_argument("--markdown", action="store_true")
+    ap = argparse.ArgumentParser(prog="lcm deliverability", description=__doc__.split("\n\n")[0])
+    sub = ap.add_subparsers(dest="cmd", required=True, help="what to analyze")
+    a = sub.add_parser("analyze", help="analyze a collected snapshot or signals JSON and issue the sending gate",
+                       description="Analyze a deliverability snapshot (DNS records, headers, signals) and issue the sending gate")
+    a.add_argument("input", help="the snapshot JSON, e.g. from `lcm deliverability check` (see examples/deliverability/)")
+    a.add_argument("--markdown", action="store_true", help="print a readable report instead of JSON")
     for name in ("spf", "dmarc"):
-        p = sub.add_parser(name)
-        p.add_argument("record")
-    d = sub.add_parser("dkim")
-    d.add_argument("host")
-    d.add_argument("record")
-    hp = sub.add_parser("headers")
-    hp.add_argument("path")
-    gp = sub.add_parser("gate")
-    gp.add_argument("signals_json")
+        p = sub.add_parser(name, prog=f"python3 engine/deliverability/analyze.py {name}", help=f"parse one {name.upper()} record",
+                           description=f"Parse one {name.upper()} record and list its issues")
+        p.add_argument("record", help=f"the {name.upper()} TXT record, in quotes")
+    d = sub.add_parser("dkim", help="parse one DKIM record", description="Parse one DKIM public key record and list its issues")
+    d.add_argument("host", help="where the record lives: <selector>._domainkey.<domain>")
+    d.add_argument("record", help="the DKIM TXT record, in quotes")
+    hp = sub.add_parser("headers", help="read the authentication results in a raw message's headers",
+                        description="Read SPF, DKIM and DMARC results, alignment and one-click unsubscribe from a message's headers")
+    hp.add_argument("path", help="a raw message or its headers, saved as a text file (.eml or .txt)")
+    gp = sub.add_parser("gate", help="issue a Red/Amber/Green gate from a signals JSON",
+                        description="Issue a Red/Amber/Green sending gate from a signals JSON")
+    gp.add_argument("signals_json", help="JSON file of sending signals (complaint, bounce and spam rates, auth state)")
     args = ap.parse_args(argv)
     if args.cmd == "analyze":
         doc = json.loads(Path(args.input).read_text(encoding="utf-8"))

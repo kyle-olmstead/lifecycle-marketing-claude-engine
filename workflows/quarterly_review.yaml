@@ -1,0 +1,28 @@
+name: quarterly_review
+description: what the program is worth, where customers leave, which flows to build next and what discounts are doing
+inputs:
+  data: {default: "${workspace}/data", help: "the folder of exports"}
+  value: {default: "50", help: "what one more converted customer is worth, in your currency"}
+steps:
+  - id: data
+    run: check-data ${data}
+    on_fail: stop
+    help: a quarterly read on incomplete data is worse than none
+  - id: retention
+    run: retention --data ${data}
+    needs: [data]
+    help: retention curves and where the churn cliff sits
+  - id: priorities
+    run: priorities --data ${data} --top 5 --value-per-conversion ${value} --out ${out}/priorities
+    needs: [data]
+    help: the next five flows worth building, ranked by expected money with the uncertainty shown
+  - id: discounts
+    run: discounts report --data ${data}
+    needs: [data]
+    help: discount dependency, so offers stop training customers to wait for them
+  - id: experiments
+    run: experiments list
+    help: every registered test and holdout, for the read-outs due this quarter
+  - id: roi
+    run: roi
+    help: what the lifecycle program costs to run and what it would take to pay back

@@ -86,12 +86,12 @@ def run(sql: str, con=None) -> Tuple[List[str], List[tuple]]:
 
 
 def _cli(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Parse SQL in a dialect; run PostgreSQL-dialect SQL on DuckDB fixtures")
-    ap.add_argument("path")
+    ap = argparse.ArgumentParser(prog="lcm sql-check", description="Parse SQL in a dialect; run PostgreSQL-dialect SQL on DuckDB fixtures")
+    ap.add_argument("path", help="the .sql file to check")
     ap.add_argument("--dialect", help="defaults to the '-- dialect:' header")
-    ap.add_argument("--run", action="store_true")
-    ap.add_argument("--fixtures", default=str(FIXTURES))
-    ap.add_argument("--show", type=int, default=5)
+    ap.add_argument("--run", action="store_true", help="also run it on the demo data (PostgreSQL-dialect SQL only)")
+    ap.add_argument("--fixtures", default=str(FIXTURES), help="data folder to run against with --run (default: the Ridgeview demo data)")
+    ap.add_argument("--show", type=int, default=5, help="rows to print after a --run (default 5)")
     a = ap.parse_args(argv)
     sql = Path(a.path).read_text(encoding="utf-8")
     dialect = DIALECT_ALIASES.get((a.dialect or "").lower()) or declared_dialect(sql)

@@ -348,6 +348,8 @@ COMMANDS: Dict[str, Command] = {
     "tracking": Command("analyze", "are the events firing: schema drift, nulls, late arrivals", _call("engine.agents.tracking")),
     "retention": Command("analyze", "retention curves and the churn cliff", _call("engine.agents.retention")),
     "daily": Command("analyze", "the morning check: what broke overnight", _call("engine.workflows.daily", "main")),
+    "workflow": Command("analyze", "run a named graph of commands: morning_check, new_flow, quarterly_review, or your own",
+                        _call("engine.workflows.runner")),
     "webhooks": Command("analyze", "parse or receive platform webhooks", _call("adapters.sources.webhooks")),
     # developer
     "mcp": Command("developer", "run the MCP server (stdio)", mcp),

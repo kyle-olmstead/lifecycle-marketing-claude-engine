@@ -183,9 +183,16 @@ def render_email_mjml(f: Dict[str, Any], brief: Brief, step_id: str, brand: Opti
     from engine.render.brand import DEFAULT_BRAND
     kit = brand or DEFAULT_BRAND
     d = brief.template_dialect
-    url = brief.cta_url or PLACEHOLDER_CTA
-    sep = "&" if "?" in url else "?"
-    href = html.escape(f"{url}{sep}utm_source=lifecycle&utm_medium=email&utm_campaign={brief.slug}&utm_content={step_id}")
+    from engine.render import product_blocks
+    back = None if brief.cta_url else product_blocks.return_url(brief, d, kit.website)
+    if back:
+        # a link built from the trigger event (that checkout, that product) already carries the platform's own query string,
+        # so no UTM is appended here; turn on the platform's UTM tracking for the flow instead
+        href = back
+    else:
+        url = brief.cta_url or PLACEHOLDER_CTA
+        sep = "&" if "?" in url else "?"
+        href = html.escape(f"{url}{sep}utm_source=lifecycle&utm_medium=email&utm_campaign={brief.slug}&utm_content={step_id}")
     head = AMPSCRIPT_HEAD if d == "ampscript" else ""   # declared before first use, including the <title>
     file_start = (f"<!-- dialect: {d} -->\n"
                   f"<!-- {brief.slug} / {step_id}. Rendered by engine/agents/copywriter.py through MJML (engine/render/mjml_render.py); "

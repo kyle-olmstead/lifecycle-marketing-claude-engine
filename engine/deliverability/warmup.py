@@ -189,17 +189,18 @@ def render_markdown(p: Dict[str, Any]) -> str:
 
 
 def _cli(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Warming ladder generator")
+    ap = argparse.ArgumentParser(prog="lcm warmup", description="Warming ladder generator for a new or recovering IP or domain, with abort rules")
     ap.add_argument("--target", type=int, required=True, help="target daily volume")
     ap.add_argument("--tiers", required=True, help='JSON: {"engaged_30d": n, "engaged_90d": n, "engaged_180d": n, "unengaged": n} (each tier exclusive of the ones before it)')
-    ap.add_argument("--gate", required=True, choices=["GREEN", "AMBER", "RED", "green", "amber", "red"])
-    ap.add_argument("--days", type=int, default=30)
-    ap.add_argument("--max-per-week", type=float, default=3.0)
-    ap.add_argument("--start", type=int)
+    ap.add_argument("--gate", required=True, choices=["GREEN", "AMBER", "RED", "green", "amber", "red"],
+                    help="today's sending gate: GREEN gets a ladder, AMBER holds volume flat, RED gets remediation only")
+    ap.add_argument("--days", type=int, default=30, help="days the schedule covers (default 30)")
+    ap.add_argument("--max-per-week", type=float, default=3.0, help="most sends one person gets a week; sets each tier's capacity (default 3)")
+    ap.add_argument("--start", type=int, help="first-day volume (default: engaged-30d capacity, capped at 500 on new infrastructure)")
     ap.add_argument("--current", type=int, help="current daily volume (AMBER holds it flat)")
     ap.add_argument("--existing-reputation", action="store_true", help="infrastructure already has sending history (start at engaged-30d capacity)")
     ap.add_argument("--provider-mix", default="", help="e.g. gmail=0.55,microsoft=0.2,yahoo=0.1,other=0.15")
-    ap.add_argument("--markdown", action="store_true")
+    ap.add_argument("--markdown", action="store_true", help="print a readable schedule instead of JSON")
     a = ap.parse_args(argv)
     mix = {k: float(v) for k, v in (kv.split("=") for kv in a.provider_mix.split(",") if kv)} if a.provider_mix else {}
     from engine.contracts import InputError, validate_tiers

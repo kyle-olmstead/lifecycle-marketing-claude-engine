@@ -480,6 +480,11 @@
         "currency": {
           "type": "string",
           "pattern": "^[A-Z]{3}$"
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https://",
+          "description": "the product page; the browse flow's button goes here"
         }
       }
     },
@@ -511,6 +516,11 @@
           "items": {
             "$ref": "#/$defs/line_item"
           }
+        },
+        "checkout_url": {
+          "type": "string",
+          "pattern": "^https://",
+          "description": "the link that reopens this checkout with its items; the cart flow's button goes here (Shopify sends it as abandoned_checkout_url)"
         }
       }
     },

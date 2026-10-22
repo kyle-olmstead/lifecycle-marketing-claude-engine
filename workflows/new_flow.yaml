@@ -1,0 +1,23 @@
+name: new_flow
+description: from one sentence to a checked plan, including how it collides with the flows already live
+inputs:
+  sentence: {help: "the flow in one sentence, e.g. \"a 3-touch abandoned cart flow with email and SMS\""}
+  data: {default: "${workspace}/data", help: "the folder of exports, for volume, baseline and data checks"}
+steps:
+  - id: setup
+    run: doctor
+    help: the install, workspace, brand kit and data are in order
+  - id: data
+    run: check-data ${data}
+    help: the exports the plan will measure from are complete and fresh
+  - id: brief
+    run: brief --text ${sentence} --out ${out}/brief.yaml
+    help: the sentence as an editable brief, with every assumption listed at the top
+  - id: plan
+    run: plan --brief ${out}/brief.yaml --data ${data} --out ${out}/plans
+    needs: [brief]
+    help: the build-ready plan; QA simulates the flow, lints every template and checks compliance
+  - id: program
+    run: simulate --program --add ${out}/brief.yaml
+    needs: [brief]
+    help: the new flow alongside every live flow, against the program's caps and collision rule

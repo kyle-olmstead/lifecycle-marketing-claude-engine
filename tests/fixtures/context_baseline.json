@@ -1,0 +1,244 @@
+{
+  "rev": "7f3fe69",
+  "note": "v2.3 baseline (commit 7f3fe69), written with: python3 -m engine.context_budget --rev 7f3fe69 --json. Kept as a fixture so tests need no git history.",
+  "method": "tokens = characters / 4; typical load = SKILL.md + always-read files + mean routed job prompt (plus the mean per-dialect reference SQL it points to)",
+  "total_tokens": 64927,
+  "skills": {
+    "deliverability-gate": {
+      "skill": "deliverability-gate",
+      "mode": "legacy",
+      "skill_tokens": 762,
+      "always_read_tokens": 5152,
+      "routed_mean_tokens": 2692,
+      "total_tokens": 8606,
+      "always_read": [
+        {
+          "path": "core/system_prompt.md",
+          "chars": 20610
+        }
+      ],
+      "routed": [
+        {
+          "path": "modules/01_deliverability_and_infrastructure/prompts/header_analyzer.md",
+          "chars": 20152,
+          "dialect_files": [],
+          "dialect_mean_chars": 0,
+          "total_chars": 20152
+        },
+        {
+          "path": "modules/01_deliverability_and_infrastructure/prompts/warmup_schedule_generator.md",
+          "chars": 7064,
+          "dialect_files": [],
+          "dialect_mean_chars": 0,
+          "total_chars": 7064
+        },
+        {
+          "path": "modules/01_deliverability_and_infrastructure/checklists/dmarc_alignment_audit.md",
+          "chars": 5086,
+          "dialect_files": [],
+          "dialect_mean_chars": 0,
+          "total_chars": 5086
+        }
+      ],
+      "on_demand": [],
+      "missing": []
+    },
+    "lifecycle-copy": {
+      "skill": "lifecycle-copy",
+      "mode": "legacy",
+      "skill_tokens": 634,
+      "always_read_tokens": 5152,
+      "routed_mean_tokens": 2744,
+      "total_tokens": 8530,
+      "always_read": [
+        {
+          "path": "core/system_prompt.md",
+          "chars": 20610
+        }
+      ],
+      "routed": [
+        {
+          "path": "modules/03_copywriting_and_multichannel/prompts/dynamic_liquid_email_writer.md",
+          "chars": 13421,
+          "dialect_files": [],
+          "dialect_mean_chars": 0,
+          "total_chars": 13421
+        },
+        {
+          "path": "modules/03_copywriting_and_multichannel/prompts/sms_push_modal_orchestrator.md",
+          "chars": 8610,
+          "dialect_files": [],
+          "dialect_mean_chars": 0,
+          "total_chars": 8610
+        },
+        {
+          "path": "modules/03_copywriting_and_multichannel/templates/modular_email_components.html",
+          "chars": 10897,
+          "dialect_files": [],
+          "dialect_mean_chars": 0,
+          "total_chars": 10897
+        }
+      ],
+      "on_demand": [
+        "docs/LIQUID_CHEATSHEET.md"
+      ],
+      "missing": []
+    },
+    "lifecycle-flows": {
+      "skill": "lifecycle-flows",
+      "mode": "legacy",
+      "skill_tokens": 659,
+      "always_read_tokens": 5152,
+      "routed_mean_tokens": 6908,
+      "total_tokens": 12720,
+      "always_read": [
+        {
+          "path": "core/system_prompt.md",
+          "chars": 20610
+        }
+      ],
+      "routed": [
+        {
+          "path": "modules/02_behavioral_triggers_and_flows/prompts/activation_flow_architect.md",
+          "chars": 37507,
+          "dialect_files": [],
+          "dialect_mean_chars": 0,
+          "total_chars": 37507
+        },
+        {
+          "path": "modules/02_behavioral_triggers_and_flows/prompts/winback_branching_logic.md",
+          "chars": 17759,
+          "dialect_files": [],
+          "dialect_mean_chars": 0,
+          "total_chars": 17759
+        }
+      ],
+      "on_demand": [
+        "modules/02_behavioral_triggers_and_flows/schemas/custom_event_definitions.json",
+        "schemas/flow_spec.schema.json"
+      ],
+      "missing": []
+    },
+    "lifecycle-measurement": {
+      "skill": "lifecycle-measurement",
+      "mode": "legacy",
+      "skill_tokens": 587,
+      "always_read_tokens": 5152,
+      "routed_mean_tokens": 1509,
+      "total_tokens": 7248,
+      "always_read": [
+        {
+          "path": "core/system_prompt.md",
+          "chars": 20610
+        }
+      ],
+      "routed": [
+        {
+          "path": "modules/05_experimentation_and_analytics/prompts/ab_power_calculator.md",
+          "chars": 5085,
+          "dialect_files": [],
+          "dialect_mean_chars": 0,
+          "total_chars": 5085
+        },
+        {
+          "path": "modules/05_experimentation_and_analytics/prompts/holdout_incrementality_analyzer.md",
+          "chars": 8145,
+          "dialect_files": [],
+          "dialect_mean_chars": 0,
+          "total_chars": 8145
+        },
+        {
+          "path": "modules/05_experimentation_and_analytics/frameworks/test_hypothesis_matrix.md",
+          "chars": 4879,
+          "dialect_files": [],
+          "dialect_mean_chars": 0,
+          "total_chars": 4879
+        }
+      ],
+      "on_demand": [],
+      "missing": []
+    },
+    "lifecycle-setup": {
+      "skill": "lifecycle-setup",
+      "mode": "legacy",
+      "skill_tokens": 915,
+      "always_read_tokens": 5152,
+      "routed_mean_tokens": 0,
+      "total_tokens": 6067,
+      "always_read": [
+        {
+          "path": "core/system_prompt.md",
+          "chars": 20610
+        }
+      ],
+      "routed": [],
+      "on_demand": [
+        "core/context_loader.xml"
+      ],
+      "missing": []
+    },
+    "lifecycle-sql": {
+      "skill": "lifecycle-sql",
+      "mode": "legacy",
+      "skill_tokens": 586,
+      "always_read_tokens": 8960,
+      "routed_mean_tokens": 4848,
+      "total_tokens": 14394,
+      "always_read": [
+        {
+          "path": "core/system_prompt.md",
+          "chars": 20610
+        },
+        {
+          "path": "docs/SQL_SCHEMA_CONVENTIONS.md",
+          "chars": 15229
+        }
+      ],
+      "routed": [
+        {
+          "path": "modules/04_data_schemas_and_sql/prompts/rfm_segmentation_builder.md",
+          "chars": 38646,
+          "dialect_files": [],
+          "dialect_mean_chars": 0,
+          "total_chars": 38646
+        },
+        {
+          "path": "modules/04_data_schemas_and_sql/prompts/ltv_cohort_query_generator.md",
+          "chars": 12878,
+          "dialect_files": [],
+          "dialect_mean_chars": 0,
+          "total_chars": 12878
+        },
+        {
+          "path": "modules/04_data_schemas_and_sql/queries/rolling_d30_retention.sql",
+          "chars": 6659,
+          "dialect_files": [],
+          "dialect_mean_chars": 0,
+          "total_chars": 6659
+        }
+      ],
+      "on_demand": [],
+      "missing": []
+    },
+    "lifecycle-teammate": {
+      "skill": "lifecycle-teammate",
+      "mode": "legacy",
+      "skill_tokens": 2210,
+      "always_read_tokens": 5152,
+      "routed_mean_tokens": 0,
+      "total_tokens": 7362,
+      "always_read": [
+        {
+          "path": "core/system_prompt.md",
+          "chars": 20610
+        }
+      ],
+      "routed": [],
+      "on_demand": [
+        "config/question_bank.yaml",
+        "skills/lifecycle-copy/SKILL.md"
+      ],
+      "missing": []
+    }
+  }
+}

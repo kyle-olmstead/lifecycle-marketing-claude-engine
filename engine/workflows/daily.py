@@ -341,14 +341,14 @@ def run(mode: str = "demo", data: Optional[str] = None, briefs_dir: Optional[Pat
 
 def main(argv: Optional[List[str]] = None) -> int:
     env = os.environ.get
-    ap = argparse.ArgumentParser(description="Daily cohort, engagement and deliverability health check")
+    ap = argparse.ArgumentParser(prog="lcm daily", description="Daily cohort, engagement and deliverability health check")
     ap.add_argument("--mode", choices=MODES, default=None, help="default: bigquery when a project is set, url when --data is set, else demo")
     ap.add_argument("--data", default=env("LCM_DATA_URL"), help="folder or https prefix with users, orders, track_events, message_events")
     ap.add_argument("--briefs", default=None, help="the live briefs (default: briefs/active/ in the workspace)")
     ap.add_argument("--domains", default=env("LCM_DOMAINS", ""), help="comma-separated sending domains to check")
-    ap.add_argument("--bq-project", default=env("LCM_BQ_PROJECT"))
-    ap.add_argument("--bq-dataset", default=env("LCM_BQ_DATASET"))
-    ap.add_argument("--out", default="out/daily")
+    ap.add_argument("--bq-project", default=env("LCM_BQ_PROJECT"), help="BigQuery project to query in bigquery mode (default: $LCM_BQ_PROJECT)")
+    ap.add_argument("--bq-dataset", default=env("LCM_BQ_DATASET"), help="BigQuery dataset holding the canonical tables (default: $LCM_BQ_DATASET)")
+    ap.add_argument("--out", default="out/daily", help="folder for summary.md, status.json, issues.json and per-flow results (default: out/daily)")
     ap.add_argument("--no-sheet", action="store_true", help="skip the Sheets step entirely")
     ap.add_argument("--dry-run", action="store_true", help="write the Sheets rows as CSV instead of to the sheet")
     ap.add_argument("--strict", action="store_true", help="exit 1 when any step failed (the workflow checks status.json instead)")

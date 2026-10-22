@@ -423,6 +423,17 @@ class _Html(HTMLParser):
             self.mismatched.append(f"/{tag}")
 
 
+SMALL_IMAGE_PX = 200   # a logo, an icon or a product thumbnail: it does not stand in for the message's text
+
+
+def _width(attrs: Dict[str, Any]) -> Optional[float]:
+    """The image's declared display width in pixels (width attribute or inline style), or None when it does not say."""
+    for raw in (attrs.get("width"), (re.search(r"(?:^|;)\s*(?:max-)?width\s*:\s*([\d.]+)px", attrs.get("style") or "") or [None, None])[1]):
+        if raw and re.fullmatch(r"[\d.]+(px)?", str(raw).strip()):
+            return float(str(raw).strip().removesuffix("px"))
+    return None
+
+
 class _Visible(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -430,6 +441,7 @@ class _Visible(HTMLParser):
         self.hidden_depth: List[bool] = []
         self.text: List[str] = []
         self.images = 0
+        self.large_images = 0
         self.images_no_alt = 0
 
     def handle_starttag(self, tag, attrs):  # noqa: ANN001
@@ -438,6 +450,8 @@ class _Visible(HTMLParser):
             self.skip += 1
         if tag == "img":
             self.images += 1
+            if _width(a) is None or _width(a) > SMALL_IMAGE_PX:
+                self.large_images += 1
             if "alt" not in a:
                 self.images_no_alt += 1
         style = (a.get("style") or "").replace(" ", "").lower()
@@ -470,13 +484,17 @@ def text_to_image(html_src: str) -> Dict[str, Any]:
     p.feed(src)
     text = re.sub(r"\s+", " ", html_unescape(" ".join(p.text))).strip()
     chars = len(text)
-    result: Dict[str, Any] = {"visible_text_chars": chars, "images": p.images, "images_without_alt": p.images_no_alt,
+    result: Dict[str, Any] = {"visible_text_chars": chars, "images": p.images, "large_images": p.large_images,
+                              "images_without_alt": p.images_no_alt,
                               "chars_per_image": None if not p.images else round(chars / p.images), "errors": [], "warnings": []}
+    # every image counts toward image-only; only images wider than SMALL_IMAGE_PX (or of unknown width) count toward
+    # image-heavy, since a logo and a product thumbnail sit beside the text rather than replacing it
     if p.images and chars < 200:
         result["errors"].append(f"image-only email: {chars} characters of readable text with {p.images} image(s). Filters cannot read it and "
                                 "recipients with images off see nothing; put the message in live text")
-    elif p.images and chars / p.images < 250:
-        result["warnings"].append(f"image-heavy: about {chars // p.images} characters of text per image; keep the message readable with images off")
+    elif p.large_images and chars / p.large_images < 250:
+        result["warnings"].append(f"image-heavy: about {chars // p.large_images} characters of text per large image; keep the message "
+                                  "readable with images off")
     if p.images_no_alt:
         result["errors"].append(f"{p.images_no_alt} image(s) without alt text")
     return result
@@ -532,8 +550,8 @@ def lint(src: str, dialect: str, email: bool = False) -> LintResult:
 
 
 def _cli(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Lint a template in a named ESP dialect")
-    ap.add_argument("--dialect", required=True, choices=DIALECTS)
+    ap = argparse.ArgumentParser(prog="lcm lint", description="Lint a template in a named ESP dialect")
+    ap.add_argument("--dialect", required=True, choices=DIALECTS, help="the template language of the platform you send from")
     ap.add_argument("--email", action="store_true", help="also run marketing-email HTML checks")
     ap.add_argument("path", help="file path, or - for stdin")
     a = ap.parse_args(argv)

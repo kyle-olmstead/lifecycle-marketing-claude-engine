@@ -230,28 +230,38 @@ def program_readout_duckdb(con: Any, start: str, end: str, share: float = DEFAUL
 
 
 def _cli(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Program-wide global holdout: assignment SQL and the program-level readout")
-    sub = ap.add_subparsers(dest="cmd", required=True)
-    f = sub.add_parser("filter", help="the clause every flow's entry query ANDs in")
-    s = sub.add_parser("sql", help="per-arm totals for a warehouse")
-    mem = sub.add_parser("membership", help="every user's global bucket, for the ESP suppression sync")
+    ap = argparse.ArgumentParser(prog="lcm global-holdout",
+                                 description="Program-wide global holdout: assignment SQL and the program-level readout")
+    sub = ap.add_subparsers(dest="cmd", required=True, help="what to produce")
+    f = sub.add_parser("filter", help="the clause every flow's entry query ANDs in",
+                       description="Print the SQL clause every flow's entry query adds to exclude the global holdout")
+    s = sub.add_parser("sql", help="per-arm totals for a warehouse",
+                       description="Print the warehouse SQL for per-arm totals: people, converters and revenue")
+    mem = sub.add_parser("membership", help="every user's global bucket, for the ESP suppression sync",
+                         description="Print the SQL listing every user's global bucket, for the ESP suppression sync")
+    share_help = f"share of people held out of every flow, 0.05 = 5%% (default {DEFAULT_SHARE})"
+    salt_help = f"hash salt that defines the group; keep the default so every tool agrees (default: {GLOBAL_SALT})"
+    unit_help = "user, or account when whole accounts are held out (default: user)"
+    window_help = "orders counted from this date on, YYYY-MM-DD"
+    window_end_help = "orders counted before this date, YYYY-MM-DD, not included"
     for p in (f, s, mem):
-        p.add_argument("--dialect", choices=DIALECTS, default="postgres")
-        p.add_argument("--share", type=float, default=DEFAULT_SHARE)
-        p.add_argument("--salt", default=GLOBAL_SALT)
+        p.add_argument("--dialect", choices=DIALECTS, default="postgres", help="your warehouse's SQL dialect (default: postgres)")
+        p.add_argument("--share", type=float, default=DEFAULT_SHARE, help=share_help)
+        p.add_argument("--salt", default=GLOBAL_SALT, help=salt_help)
     for p in (f, mem):
         p.add_argument("--id-column", default="user_id", help="user_id, or account_id when whole accounts are held out")
-    s.add_argument("--start", required=True)
-    s.add_argument("--end", required=True)
-    s.add_argument("--unit", choices=("user", "account"), default="user")
-    r = sub.add_parser("readout", help="program-level incrementality from a data folder")
-    r.add_argument("--data", required=True)
-    r.add_argument("--start", required=True)
-    r.add_argument("--end", required=True)
-    r.add_argument("--share", type=float, default=DEFAULT_SHARE)
-    r.add_argument("--salt", default=GLOBAL_SALT)
-    r.add_argument("--unit", choices=("user", "account"), default="user")
-    r.add_argument("--markdown", action="store_true")
+    s.add_argument("--start", required=True, help=window_help)
+    s.add_argument("--end", required=True, help=window_end_help)
+    s.add_argument("--unit", choices=("user", "account"), default="user", help=unit_help)
+    r = sub.add_parser("readout", help="program-level incrementality from a data folder",
+                       description="Read what the lifecycle program as a whole adds, from a data folder")
+    r.add_argument("--data", required=True, help="folder of exports with users, track_events and orders")
+    r.add_argument("--start", required=True, help=window_help)
+    r.add_argument("--end", required=True, help=window_end_help)
+    r.add_argument("--share", type=float, default=DEFAULT_SHARE, help=share_help)
+    r.add_argument("--salt", default=GLOBAL_SALT, help=salt_help)
+    r.add_argument("--unit", choices=("user", "account"), default="user", help=unit_help)
+    r.add_argument("--markdown", action="store_true", help="print a readable report instead of JSON (user level only)")
     a = ap.parse_args(argv)
     try:
         if a.cmd == "filter":

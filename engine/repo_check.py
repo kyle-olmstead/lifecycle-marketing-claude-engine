@@ -159,8 +159,8 @@ def check(verbose: bool = False) -> Tuple[List[str], Dict[str, int]]:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="Check every example in the repository against its own syntax rules")
-    ap.add_argument("--verbose", action="store_true")
+    ap = argparse.ArgumentParser(prog="lcm repo-check", description="Check every example in the repository against its own syntax rules")
+    ap.add_argument("--verbose", action="store_true", help="also print warnings from the HTML template lint, not only failures")
     a = ap.parse_args(argv)
     errors, counts = check(a.verbose)
     print("repo check: " + ", ".join(f"{k} {v}" for k, v in counts.items()))

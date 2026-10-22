@@ -143,15 +143,16 @@ def render(summary: Dict[str, Any]) -> str:
 
 
 def _cli(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Engagement tiers and the unengaged suppression cohort")
+    ap = argparse.ArgumentParser(prog="lcm engagement", description="Engagement tiers and the unengaged suppression cohort")
     ap.add_argument("--data", help="folder or URL prefix with users and message_events exports")
-    ap.add_argument("--as-of")
-    ap.add_argument("--dialect", default="postgres", choices=["postgres", "snowflake", "bigquery"])
+    ap.add_argument("--as-of", help="score engagement as of this date, YYYY-MM-DD (default: the latest day in message_events)")
+    ap.add_argument("--dialect", default="postgres", choices=["postgres", "snowflake", "bigquery"],
+                    help="warehouse dialect for the tier SQL written to --out (default: postgres)")
     ap.add_argument("--sql-only", action="store_true", help="write the tier SQL for your warehouse and stop")
     ap.add_argument("--platform", choices=PLATFORMS, help="also build sync requests for this ESP (nothing is sent)")
     ap.add_argument("--braze-instance", default="iad-01", help="the REST instance in your Braze dashboard URL (iad-01, fra-02, ...)")
     ap.add_argument("--eu", action="store_true", help="Customer.io EU workspace")
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--out", required=True, help="folder for tiers.csv, summary.json, summary.md and the tier SQL")
     a = ap.parse_args(argv)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)

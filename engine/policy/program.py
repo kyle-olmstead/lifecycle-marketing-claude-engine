@@ -188,8 +188,8 @@ def _cli(argv: Optional[List[str]] = None) -> int:
     from engine.brief import load_brief
     briefs = active_briefs(Path(a.briefs) if a.briefs else None) + [load_brief(Path(p)) for p in a.add]
     if len(briefs) < 1:
-        print("no live briefs: copy briefs into briefs/active/ (or pass --add)", file=sys.stderr)
-        return 2
+        print("No live flows to check: copy the briefs of flows that are live into briefs/active/ (or pass --add).")
+        return 0
     r = simulate(briefs, workspace_policy())
     print(json.dumps(r, indent=2) if a.json else render(r))
     return 1 if r["status"] == "fail" else 0

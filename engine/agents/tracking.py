@@ -245,11 +245,11 @@ def render(r: Dict[str, Any]) -> str:
 
 
 def _cli(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Tracking health: are the events your flows depend on still arriving?")
-    ap.add_argument("--data", required=True)
-    ap.add_argument("--as-of")
+    ap = argparse.ArgumentParser(prog="lcm tracking", description="Tracking health: are the events your flows depend on still arriving?")
+    ap.add_argument("--data", required=True, help="folder of exports with track_events and orders")
+    ap.add_argument("--as-of", help="last day of the 7-day window, YYYY-MM-DD (default: yesterday, UTC)")
     ap.add_argument("--events-dir", help="the webhook receiver's folder (LCM_EVENTS_DIR), for quarantine counts")
-    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--json", action="store_true", help="print the report as JSON instead of text")
     a = ap.parse_args(argv)
     from engine.brief import load_brief
     from engine import workspace

@@ -167,13 +167,13 @@ def render(r: Dict[str, Any]) -> str:
 
 
 def _cli(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Weekly retention on the core action, with the cliff and the floor")
-    ap.add_argument("--data", required=True)
+    ap = argparse.ArgumentParser(prog="lcm retention", description="Weekly retention on the core action, with the cliff and the floor")
+    ap.add_argument("--data", required=True, help="folder of exports with users, orders and track_events")
     ap.add_argument("--brief", help="the brief whose core action counts as retained (default: the example)")
-    ap.add_argument("--by", choices=BY_COLUMNS)
-    ap.add_argument("--weeks", type=int, default=12)
-    ap.add_argument("--as-of")
-    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--by", choices=BY_COLUMNS, help="also split the curve by this users column (segments of 30+ people)")
+    ap.add_argument("--weeks", type=int, default=12, help="weeks after signup to follow (default 12)")
+    ap.add_argument("--as-of", help="the date the data runs to, YYYY-MM-DD (default: the latest complete day in the data)")
+    ap.add_argument("--json", action="store_true", help="print the curve as JSON instead of a table")
     a = ap.parse_args(argv)
     from engine.brief import load_brief
     try:

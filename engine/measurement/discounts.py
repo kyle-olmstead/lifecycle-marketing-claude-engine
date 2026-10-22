@@ -300,19 +300,24 @@ def report_duckdb(con: Any, min_orders: int = MIN_ORDERS, as_of: Optional[str] =
 
 
 def _cli(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Discount dependency per customer and across the program")
-    sub = ap.add_subparsers(dest="cmd", required=True)
-    rp = sub.add_parser("report", help="counts, the monthly share and its trend")
-    cu = sub.add_parser("customers", help="per-customer shares and flags")
+    ap = argparse.ArgumentParser(prog="lcm discounts", description="Discount dependency per customer and across the program")
+    sub = ap.add_subparsers(dest="cmd", required=True, help="what to report")
+    rp = sub.add_parser("report", help="counts, the monthly share and its trend",
+                        description="Program-wide discount dependency: flagged customers, the monthly discounted share and its trend")
+    cu = sub.add_parser("customers", help="per-customer shares and flags",
+                        description="Per customer: the share of their last 3 completed orders that used a discount, and the flag")
     for p in (rp, cu):
-        p.add_argument("--data", required=True)
-        p.add_argument("--min-orders", type=int, default=MIN_ORDERS)
+        p.add_argument("--data", required=True, help="folder of exports with orders (and the optional discounts table)")
+        p.add_argument("--min-orders", type=int, default=MIN_ORDERS,
+                       help=f"completed orders a customer needs before they can be flagged (default {MIN_ORDERS})")
     rp.add_argument("--as-of", help="YYYY-MM-DD; the month containing it is partial unless it is the month's last day")
-    cu.add_argument("--flagged-only", action="store_true")
-    sq = sub.add_parser("sql", help="the warehouse SQL")
-    sq.add_argument("--dialect", choices=DIALECTS, default="postgres")
-    sq.add_argument("--which", choices=("customers", "monthly"), default="customers")
-    sq.add_argument("--no-discounts-table", action="store_true")
+    cu.add_argument("--flagged-only", action="store_true", help="list only customers flagged as discount dependent")
+    sq = sub.add_parser("sql", help="the warehouse SQL", description="Print the discount dependency SQL to run in your warehouse")
+    sq.add_argument("--dialect", choices=DIALECTS, default="postgres", help="your warehouse's SQL dialect (default: postgres)")
+    sq.add_argument("--which", choices=("customers", "monthly"), default="customers",
+                    help="per-customer flags or the monthly program share (default: customers)")
+    sq.add_argument("--no-discounts-table", action="store_true",
+                    help="you have no discounts table; count an order as discounted only by orders.discount_amount")
     a = ap.parse_args(argv)
     try:
         if a.cmd == "sql":

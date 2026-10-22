@@ -60,7 +60,8 @@ def test_every_flag_of_every_command_has_help(name):
     assert rc in (0, None), (name, rc, text[:300])
     assert text.strip(), name
     problems = [f"{name}: {x}" for x in _undocumented(text)]
-    for sub in _subcommands(text):
+    from engine.cli.commands import DELIVERABILITY
+    for sub in _subcommands(text) + (list(DELIVERABILITY) if name == "deliverability" else []):
         _, sub_text = _help([name, sub, "--help"])
         problems += [f"{name} {sub}: {x}" for x in _undocumented(sub_text)]
     assert not problems, problems

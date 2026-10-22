@@ -69,6 +69,37 @@ def _row_mjml(name: str, url: str, image: str, price: str, text_color: str = "#1
                   f"{name}</a><br>{price}</mj-text>\n")
 
 
+RETURN_PROPERTY = {"cart_abandon": ("checkout_url", "lcm_last_checkout_url"), "browse_abandon": ("url", "lcm_last_item_url")}
+
+
+def return_url(brief: Brief, dialect: str, fallback: Optional[str]) -> Optional[str]:
+    """Where the button of a cart or browse email goes: back to that checkout, or to that product, in the platform's syntax,
+    with the store's home page as the fallback. None for other flows (they use cta_url).
+
+    Klaviyo's own abandoned-cart template uses event.extra.checkout_url with organization.url as the default (Shopify's
+    Checkout Started event); its Viewed Product event carries URL. Elsewhere the trigger event carries checkout_url or url
+    (config/tracking_plan.json), and HubSpot and Marketing Cloud read the same contact or entry-data fields as the
+    product block."""
+    if brief.flow_type not in RETURN_PROPERTY:
+        return None
+    prop, contact_prop = RETURN_PROPERTY[brief.flow_type]
+    src = source(brief)
+    if dialect == "klaviyo":
+        path = {"shopify_line_items": "event.extra.checkout_url", "shopify_viewed_product": "event.URL"}.get(src, f"event.{prop}")
+        return "{{ " + path + "|default:organization.url }}"
+    if not fallback:
+        return None
+    if dialect == "customerio":
+        return "{{ event." + prop + " | default: '" + fallback + "' }}"
+    if dialect == "braze":
+        return "{{context.${" + prop + "} | default: '" + fallback + "'}}"
+    if dialect == "hubl":
+        return "{{ personalization_token('contact." + contact_prop + "', '" + fallback + "') }}"
+    if dialect == "ampscript":
+        return "%%=IIf(Empty(AttributeValue('" + prop + "')), '" + fallback + "', AttributeValue('" + prop + "'))=%%"
+    return None
+
+
 def block(brief: Brief, dialect: str) -> Tuple[Optional[str], str]:
     """(MJML for the product slot, plain-text version). (None, '') when the flow's trigger carries no items."""
     if brief.flow_type not in EVENT_FLOWS:

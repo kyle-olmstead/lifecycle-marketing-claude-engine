@@ -89,10 +89,10 @@ def analyze(text: str, brand: Optional[str] = None, first_message: bool = False)
 
 
 def _cli(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="SMS encoding and segment count")
-    ap.add_argument("text")
-    ap.add_argument("--brand")
-    ap.add_argument("--first-message", action="store_true")
+    ap = argparse.ArgumentParser(prog="lcm sms", description="SMS encoding and segment count")
+    ap.add_argument("text", help="the SMS message, in quotes")
+    ap.add_argument("--brand", help="brand name the message should identify the sender with (checked if given)")
+    ap.add_argument("--first-message", action="store_true", help="this is the first message: also check for HELP language")
     a = ap.parse_args(argv)
     print(json.dumps(analyze(a.text, a.brand, a.first_message), indent=2, ensure_ascii=False))
     return 0

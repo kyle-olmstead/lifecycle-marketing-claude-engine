@@ -540,18 +540,21 @@ def check_domains(domains: List[str]) -> Dict[str, Dict[str, Any]]:
 
 
 def _cli(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Today's priorities: the builds most worth doing next, ranked from your data")
+    ap = argparse.ArgumentParser(prog="lcm priorities",
+                                 description="Today's priorities: the builds most worth doing next, ranked from your data")
     ap.add_argument("--data", required=True, help="folder or URL prefix with users, orders, track_events (and message_events)")
     ap.add_argument("--brief", action="append", default=[], help="a brief defining a core action (default: briefs/active/, else the example)")
-    ap.add_argument("--as-of")
-    ap.add_argument("--top", type=int, default=3)
+    ap.add_argument("--as-of", help="rank as of this date, YYYY-MM-DD (default: the latest complete day in the data)")
+    ap.add_argument("--top", type=int, default=3, help="how many builds to list after any fixes (default 3)")
     ap.add_argument("--value-per-conversion", type=float, help="what one more converted person is worth to you, in dollars")
-    ap.add_argument("--lift-low", type=float, default=LIFT_LOW)
-    ap.add_argument("--lift-high", type=float, default=LIFT_HIGH)
+    ap.add_argument("--lift-low", type=float, default=LIFT_LOW,
+                    help=f"low end of the assumed relative lift, 0.10 = 10%% (default {LIFT_LOW})")
+    ap.add_argument("--lift-high", type=float, default=LIFT_HIGH,
+                    help=f"high end of the assumed relative lift, 0.25 = 25%% (default {LIFT_HIGH})")
     ap.add_argument("--domain", action="append", default=[],
                     help="a sending domain to check live first, so a RED domain shows as a fix (default: LCM_DOMAINS)")
-    ap.add_argument("--out", default="out")
-    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--out", default="out", help="folder to write priorities/ (the ranking and a brief per build) into (default: out)")
+    ap.add_argument("--json", action="store_true", help="print the ranking as JSON instead of text")
     a = ap.parse_args(argv)
     from engine.brief import load_brief
     import os

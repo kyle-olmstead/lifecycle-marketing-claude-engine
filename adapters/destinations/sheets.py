@@ -266,11 +266,11 @@ def sync(plans: Optional[List[Dict[str, Any]]] = None, audits: Optional[List[Dic
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Log plans and cohort audits to Google Sheets")
+    ap = argparse.ArgumentParser(prog="lcm sheets", description="Log plans and cohort audits to Google Sheets")
     ap.add_argument("--plan", action="append", default=[], help="plan.json from the orchestrator (repeatable)")
     ap.add_argument("--audit", action="append", default=[], help="audit.json from the cohort analyst (repeatable)")
     ap.add_argument("--sheet-id", help="defaults to LCM_SHEET_ID")
-    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--dry-run", action="store_true", help="write the rows as CSV files in --out instead of to the sheet")
     ap.add_argument("--out", default="out/sheets", help="where dry runs write CSVs")
     a = ap.parse_args(argv)
     if not a.plan and not a.audit:

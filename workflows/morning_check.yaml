@@ -1,0 +1,31 @@
+name: morning_check
+description: what broke overnight, in data, tracking, deliverability, list health, live flows and running tests
+inputs:
+  data: {default: "${workspace}/data", help: "the folder of exports (users, orders, track_events, message_events)"}
+  domain: {help: "your sending domain, for the DNS and authentication check (skipped until given)"}
+steps:
+  - id: data
+    run: check-data ${data}
+    on_fail: stop
+    help: the exports are complete, fresh and well formed; nothing after this means much if they are not
+  - id: tracking
+    run: tracking --data ${data}
+    needs: [data]
+    help: the events the live flows trigger on are still arriving, with the properties they need
+  - id: deliverability_trend
+    run: deliverability monitor --data ${data} --markdown
+    needs: [data]
+    help: bounce, complaint and engagement trends by mailbox provider against the abort rules
+  - id: authentication
+    run: deliverability check ${domain} --markdown --write-gate ${out}/gate.json
+    help: SPF, DKIM, DMARC and the sending gate, observed today
+  - id: list_health
+    run: engagement --data ${data} --out ${out}/engagement
+    needs: [data]
+    help: engagement tiers by clicks and the sunset list
+  - id: live_flows
+    run: simulate --program
+    help: every brief in briefs/active/ together against the one frequency policy
+  - id: experiments
+    run: experiments check
+    help: running tests that overlap, are overdue for a read, or were peeked at without a stopping rule
