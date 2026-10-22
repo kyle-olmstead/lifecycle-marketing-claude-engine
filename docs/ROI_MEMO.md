@@ -160,7 +160,7 @@ This engine has **not** been run in a production deployment yet. Here is the hon
 
 | Claim | How it is checked |
 |---|---|
-| It cannot send a message | There is no code path that sends email or text; it writes plans, copy and request files |
+| It cannot send a message on its own | It sends no email or text itself. The two commands that reach a platform, `lcm send` and `lcm build --create`, only print what they would do unless given `--approve` and the platform's key, and what build creates starts as a draft; tests run both against a mocked API |
 | The audience SQL selects the right people | Recomputed independently on 40 dates, and run on a real PostgreSQL database |
 | Templates will not break on send | Every message is parsed in its platform's own template language |
 | Every flow respects the rules | Simulated customers walk every generated flow: the holdout gets nothing, no send without consent, nothing after the goal, frequency caps and permitted send windows hold |
