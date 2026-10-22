@@ -36,6 +36,7 @@
         "klaviyo",
         "hubspot",
         "sfmc",
+        "iterable",
         "other"
       ]
     },
@@ -50,6 +51,7 @@
         "klaviyo",
         "hubl",
         "ampscript",
+        "handlebars",
         "liquid"
       ]
     },

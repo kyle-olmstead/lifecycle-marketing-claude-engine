@@ -714,7 +714,8 @@
         "hubspot",
         "braze",
         "customerio",
-        "sfmc"
+        "sfmc",
+        "iterable"
       ],
       "title": "Platform",
       "type": "string"

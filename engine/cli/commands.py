@@ -82,7 +82,12 @@ KEY_NAMES = (("ANTHROPIC_API_KEY", "Claude-written copy"), ("LCM_SHEET_ID", "Goo
              ("KLAVIYO_PRIVATE_KEY", "pushing events and profiles to Klaviyo"),
              ("HUBSPOT_PRIVATE_APP_TOKEN", "pushing events and contacts to HubSpot (with HUBSPOT_HUB_ID)"),
              ("BRAZE_REST_API_KEY", "pushing events and attributes to Braze (with BRAZE_INSTANCE)"),
-             ("CUSTOMERIO_PIPELINES_API_KEY_BASE64", "pushing events and attributes to Customer.io"))
+             ("CUSTOMERIO_PIPELINES_API_KEY_BASE64", "pushing events and attributes to Customer.io"),
+             ("HUBSPOT_HUB_ID", "HubSpot event names (pe<hub id>_<event>) for lcm send"),
+             ("BRAZE_INSTANCE", "the Braze REST instance for lcm send and lcm build --create"),
+             ("ITERABLE_API_KEY", "pushing events to Iterable (lcm send)"),
+             ("SFMC_ACCESS_TOKEN", "creating a Marketing Cloud journey as a Draft (lcm build --create, with SFMC_SUBDOMAIN)"),
+             ("SFMC_SUBDOMAIN", "the Marketing Cloud tenant subdomain for lcm build --create"))
 
 
 def _version(mod: Any) -> str:
@@ -328,6 +333,10 @@ COMMANDS: Dict[str, Command] = {
     "sms": Command("ship", "SMS encoding, segments and opt-out language", _call("engine.render.sms")),
     "sync": Command("ship", "profile sync request bodies for the platform (tiers, sunset flags)", _call("adapters.destinations.payloads")),
     "events": Command("ship", "push the flow's trigger events from the warehouse ledger", _call("adapters.destinations.event_payloads")),
+    "build": Command("ship", "the ESP build pack for a plan: native trigger, steps, splits, capability checks, importable artifacts",
+                     _call("adapters.destinations.build.cli")),
+    "send": Command("ship", "send requests safely: a dry run unless --approve, then batched, idempotent, retried and receipted",
+                    _call("adapters.destinations.send")),
     "sheets": Command("ship", "log plans and the morning check to Google Sheets", _call("adapters.destinations.sheets", "main", needs="gspread")),
     # deliverability
     "deliverability": Command("deliverability", "check, analyze, gate, monitor, bounces, complaints, providers", deliverability),

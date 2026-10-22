@@ -18,6 +18,11 @@ the vendor's documentation, checked 2026-10-21:
   SFMC        AttributeValue() reads journey entry data and returns null rather than failing the send; entry data is flat, so
               the block shows one item from item_name / item_url / item_image_url entry attributes
               (developer.salesforce.com, mc-ampscript-reference-utilities-attribute-value).
+  Iterable    the triggering event's fields are top-level Handlebars names in a journey the event triggered, so the engine's
+              items[] array loops with {{#each items}}...{{/each}} and the first name is {{items.[0].name}} with
+              defaultIfEmpty; browse reads the one product on product_viewed ({{name}}, {{url}})
+              (support.iterable.com/hc/articles/206430615, /hc/en-us/articles/205480365 and /hc/en-us/articles/36531450481300).
+              Event fields reach every send tile of that journey: LIKELY, not stated.
 
 What a platform cannot do is said, not faked: HubSpot and SFMC show one item, and the build steps name the property to sync.
 """
@@ -62,6 +67,9 @@ def item_name(brief: Brief, dialect: str) -> str:
         return '{{ personalization_token("contact.lcm_last_item_name", "' + fb + '") }}'
     if dialect == "ampscript":
         return '%%=IIf(Empty(AttributeValue("item_name")), "' + fb + '", AttributeValue("item_name"))=%%'
+    if dialect == "handlebars":
+        path = "name" if brief.flow_type == "browse_abandon" else "items.[0].name"
+        return '{{defaultIfEmpty ' + path + ' "' + fb + '"}}'
     return fb
 
 
@@ -99,6 +107,8 @@ def return_url(brief: Brief, dialect: str, fallback: Optional[str]) -> Optional[
         return "{{ personalization_token('contact." + contact_prop + "', '" + fallback + "') }}"
     if dialect == "ampscript":
         return "%%=IIf(Empty(AttributeValue('" + prop + "')), '" + fallback + "', AttributeValue('" + prop + "'))=%%"
+    if dialect == "handlebars":
+        return '{{defaultIfEmpty ' + prop + ' "' + fallback + '"}}'
     return None
 
 
@@ -108,12 +118,14 @@ def block(brief: Brief, dialect: str, website: Optional[str] = None) -> Tuple[Op
         return None, ""
     src = source(brief)
     fb = _fb(brief)
-    if brief.flow_type == "browse_abandon" and dialect in ("customerio", "braze"):
+    if brief.flow_type == "browse_abandon" and dialect in ("customerio", "braze", "handlebars"):
         # one viewed product, carried on the product_viewed event itself (config/tracking_plan.json), not an items[] list;
         # every field has a fallback, the link falls back to the store's home page
         home = website or ""
         if dialect == "customerio":
             f = lambda k, d="": "{{ event." + k + " | default: '" + d + "' }}"   # noqa: E731
+        elif dialect == "handlebars":
+            f = lambda k, d="": "{{defaultIfEmpty " + k + ' "' + d + '"}}'      # noqa: E731
         else:
             f = lambda k, d="": "{{context.${" + k + "} | default: '" + d + "'}}"  # noqa: E731
         return _row_mjml(f("name", fb), f("url", home), f("image_url"), f("price")), f"{f('name', fb)}: {f('url', home)}"
@@ -150,6 +162,14 @@ def block(brief: Brief, dialect: str, website: Optional[str] = None) -> Tuple[Op
         name = '%%=IIf(Empty(AttributeValue("item_name")), "' + fb + '", AttributeValue("item_name"))=%%'
         url = '%%=AttributeValue("item_url")=%%'
         return _row_mjml(name, url, "", ""), f"{name}: {url}"
+    if dialect == "handlebars":
+        # the documented loop (support.iterable.com/hc/en-us/articles/36531450481300); it has no limit argument, so every item
+        # in items[] shows: send at most three from the system that builds the event
+        loop, end = "{{#each items}}", "{{/each}}"
+        name = '{{defaultIfEmpty name "' + fb + '"}}'
+        row = _row_mjml(name, "{{url}}", "{{image_url}}", "{{quantity}} x {{price}}")
+        return (f"          <mj-raw>{loop}</mj-raw>\n" + row + f"          <mj-raw>{end}</mj-raw>\n",
+                loop + name + ": {{url}}\n" + end)
     return None, ""
 
 
@@ -165,6 +185,10 @@ def sync_note(brief: Brief) -> Optional[str]:
                 "than one item, keep a related data extension and loop it with LookupRows)")
     if brief.template_dialect == "braze":
         return "Pass the items array as a Canvas context variable named items (Canvas Context must be enabled in the workspace)"
+    if brief.template_dialect == "handlebars":
+        return ("The journey must be triggered by the event that carries items[] (name, url, image_url, price, quantity; "
+                "config/tracking_plan.json line_item), at most three of them (the Handlebars loop has no limit): Iterable shows event "
+                "fields only in a journey that event triggered")
     if source(brief).startswith("shopify"):
         return "Uses Shopify's own Klaviyo events (Checkout Started / Placed Order line items, Viewed Product); no extra sync"
     return "The trigger event must carry items[] with name, url, image_url, price and quantity (config/tracking_plan.json line_item)"

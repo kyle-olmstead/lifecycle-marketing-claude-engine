@@ -8,11 +8,12 @@ on PyPI (mjml-python, pure Python, pinned in requirements.txt), so rendering sta
 How one email is built:
 
   1. engine/agents/copywriter.py renders the words into the platform's dialect (Customer.io or Braze Liquid,
-     Klaviyo, HubL, AMPscript) with a fallback on every token, and hands them over as an EmailContent.
+     Klaviyo, HubL, AMPscript, Iterable Handlebars) with a fallback on every token, and hands them over as an EmailContent.
   2. build_mjml() fills the components in templates/email/mjml/ with those words and the brand kit's logo,
      colors, fonts and footer (engine/render/brand.py; the neutral default kit when there is none).
   3. compile_mjml() compiles the MJML. ESP template tags must come out exactly as they went in, so before
-     compiling every tag ({{ }}, {% %}, {# #}, %%[ ]%%, %%= =%%, %%name%%) and every character reference in the
+     compiling every tag ({{ }}, {% %}, {# #}, %%[ ]%%, %%= =%%, %%name%%; Handlebars {{#each}}, {{/each}}, {{{raw}}} and
+     {{!-- comments --}} are {{ }} tags too) and every character reference in the
      title and body (&amp;, &#8204;) is swapped for an opaque placeholder, and restored afterwards. Without that the
      compiler turns '>' inside a Liquid condition into '&gt;', breaks any attribute whose tag holds a double quote
      (Customer.io's default: "there", HubL's personalization_token("...")), decodes &amp; in links to a bare '&',
@@ -56,7 +57,7 @@ from engine.render.brand import DEFAULT_BRAND, BrandKit, BrandKitError, find_bra
 MJML_DIR = TEMPLATES / "email" / "mjml"
 GOLDEN_DIR = TEMPLATES / "email" / "compiled"
 GOLDEN_BRAND = DEMO / "brand.yaml"
-DIALECTS = ("customerio", "braze", "klaviyo", "hubl", "ampscript")
+DIALECTS = ("customerio", "braze", "klaviyo", "hubl", "ampscript", "handlebars")
 MJML_PACKAGE_VERSION = "0.12.0"    # the mjml-python release the golden files were compiled with (requirements.txt)
 PREHEADER_PADDING = "&#8204;&#160;" * 16
 

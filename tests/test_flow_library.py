@@ -19,7 +19,7 @@ SENTENCES = {
     "trial_convert": "a trial conversion flow for a 14 day trial",
     "sunset": "a sunset flow for subscribers inactive 180 days",
 }
-PLATFORMS = ("klaviyo", "hubspot", "braze", "customerio", "sfmc")
+PLATFORMS = ("klaviyo", "hubspot", "braze", "customerio", "sfmc", "iterable")
 
 
 def test_the_sentences_cover_the_library():

@@ -54,4 +54,5 @@ Change them in `lmm.yaml` under `frequency`. `lcm simulate --program` checks eve
 | Braze | Braze Liquid | a Canvas | Global frequency capping | `{{${set_user_to_unsubscribed_url}}}` |
 | Customer.io | Customer.io Liquid | an event-triggered campaign | the workspace message limit | `{% unsubscribe_url %}` |
 | Salesforce Marketing Cloud | AMPscript | a journey | the send-frequency setting | `%%unsub_center_url%%` |
+| Iterable | Handlebars | a journey | Frequency Management in project settings (off by default) | `{{unsubscribeUrl}}` |
 <!-- end generated -->

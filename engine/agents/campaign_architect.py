@@ -145,6 +145,12 @@ VOCAB = {
     "sfmc": {"container": "a journey", "trigger": "API Event entry source", "delay": "Wait by Duration", "split": "Decision Split",
              "every_step": "Goal and exit criteria", "draft": "keep the journey in draft until it is approved", "freq": "the send-frequency setting",
              "window": "Send Time Optimization off and a Wait Until time of day"},
+    # Iterable journeys (support.iterable.com/hc/articles/15934993720468 entry, /8120791290260 exit rules, /14319818758036 Delay
+    # tile, /15342990564372 Frequency Management, /16928857601940 Quiet Hours)
+    "iterable": {"container": "a journey", "trigger": "Journey entry source (Event occurs)", "delay": "Delay tile", "split": "Yes/No Split",
+                 "every_step": "Journey exit rules", "draft": "leave the journey unpublished until it is approved",
+                 "freq": "Frequency Management in project settings (off by default)",
+                 "window": "Quiet Hours on each send tile (Delivery and Compliance)"},
 }
 
 
@@ -467,6 +473,9 @@ def build_steps(brief: Brief, cohort: CohortDefinition, touches: List[Touch], sp
                    f"ledger, so the same lapse would go out on several days.")
         if brief.flow_type in ("winback", "replenishment") and cohort.platform_pattern and "natively" in cohort.platform_pattern:
             out.append(f"Or build it natively instead, with no warehouse job: {cohort.platform_pattern}")
+        out.append(f"Or skip the job: `lcm build --run <this plan's folder>` writes the {PLATFORM_LABEL[brief.platform]} build pack with a "
+                   f"native trigger (a segment or a daily scheduled audience), the segment to create and its holdout property; keep the job "
+                   f"when {brief.core_conversion_event.event} does not reach {PLATFORM_LABEL[brief.platform]} (docs/ESP_BUILD_PACKS.md)")
     else:
         q = brief.qualifying_event.event
         hold = (f" Add two properties to it where it is sent: holdout_bucket = first 7 hex digits of md5({'account_id' if brief.randomization_unit == 'account' else 'user_id'}"

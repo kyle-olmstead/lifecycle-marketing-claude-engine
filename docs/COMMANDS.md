@@ -42,6 +42,8 @@ workspace and say so.
 | `lcm sms` | SMS encoding, segments and opt-out language |
 | `lcm sync` | profile sync request bodies for the platform (tiers, sunset flags) |
 | `lcm events` | push the flow's trigger events from the warehouse ledger |
+| `lcm build` | the ESP build pack for a plan: native trigger, steps, splits, capability checks, importable artifacts |
+| `lcm send` | send requests safely: a dry run unless --approve, then batched, idempotent, retried and receipted |
 | `lcm sheets` | log plans and the morning check to Google Sheets |
 
 **Deliverability**

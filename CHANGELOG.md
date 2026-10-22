@@ -57,9 +57,39 @@ Audit (v2.3); every quick win and systemic enhancement in its roadmap is in here
 - Product blocks show the cart or product from each platform's own event fields (Klaviyo's Shopify events,
   Customer.io and Braze event items, HubSpot and Marketing Cloud contact or entry data), and the button goes back to
   that checkout or product. The offline copy library covers every flow's roles with no bracketed fill-ins, and
-  `tests/test_flow_library.py` plans all ten flows on all five platforms with no copy warning.
+  `tests/test_flow_library.py` plans all ten flows on all six platforms with no copy warning.
 - Templates read only the event fields the tracking plan gives the trigger event (`engine/render/fields.py`); the
   check found and closed three gaps (item names, item links and images, and the browse event's single product).
+
+**Build packs and sending** (`adapters/destinations/build/`, `adapters/destinations/send.py`, `docs/ESP_BUILD_PACKS.md`)
+- `lcm build --run <plan folder>` writes a build pack per platform: the native trigger (exact type, filters, exit
+  criteria, re-entry), every step as the platform's own action with its wait in the platform's smallest unit (Braze
+  seconds; Klaviyo, HubSpot, Iterable and Marketing Cloud minutes; Customer.io hours), the holdout split first and each
+  SMS or push consent split with its email fallback, the goal, permitted send window and frequency settings, the copy
+  each message uses, and the steps a person does by hand.
+- Win-back, replenishment and sunset trigger natively where the platform can see the absence (Klaviyo and HubSpot
+  segments, Customer.io segment triggers, daily scheduled audiences on Braze, Iterable and Marketing Cloud), with the
+  exact segment to create; `--warehouse-job` keeps the daily job when the core event does not reach the ESP. A
+  segment trigger's holdout reads a person property written by `build/holdout_sync_<dialect>.sql`.
+- Capability checks from `config/esp_capabilities.json` (every fact with its source and confidence) against the
+  account in `lmm.yaml` (`esp.tier`, `esp.options`): HubSpot custom event enrollment on Professional or Enterprise,
+  its frequency safeguard on Enterprise, Braze Canvas Context, Customer.io latest Liquid and opt-in message limits,
+  Klaviyo's 100 flow creates a day, delay units, events that must reach the platform. An unknown tier warns; a failed
+  hard requirement blocks the pack with the reason.
+- Importable artifacts where a create API exists, validated against `config/esp_artifact_schemas.json` with every
+  unverified field named: Klaviyo templates, segment and flow (Draft; shapes from Klaviyo's official OpenAPI spec),
+  the HubSpot automation v4 workflow (beta, off), the Marketing Cloud journey (Draft). Braze, Customer.io and Iterable
+  get a click-by-click build sheet, and Braze an optional `/canvas/duplicate` request (UNVERIFIED).
+- `lcm build --create --approve` creates them in order through the safe client: metric ids looked up, template and
+  segment ids carried forward, unresolved inputs and UNVERIFIED shapes refused (`--allow-unverified`), 429 retried and
+  5xx not, and a receipt log so a rerun never creates the same object twice.
+- `lcm send` pushes the warehouse job's pending rows, request files or profile updates: a dry run unless `--approve`
+  and the platform's key are given; batched to each platform's limit, idempotency keys on every item (a client-side
+  sent log for Braze), retries with backoff and jitter on 429 and 5xx honoring `Retry-After`, never on another 4xx, and
+  a JSONL receipt log so a rerun sends nothing twice.
+- Iterable is a sixth platform: Handlebars copy (`defaultIfEmpty`, `{{#each items}}`, `{{unsubscribeUrl}}`,
+  `{{physicalAddress}}`) with its own linter, product blocks and return links, the field check, its track request with
+  an event id, and every flow planning on it.
 
 **Sources and check-data** (`adapters/sources/`, `engine/data/check.py`, `docs/IMPORTING_DATA.md`)
 - `lcm import` maps Shopify, Klaviyo, Stripe, HubSpot, Customer.io, GA4 (BigQuery export), Segment and RudderStack

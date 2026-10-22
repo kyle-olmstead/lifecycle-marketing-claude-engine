@@ -13,9 +13,11 @@ audit    The daily health check (.github/workflows/daily_cohort_audit.yml, 05:00
          the qualified base by risk band (active, at risk, lapsed); the onboarding leak map; robust
          anomaly detection on the latest complete day; and a data-freshness check.
 
-Absence is invisible to most ESPs, so the recommended trigger is a warehouse job that runs the entry
-query daily and pushes one event per entrant (adapters/destinations/event_payloads.py builds the request bodies).
-The holdout bucket is computed in the same query, so the warehouse records both arms.
+For an absence trigger the plan writes a warehouse job that runs the entry query daily and pushes one event per
+entrant (adapters/destinations/event_payloads.py builds the request bodies, adapters/destinations/send.py sends them).
+The holdout bucket is computed in the same query, so the warehouse records both arms. Where the ESP can see the absence
+itself (a segment, or a daily scheduled audience), the build pack (adapters/destinations/build) triggers it natively
+instead and keeps this job as the alternative.
 
     python3 -m engine.agents.cohort_analyst define --brief examples/brands/ridgeview_saas/briefs/winback_14d.yaml --data examples/brands/ridgeview_saas/data
     python3 -m engine.agents.cohort_analyst audit --brief examples/brands/ridgeview_saas/briefs/winback_14d.yaml --data examples/brands/ridgeview_saas/data --out out/audit
@@ -60,6 +62,8 @@ PLATFORM_PATTERNS = {
                   "Holdout: True/False branch on the event attribute in_holdout.",
     "sfmc": "Journey Builder with an API Event entry fed by the daily job. Goal and exit criteria: {core} recorded in the data extension. "
             "Holdout: Decision Split on in_holdout from the entry event.",
+    "iterable": "Journey with an Event occurs entry on the pushed custom event {trigger}; people finish before re-entering, so a person "
+                "who lapses again re-enters. Exit rule: performs {core}. Holdout: Yes/No Split on the triggering event's in_holdout field.",
 }
 ACTIVATION_PATTERNS = {
     "klaviyo": "Metric-triggered flow on {trigger}{filter}. Flow filter (every step): has not done {core} since starting this flow. "
@@ -72,6 +76,8 @@ ACTIVATION_PATTERNS = {
                   "Holdout: True/False branch on the event attribute in_holdout.",
     "sfmc": "Journey Builder with an API Event entry on {trigger}{filter}. Goal and exit criteria: {core}. "
             "Holdout: Decision Split on in_holdout from the entry event.",
+    "iterable": "Journey with an Event occurs entry on {trigger}{filter}, Maximum entries 1. Exit rule: performs {core}. "
+                "Holdout: Yes/No Split on this journey's triggering event field in_holdout.",
 }
 CATCH_UP_DAYS = 3
 LEDGER = "lcm_flow_entries"

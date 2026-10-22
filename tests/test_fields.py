@@ -10,7 +10,7 @@ EVENT_FLOWS = {"cart_abandon": "a 3-touch abandoned cart flow with email and SMS
                "post_purchase": "a post-purchase flow", "replenishment": "a replenishment flow every 30 days"}
 
 
-@pytest.mark.parametrize("platform", ["customerio", "braze", "klaviyo"])
+@pytest.mark.parametrize("platform", ["customerio", "braze", "klaviyo", "iterable"])
 @pytest.mark.parametrize("flow", sorted(EVENT_FLOWS))
 def test_templates_read_only_fields_the_event_carries(platform, flow):
     b = parse_text(EVENT_FLOWS[flow], "Acme", overrides={"platform": platform, "postal_address": "1 Example Way, Springfield, OR 97477"},
@@ -30,3 +30,5 @@ def test_an_unplanned_field_is_named():
     assert fields.unknown(tpl, "customerio", "checkout_started") == ["coupon_code", "items[].colour"]
     assert fields.unknown("{{context.${checkout_url} | default: 'x'}}", "braze", "checkout_started") == []
     assert fields.allowed("message_delivered") is None    # an ESP message event (message_events), not the event stream
+    hb = '{{#each items}}{{defaultIfEmpty name "x"}} {{colour}}{{/each}} {{defaultIfEmpty firstName "there"}} {{defaultIfEmpty checkout_url "y"}}'
+    assert fields.unknown(hb, "handlebars", "checkout_started") == ["items[].colour"]

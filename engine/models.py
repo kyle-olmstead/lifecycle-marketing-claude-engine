@@ -17,7 +17,7 @@ from engine.flows.library import FLOWS
 from engine.policy.contracts import (Cap, FrequencyPolicy, OfferPolicy, ReEntry, SendingGateRecord, SendWindow, TriggerDefinition,
                                      EventRef, AbsenceRule, hours_to_duration, parse_offer_text)
 
-Platform = Literal["klaviyo", "hubspot", "braze", "customerio", "sfmc"]
+Platform = Literal["klaviyo", "hubspot", "braze", "customerio", "sfmc", "iterable"]
 Channel = Literal["email", "sms", "push", "in_app"]
 FlowType = Literal["welcome", "activation", "winback", "cart_abandon", "browse_abandon", "post_purchase", "replenishment", "dunning",
                    "trial_convert", "sunset"]
@@ -27,10 +27,12 @@ BusinessModel = Literal["saas", "subscription", "ecommerce", "marketplace", "ser
 Label = Literal["SUPPLIED", "LIVE PULL", "ESTIMATE", "ASSUMED", "UNKNOWN", "DEMO DATA"]
 CopyMode = Literal["auto", "claude", "handoff", "offline"]
 
-# The template dialect each platform renders. Customer.io defaults to its latest Liquid.
-PLATFORM_DIALECT: Dict[str, str] = {"klaviyo": "klaviyo", "hubspot": "hubl", "braze": "braze", "customerio": "customerio", "sfmc": "ampscript"}
+# The template dialect each platform renders. Customer.io defaults to its latest Liquid; Iterable renders Handlebars
+# (support.iterable.com/hc/en-us/articles/205480365, Personalizing Templates with Handlebars).
+PLATFORM_DIALECT: Dict[str, str] = {"klaviyo": "klaviyo", "hubspot": "hubl", "braze": "braze", "customerio": "customerio", "sfmc": "ampscript",
+                                    "iterable": "handlebars"}
 PLATFORM_LABEL: Dict[str, str] = {"klaviyo": "Klaviyo", "hubspot": "HubSpot", "braze": "Braze", "customerio": "Customer.io",
-                                  "sfmc": "Salesforce Marketing Cloud"}
+                                  "sfmc": "Salesforce Marketing Cloud", "iterable": "Iterable"}
 EVENT_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 PropertyValue = str | int | float | bool
 

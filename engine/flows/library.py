@@ -69,8 +69,9 @@ def _family(business_model: str) -> str:
 
 ESP_NATIVE_EVENT = {
     "klaviyo": "Metric-triggered flow on {trigger}{filter}. Flow filter (checked before every step): has not done {goal} since starting this flow.",
-    "hubspot": "Contact-based workflow enrolled on the {trigger} event{filter} (custom events need Marketing Hub Enterprise; on lower tiers "
-               "sync the event to a contact property and enroll on the property). Goal criteria: {goal}.",
+    "hubspot": "Contact-based workflow enrolled on the {trigger} event{filter} (custom event enrollment needs Professional or Enterprise "
+               "since March 2026, knowledge.hubspot.com/events/create-custom-events; on Starter, sync the event to a contact property and "
+               "enroll on the property). Goal criteria: {goal}.",
     "braze": "Canvas with action-based entry on {trigger}{filter}. Exception event / exit criteria: performs {goal}.",
     "customerio": "Event-triggered campaign on {trigger}{filter}. Conversion goal {goal} with exit on conversion.",
     "sfmc": "Journey Builder with an API Event entry on {trigger}{filter}. Goal and exit criteria: {goal}.",

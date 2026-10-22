@@ -192,7 +192,8 @@ def qa_report(brief: Brief, pol: Dict[str, Any], cohort, flow, copy_plan, exp, d
             continue
         checks.append(Check(name=f"simulation: {c['name']}", status=c["status"], detail=c["detail"]))
     if cohort.trigger_payload_example:
-        name, errs = campaign_simulator.validate_request(cohort.trigger_payload_example)
+        from adapters.destinations.event_payloads import validate_request   # knows Iterable, then the simulator's endpoints
+        name, errs = validate_request(cohort.trigger_payload_example)
         checks.append(Check(name=f"trigger payload ({name})", status="fail" if errs else "pass",
                             detail="; ".join(errs) if errs else "valid against config/esp_payload_schemas.json"))
     for c in copy_plan:

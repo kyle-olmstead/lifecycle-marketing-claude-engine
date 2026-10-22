@@ -1,0 +1,1261 @@
+{
+  "$comment": "Capabilities the ESP build packs check (adapters/destinations/build/capabilities.py). Trimmed from the 2026-10-21 research (every fact keeps its source URL and confidence: VERIFIED read on the vendor's own documentation or official OpenAPI spec, LIKELY from a secondary source or an inference, UNVERIFIED could not be confirmed). Checks: kind requirement fails the pack when hard and unmet; an unknown tier or option is a warning, never a pass. Edit facts here, not in code.",
+  "researched_on": "2026-10-21",
+  "confidence_legend": {
+    "VERIFIED": "read on the vendor's own documentation, help center, developer reference, official OpenAPI spec or official training",
+    "LIKELY": "secondary source, or a reasonable inference from partial official text",
+    "UNVERIFIED": "could not be confirmed; nothing that depends on it is created without --allow-unverified"
+  },
+  "account_shape": {
+    "platform": "one of the platforms below",
+    "tier": "the platform's plan tier (HubSpot: free, starter, professional, enterprise)",
+    "options": {
+      "canvas_context": "Braze: true when Canvas Context is available in the workspace",
+      "liquid": "Customer.io: latest or legacy",
+      "events_in_esp": "list of engine event names that reach the platform",
+      "event_names": "map of engine event name to the platform's name for it",
+      "shopify": "Klaviyo: true when the Shopify integration sends Started Checkout, Viewed Product and Placed Order",
+      "ids": "map of placeholder to id (metric, template, email, list, event type)",
+      "from_email": "sender address for created messages",
+      "from_label": "sender name",
+      "hub_id": "HubSpot portal id",
+      "braze_instance": "Braze REST instance, e.g. iad-01",
+      "sfmc_subdomain": "Marketing Cloud tenant subdomain",
+      "eu": "Customer.io or Iterable EU data center"
+    }
+  },
+  "platforms": {
+    "klaviyo": {
+      "label": "Klaviyo",
+      "tiers": {
+        "value": [],
+        "source": "https://help.klaviyo.com/hc/en-us/articles/115002779051",
+        "confidence": "UNVERIFIED",
+        "note": "no plan gate was found for metric, list or segment flow triggers; the tier is not used by any check"
+      },
+      "min_delay": {
+        "value": {
+          "unit": "minutes",
+          "seconds": 60
+        },
+        "source": "https://raw.githubusercontent.com/klaviyo/openapi/main/openapi/stable.json",
+        "confidence": "VERIFIED",
+        "note": "TimeDelayActionData.unit enum is days, hours, minutes in the official OpenAPI spec (revision 2026-10-15); the help center lists the same units"
+      },
+      "max_delay_days": {
+        "value": null,
+        "source": "https://help.klaviyo.com/hc/en-us/articles/115003885212",
+        "confidence": "UNVERIFIED",
+        "note": "no maximum delay found"
+      },
+      "trigger_types": {
+        "value": [
+          "list",
+          "segment",
+          "metric",
+          "date",
+          "price-drop",
+          "low-inventory"
+        ],
+        "source": "https://raw.githubusercontent.com/klaviyo/openapi/main/openapi/stable.json",
+        "confidence": "VERIFIED",
+        "note": "FlowDefinition.triggers oneOf in the OpenAPI spec; exactly one trigger per flow"
+      },
+      "segment_entry_trigger": {
+        "value": true,
+        "source": "https://help.klaviyo.com/hc/en-us/articles/115002779051",
+        "confidence": "VERIFIED",
+        "note": "segment-triggered flows fire when a profile newly qualifies; segment triggers default to no re-entry"
+      },
+      "reentry": {
+        "value": {
+          "never": {
+            "duration": 1,
+            "unit": "alltime"
+          },
+          "after_exit": {
+            "duration": 0,
+            "unit": "alltime"
+          },
+          "cooldown_units": [
+            "hour",
+            "day",
+            "week"
+          ]
+        },
+        "source": "https://raw.githubusercontent.com/klaviyo/openapi/main/openapi/stable.json",
+        "confidence": "VERIFIED",
+        "note": "ReentryCriteria: with unit 'alltime', duration 1 means no re-entry and 0 allows re-entry; help center options: Enter only once, Re-enter whenever they re-qualify, Re-enter after a minimum time period (https://help.klaviyo.com/hc/en-us/articles/360003040052)"
+      },
+      "create_api": {
+        "value": {
+          "supported": true,
+          "method": "POST",
+          "url": "https://a.klaviyo.com/api/flows",
+          "revision": "2026-10-15",
+          "scope": "flows:write",
+          "created_status": "draft",
+          "definition_editable_after_create": false,
+          "status_update": "PATCH /api/flows/{id} (draft, manual, live; 3/s, 60/m)",
+          "rate_limits": {
+            "burst_per_second": 1,
+            "steady_per_minute": 15,
+            "daily": 100
+          }
+        },
+        "source": "https://raw.githubusercontent.com/klaviyo/openapi/main/openapi/stable.json",
+        "confidence": "VERIFIED",
+        "note": "flows are created in Draft unless an action status says otherwise; there is no documented way to update a definition after creation (https://developers.klaviyo.com/en/reference/flows_api_overview)"
+      },
+      "segment_create_api": {
+        "value": {
+          "method": "POST",
+          "url": "https://a.klaviyo.com/api/segments",
+          "scope": "segments:write",
+          "rate_limits": {
+            "burst_per_second": 1,
+            "steady_per_minute": 15,
+            "daily": 100
+          }
+        },
+        "source": "https://raw.githubusercontent.com/klaviyo/openapi/main/openapi/stable.json",
+        "confidence": "VERIFIED"
+      },
+      "template_create_api": {
+        "value": {
+          "method": "POST",
+          "url": "https://a.klaviyo.com/api/templates",
+          "scope": "templates:write",
+          "editor_type": "CODE",
+          "rate_limits": {
+            "burst_per_second": 75,
+            "steady_per_minute": 750
+          }
+        },
+        "source": "https://raw.githubusercontent.com/klaviyo/openapi/main/openapi/stable.json",
+        "confidence": "VERIFIED",
+        "note": "drag-and-drop templates are limited to 2 per app partner (https://developers.klaviyo.com/en/reference/flows_api_overview); the engine creates CODE (HTML) templates"
+      },
+      "metric_lookup": {
+        "value": {
+          "method": "GET",
+          "url": "https://a.klaviyo.com/api/metrics",
+          "filter": "integration.name or integration.category only"
+        },
+        "source": "https://raw.githubusercontent.com/klaviyo/openapi/main/openapi/stable.json",
+        "confidence": "VERIFIED",
+        "note": "metrics cannot be filtered by name, so ids are found by paging the list and matching attributes.name"
+      },
+      "frequency": {
+        "value": {
+          "name": "Smart Sending",
+          "kind": "window",
+          "email_default_hours": 16,
+          "sms_default_hours": 24,
+          "push_default_hours": 24,
+          "per_message_flag": "smart_sending_enabled"
+        },
+        "source": "https://help.klaviyo.com/hc/en-us/articles/115002779311",
+        "confidence": "VERIFIED",
+        "note": "Smart Sending skips a marketing message when the profile got one on that channel inside the window; it is a time window, not a count"
+      },
+      "send_window": {
+        "value": {
+          "step": "time-delay delay_until_time / delay_until_weekdays (recipient local time)",
+          "hour_range_on_hour_delays": false,
+          "sms_flag": "sms_quiet_hours_enabled"
+        },
+        "source": "https://help.klaviyo.com/hc/en-us/articles/115003885212",
+        "confidence": "VERIFIED",
+        "note": "there is no generic hour-range window on a minutes or hours delay; SMS messages carry sms_quiet_hours_enabled (https://raw.githubusercontent.com/klaviyo/openapi/main/openapi/stable.json)"
+      },
+      "shopify_metric_names": {
+        "value": {
+          "checkout_started": "Started Checkout",
+          "product_viewed": "Viewed Product",
+          "order_completed": "Placed Order",
+          "product_ordered": "Ordered Product"
+        },
+        "source": "https://help.klaviyo.com/hc/en-us/articles/115005080447",
+        "confidence": "VERIFIED",
+        "note": "Shopify's data reference lists Checkout Started; flows commonly show Started Checkout: confirm the name in the account"
+      },
+      "built_in_metric_names": {
+        "value": {
+          "message_delivered": "Received Email",
+          "message_clicked": "Clicked Email"
+        },
+        "source": "https://help.klaviyo.com/hc/en-us/articles/115002779051",
+        "confidence": "LIKELY",
+        "note": "Klaviyo's built-in email metrics; names not re-read on an official page this session"
+      },
+      "in_app": {
+        "value": false,
+        "source": "https://raw.githubusercontent.com/klaviyo/openapi/main/openapi/stable.json",
+        "confidence": "VERIFIED",
+        "note": "no in-app message action among the flow action types"
+      },
+      "dedupe_key": {
+        "value": "unique_id",
+        "source": "https://developers.klaviyo.com/en/reference/events_api_overview",
+        "confidence": "VERIFIED"
+      },
+      "event_ingest_rate": {
+        "value": {
+          "burst_per_second": 350,
+          "steady_per_minute": 3500,
+          "retry": "429 and 503 with exponential backoff and jitter, honoring Retry-After"
+        },
+        "source": "https://developers.klaviyo.com/en/docs/rate_limits_and_error_handling",
+        "confidence": "VERIFIED"
+      }
+    },
+    "hubspot": {
+      "label": "HubSpot",
+      "tiers": {
+        "value": [
+          "free",
+          "starter",
+          "professional",
+          "enterprise"
+        ],
+        "source": "https://knowledge.hubspot.com/events/create-custom-events",
+        "confidence": "VERIFIED",
+        "note": "Marketing Hub tiers; the checks below name the ones each feature needs"
+      },
+      "min_delay": {
+        "value": {
+          "unit": "minutes",
+          "seconds": 60
+        },
+        "source": "https://knowledge.hubspot.com/workflows/choose-your-workflow-actions",
+        "confidence": "VERIFIED",
+        "note": "set amount of time delays in days, hours and minutes"
+      },
+      "max_delay_days": {
+        "value": null,
+        "source": "https://knowledge.hubspot.com/workflows/choose-your-workflow-actions",
+        "confidence": "UNVERIFIED"
+      },
+      "trigger_types": {
+        "value": [
+          "Custom events",
+          "Email",
+          "Forms",
+          "Segments (list membership changed)",
+          "CRM property changes",
+          "Website",
+          "Integrations"
+        ],
+        "source": "https://knowledge.hubspot.com/workflows/set-event-enrollment-triggers",
+        "confidence": "VERIFIED"
+      },
+      "segment_entry_trigger": {
+        "value": true,
+        "source": "https://developers.hubspot.com/docs/api-reference/2027-03-beta/automation/workflows/action-enrollment-reference.md",
+        "confidence": "VERIFIED",
+        "note": "LIST_BASED enrollment with listFilterBranch, or segment membership changes (IN_LIST)"
+      },
+      "reentry": {
+        "value": {
+          "field": "shouldReEnroll",
+          "default": "first time only"
+        },
+        "source": "https://knowledge.hubspot.com/workflows/set-event-enrollment-triggers",
+        "confidence": "VERIFIED"
+      },
+      "create_api": {
+        "value": {
+          "supported": true,
+          "beta": true,
+          "method": "POST",
+          "url": "https://api.hubapi.com/automation/v4/flows",
+          "dated_beta_paths": [
+            "/automation/2026-09-beta/flows",
+            "/automation/v4/2027-03-beta/flows"
+          ],
+          "scope": "automation",
+          "created_status": "isEnabled false (sent explicitly; the default when omitted is not stated)",
+          "rate_limits": null
+        },
+        "source": "https://developers.hubspot.com/docs/api-reference/legacy/automation/workflows/guide",
+        "confidence": "VERIFIED",
+        "note": "'This API is currently in beta and is subject to change'; the two dated beta pages show different path shapes (https://developers.hubspot.com/docs/api-reference/2026-09-beta/automation/workflows/create-workflow.md, https://developers.hubspot.com/docs/api-reference/2027-03-beta/automation/workflows/guide.md). The engine pins the legacy beta path /automation/v4/flows"
+      },
+      "action_type_ids": {
+        "value": {
+          "delay": "0-1",
+          "delay_until_event": "0-29",
+          "send_email": "0-4",
+          "edit_record": "0-5",
+          "add_to_static_list": "0-63809083",
+          "remove_from_static_list": "0-63863438"
+        },
+        "source": "https://developers.hubspot.com/docs/api-reference/2027-03-beta/automation/workflows/action-enrollment-reference.md",
+        "confidence": "VERIFIED",
+        "note": "the reference page's delay example shows actionTypeId 0-35 against the table's 0-1; the engine uses 0-1 from the table"
+      },
+      "frequency": {
+        "value": {
+          "name": "Email frequency safeguard",
+          "kind": "count",
+          "tier": "enterprise",
+          "periods": [
+            "Daily",
+            "Weekly",
+            "Every two weeks",
+            "Monthly"
+          ]
+        },
+        "source": "https://knowledge.hubspot.com/marketing-email/set-up-an-email-frequency-safeguard",
+        "confidence": "VERIFIED",
+        "note": "includes workflow automated emails; excludes transactional and one-to-one email"
+      },
+      "send_window": {
+        "value": {
+          "workflow_level": "Run actions at specific times only (account time zone)",
+          "api_fields": [
+            "timeWindows",
+            "blockedDates"
+          ],
+          "step": "Time of day or Days of week delay"
+        },
+        "source": "https://knowledge.hubspot.com/workflows/manage-your-workflow-settings",
+        "confidence": "VERIFIED",
+        "note": "actions outside the window are rescheduled to the next window; delays and branches are not. The populated timeWindows JSON shape is not documented"
+      },
+      "event_tokens": {
+        "value": {
+          "loop_over_event_data": false,
+          "event_value_chars": 256,
+          "properties_per_event": 50
+        },
+        "source": "https://developers.hubspot.com/docs/api-reference/2026-03/events/send-event-data/guide.md",
+        "confidence": "VERIFIED",
+        "note": "custom event tokens exist for automated emails (https://knowledge.hubspot.com/website-pages/personalize-your-content); whether they bind to the enrolling occurrence is UNVERIFIED"
+      },
+      "in_app": {
+        "value": false,
+        "source": "https://knowledge.hubspot.com/workflows/choose-your-workflow-actions",
+        "confidence": "UNVERIFIED",
+        "note": "no in-app or push action in Marketing Hub workflows was found"
+      },
+      "dedupe_key": {
+        "value": "uuid",
+        "source": "https://developers.hubspot.com/docs/api-reference/2026-03/events/send-event-data/guide.md",
+        "confidence": "VERIFIED"
+      },
+      "event_ingest_rate": {
+        "value": {
+          "professional": "190 per 10 s",
+          "enterprise": "190 per 10 s",
+          "batch_size": 500,
+          "retry": "429 carries policyName; treat 5xx like 429"
+        },
+        "source": "https://developers.hubspot.com/docs/developer-tooling/platform/usage-guidelines",
+        "confidence": "VERIFIED"
+      }
+    },
+    "braze": {
+      "label": "Braze",
+      "tiers": {
+        "value": [],
+        "source": "https://braze.com/docs/user_guide/engagement_tools/canvas/canvas_components/context",
+        "confidence": "VERIFIED",
+        "note": "Braze gates by workspace feature, not tier: Canvas Context availability varies by workspace"
+      },
+      "min_delay": {
+        "value": {
+          "unit": "seconds",
+          "seconds": 1
+        },
+        "source": "https://braze.com/docs/user_guide/messaging/canvas/canvas_components/delay_step/",
+        "confidence": "VERIFIED",
+        "note": "Delay step units: seconds, minutes, hours, days, weeks"
+      },
+      "max_delay_days": {
+        "value": 730,
+        "source": "https://braze.com/docs/user_guide/messaging/canvas/canvas_components/delay_step/",
+        "confidence": "VERIFIED"
+      },
+      "trigger_types": {
+        "value": [
+          "Scheduled",
+          "Action-Based",
+          "API-Triggered"
+        ],
+        "source": "https://www.braze.com/docs/user_guide/messaging/messaging_fundamentals/delivery_and_entry_types",
+        "confidence": "VERIFIED"
+      },
+      "segment_entry_trigger": {
+        "value": false,
+        "source": "https://www.braze.com/docs/user_guide/messaging/messaging_fundamentals/delivery_and_entry_types",
+        "confidence": "LIKELY",
+        "note": "no 'enters segment' entry is documented; a recurring Scheduled Canvas targets a segment instead"
+      },
+      "reentry": {
+        "value": {
+          "setting": "Allow users to re-enter this Canvas",
+          "unit": "seconds"
+        },
+        "source": "https://www.braze.com/docs/user_guide/engagement_tools/campaigns/building_campaigns/delivery_types/reeligibility",
+        "confidence": "VERIFIED",
+        "note": "re-eligibility is computed in seconds; zero allows re-entry without exiting"
+      },
+      "create_api": {
+        "value": {
+          "supported": false,
+          "duplicate": "POST /canvas/duplicate copies an existing Canvas"
+        },
+        "source": "https://www.braze.com/docs/api/home",
+        "confidence": "VERIFIED",
+        "note": "no endpoint creates or updates a Canvas definition"
+      },
+      "duplicate_body": {
+        "value": {
+          "canvas_id": "string",
+          "name": "string"
+        },
+        "source": "https://www.braze.com/docs/api/endpoints/messaging/duplicate_messages/post_duplicate_canvases",
+        "confidence": "UNVERIFIED",
+        "note": "the duplicate endpoint's body fields, resulting status and limits are not documented on the page read; the shape here is a guess"
+      },
+      "canvas_context": {
+        "value": {
+          "namespace": "context",
+          "availability": "varies by workspace",
+          "legacy": "canvas_entry_properties"
+        },
+        "source": "https://braze.com/docs/user_guide/engagement_tools/canvas/canvas_components/context",
+        "confidence": "VERIFIED"
+      },
+      "frequency": {
+        "value": {
+          "name": "Global frequency capping",
+          "kind": "count",
+          "window_max_days": 30,
+          "capped_message_step": "user advances to the next step",
+          "counting": "calendar day in the user's time zone"
+        },
+        "source": "https://braze.com/docs/user_guide/engagement_tools/campaigns/building_campaigns/rate-limiting",
+        "confidence": "VERIFIED",
+        "note": "frequency capping FAQ: https://www.braze.com/docs/user_guide/messaging/messaging_fundamentals/frequency_capping/faq"
+      },
+      "send_window": {
+        "value": {
+          "level": "Canvas (quiet hours), not per step",
+          "behavior": "Send at next available time (default) or Abort message",
+          "step": "Delay step at a specific time"
+        },
+        "source": "https://www.braze.com/docs/user_guide/messaging/messaging_fundamentals/quiet_hours",
+        "confidence": "VERIFIED"
+      },
+      "exit_criteria": {
+        "value": {
+          "kind": "exception events and segments or filters",
+          "arrays": false
+        },
+        "source": "https://braze.com/docs/user_guide/messaging/canvas/create_a_canvas/exit_criteria/",
+        "confidence": "VERIFIED"
+      },
+      "in_app": {
+        "value": true,
+        "source": "https://www.braze.com/docs/user_guide/messaging/messaging_fundamentals/delivery_and_entry_types",
+        "confidence": "LIKELY",
+        "note": "Canvas Message steps carry in-app messages"
+      },
+      "dedupe_key": {
+        "value": null,
+        "source": "https://braze.com/docs/api/endpoints/user_data/post_user_track",
+        "confidence": "VERIFIED",
+        "note": "none: duplicate events are recorded as separate events; keep a client-side sent log"
+      },
+      "event_ingest_rate": {
+        "value": {
+          "objects_per_request": 75,
+          "requests": "3,000 per 3 seconds (data-points pricing)",
+          "retry": "on 429 wait X-RateLimit-Retry-After, else until X-RateLimit-Reset"
+        },
+        "source": "https://braze.com/docs/api/api_limits",
+        "confidence": "VERIFIED"
+      }
+    },
+    "customerio": {
+      "label": "Customer.io",
+      "tiers": {
+        "value": [
+          "essentials",
+          "premium",
+          "enterprise"
+        ],
+        "source": "https://docs.customer.io/messaging/send/campaigns/triggers.md",
+        "confidence": "VERIFIED",
+        "note": "only the Geofence trigger is tier-gated (Premium and Enterprise)"
+      },
+      "min_delay": {
+        "value": {
+          "unit": "hours",
+          "seconds": 3600
+        },
+        "source": "https://docs.customer.io/messaging/send/workflows/delays/wait-until.md",
+        "confidence": "VERIFIED",
+        "note": "Time Delay examples are in days and hours; minutes are LIKELY but not stated on the pages read"
+      },
+      "minutes_delay": {
+        "value": true,
+        "source": "https://docs.customer.io/messaging/send/workflows/delays/wait-until.md",
+        "confidence": "LIKELY"
+      },
+      "max_delay_days": {
+        "value": 364,
+        "source": "https://docs.customer.io/messaging/send/workflows/delays/wait-until.md",
+        "confidence": "VERIFIED",
+        "note": "a delay chain must be under 365 days"
+      },
+      "trigger_types": {
+        "value": [
+          "Attribute or Segment",
+          "Event",
+          "Form submission",
+          "Important date",
+          "Object updated",
+          "Relationship added or changed",
+          "Webhook"
+        ],
+        "source": "https://docs.customer.io/messaging/send/campaigns/triggers.md",
+        "confidence": "VERIFIED"
+      },
+      "segment_entry_trigger": {
+        "value": true,
+        "source": "https://docs.customer.io/messaging/send/campaigns/triggers.md",
+        "confidence": "VERIFIED",
+        "note": "Attribute or Segment trigger with Every re-match or At fixed intervals"
+      },
+      "reentry": {
+        "value": {
+          "event": [
+            "One time",
+            "On every event",
+            "Once within a time period"
+          ],
+          "segment": [
+            "Every re-match",
+            "At fixed intervals"
+          ]
+        },
+        "source": "https://docs.customer.io/messaging/send/campaigns/triggers.md",
+        "confidence": "VERIFIED"
+      },
+      "create_api": {
+        "value": {
+          "supported": false,
+          "update_action": "PUT /v1/campaigns/{campaign_id}/actions/{action_id}"
+        },
+        "source": "https://docs.customer.io/integrations/api/app/tag/automations",
+        "confidence": "VERIFIED",
+        "note": "all other create, update and delete operations go through the UI"
+      },
+      "frequency": {
+        "value": {
+          "name": "Message limits",
+          "kind": "count",
+          "opt_in": "no workflow counts toward a limit until it opts in",
+          "blocked": "Undeliverable, the person continues"
+        },
+        "source": "https://docs.customer.io/messaging/send/message-limits/overview/",
+        "confidence": "VERIFIED"
+      },
+      "send_window": {
+        "value": {
+          "step": "Time Window delay before the message (person's timezone attribute, with a fallback zone)"
+        },
+        "source": "https://docs.customer.io/messaging/send/workflows/delays/delivery-window/",
+        "confidence": "VERIFIED"
+      },
+      "liquid": {
+        "value": {
+          "latest_since": "2023-11-28",
+          "legacy_has_default_filter": false
+        },
+        "source": "https://docs.customer.io/messaging/liquid/",
+        "confidence": "VERIFIED",
+        "note": "accounts created before 28 Nov 2023 may be on legacy Liquid, which has no default filter"
+      },
+      "event_age_hours": {
+        "value": 72,
+        "source": "https://docs.customer.io/integrations/api/track/tag/track-events/track/",
+        "confidence": "VERIFIED",
+        "note": "only events timestamped in the past 72 hours trigger automations"
+      },
+      "in_app": {
+        "value": true,
+        "source": "https://docs.customer.io/messaging/send/message-limits/overview/",
+        "confidence": "LIKELY",
+        "note": "in-app messages exist (and are outside message limits)"
+      },
+      "dedupe_key": {
+        "value": {
+          "track_v1": "id (ULID)",
+          "pipelines": "messageId"
+        },
+        "source": "https://docs.customer.io/integrations/data-in/source-spec/track-spec/",
+        "confidence": "VERIFIED"
+      },
+      "event_ingest_rate": {
+        "value": {
+          "pipelines": "about 1,000 requests per second guideline; 32 KB per call",
+          "retry": null
+        },
+        "source": "https://docs.customer.io/integrations/api/cdp/",
+        "confidence": "VERIFIED",
+        "note": "no retry guidance found for 429 or 5xx"
+      }
+    },
+    "iterable": {
+      "label": "Iterable",
+      "tiers": {
+        "value": [],
+        "source": "https://support.iterable.com/hc/articles/15342990564372",
+        "confidence": "VERIFIED",
+        "note": "Frequency Decisioning needs CSM enablement; no tier gates for journey entry were found"
+      },
+      "min_delay": {
+        "value": {
+          "unit": "minutes",
+          "seconds": 60
+        },
+        "source": "https://support.iterable.com/hc/articles/14319818758036",
+        "confidence": "VERIFIED"
+      },
+      "max_delay_days": {
+        "value": 365,
+        "source": "https://support.iterable.com/hc/articles/14319818758036",
+        "confidence": "VERIFIED",
+        "note": "365 days, 23 hours, 59 minutes"
+      },
+      "trigger_types": {
+        "value": [
+          "Event occurs",
+          "Schedule",
+          "API call",
+          "Other journey"
+        ],
+        "source": "https://support.iterable.com/hc/articles/15934993720468",
+        "confidence": "VERIFIED"
+      },
+      "segment_entry_trigger": {
+        "value": false,
+        "source": "https://support.iterable.com/hc/articles/7961818099092",
+        "confidence": "LIKELY",
+        "note": "no list-entry trigger: a Schedule entry on a dynamic list runs on a cadence"
+      },
+      "reentry": {
+        "value": {
+          "maximum_entries": [
+            "Unlimited",
+            "1",
+            "custom"
+          ],
+          "simultaneous_entries_default": false
+        },
+        "source": "https://support.iterable.com/hc/articles/15934993720468",
+        "confidence": "VERIFIED"
+      },
+      "create_api": {
+        "value": {
+          "supported": false,
+          "list": "GET /api/journeys",
+          "trigger": "POST /api/workflows/triggerWorkflow"
+        },
+        "source": "https://community.iterable.com/product-updates/new-api-endpoint-to-get-journeys-1142",
+        "confidence": "LIKELY",
+        "note": "no create or update journey endpoint was found (absence of evidence)"
+      },
+      "frequency": {
+        "value": {
+          "name": "Frequency Management",
+          "kind": "count",
+          "default": "off",
+          "caps": "1 to 99 per day, week or month",
+          "capped": "skipped, the user moves on"
+        },
+        "source": "https://support.iterable.com/hc/articles/15342990564372",
+        "confidence": "VERIFIED"
+      },
+      "send_window": {
+        "value": {
+          "level": "Quiet Hours per journey send tile (Delivery and Compliance)",
+          "behavior": [
+            "send at next eligible time",
+            "skip"
+          ]
+        },
+        "source": "https://support.iterable.com/hc/articles/16928857601940",
+        "confidence": "VERIFIED"
+      },
+      "event_fields": {
+        "value": {
+          "trigger_only": true,
+          "all_send_tiles": "LIKELY"
+        },
+        "source": "https://support.iterable.com/hc/articles/206430615",
+        "confidence": "VERIFIED",
+        "note": "event fields reach a template only in a journey the event triggered"
+      },
+      "merge_tags": {
+        "value": {
+          "unsubscribe": [
+            "unsubscribeUrl",
+            "unsubscribeMessageTypeUrl",
+            "hostedUnsubscribeUrl"
+          ],
+          "address": "physicalAddress"
+        },
+        "source": "https://support.iterable.com/hc/articles/206514205",
+        "confidence": "VERIFIED"
+      },
+      "in_app": {
+        "value": true,
+        "source": "https://support.iterable.com/hc/articles/16928857601940",
+        "confidence": "VERIFIED",
+        "note": "in-app is one of the Quiet Hours channels"
+      },
+      "dedupe_key": {
+        "value": "id (an upsert: an event with an existing id is updated)",
+        "source": "https://www.withone.ai/knowledge/iterable/conn_mod_def%3A%3AGMpa_AAb4JM%3A%3AFyDNEPtOQXemxSpKtQdOrg",
+        "confidence": "LIKELY"
+      },
+      "upsert_retriggers": {
+        "value": null,
+        "source": "https://www.withone.ai/knowledge/iterable/conn_mod_def%3A%3AGMpa_AAb4JM%3A%3AFyDNEPtOQXemxSpKtQdOrg",
+        "confidence": "UNVERIFIED",
+        "note": "whether updating an event by id re-triggers a journey is unknown"
+      },
+      "event_ingest_rate": {
+        "value": {
+          "scope": "per project",
+          "retry": "429 on the limit; exponential backoff"
+        },
+        "source": "https://support.iterable.com/hc/en-us/articles/41044692130196-Getting-Started-with-Iterable-s-API",
+        "confidence": "VERIFIED"
+      }
+    },
+    "sfmc": {
+      "label": "Salesforce Marketing Cloud",
+      "tiers": {
+        "value": [],
+        "source": "https://trailhead.salesforce.com/content/learn/modules/einstein-send-time-and-frequency-optimization/send-messages-at-the-right-time-1",
+        "confidence": "VERIFIED",
+        "note": "Einstein features need Marketing Cloud Engagement permissions; no tier gates are used here"
+      },
+      "min_delay": {
+        "value": {
+          "unit": "minutes",
+          "seconds": 60
+        },
+        "source": "https://developer.salesforce.com/docs/marketing/marketing-cloud/guide/wait.html",
+        "confidence": "VERIFIED",
+        "note": "Wait activity waitUnit: minutes, hours, days, weeks or months; Trailhead advises avoiding waits under an hour"
+      },
+      "max_delay_days": {
+        "value": null,
+        "source": "https://developer.salesforce.com/docs/marketing/marketing-cloud/guide/wait.html",
+        "confidence": "UNVERIFIED"
+      },
+      "trigger_types": {
+        "value": [
+          "Data Extension (scheduled)",
+          "API Event"
+        ],
+        "source": "https://trailhead.salesforce.com/content/learn/modules/journey-builder-campaigns/prepare-the-entry-source",
+        "confidence": "VERIFIED"
+      },
+      "segment_entry_trigger": {
+        "value": true,
+        "source": "https://trailhead.salesforce.com/content/learn/modules/journey-builder-campaigns/prepare-the-entry-source",
+        "confidence": "LIKELY",
+        "note": "scheduled Data Extension entry, filled by a SQL Query Activity in Automation Studio"
+      },
+      "reentry": {
+        "value": [
+          "No re-entry",
+          "Re-entry only after exiting",
+          "Re-entry anytime"
+        ],
+        "source": "https://trailhead.salesforce.com/content/learn/modules/journey-builder-campaigns/build-a-journey-campaign",
+        "confidence": "VERIFIED"
+      },
+      "create_api": {
+        "value": {
+          "supported": true,
+          "method": "POST",
+          "url": "https://YOUR_SUBDOMAIN.rest.marketingcloudapis.com/interaction/v1/interactions",
+          "created_status": "Draft",
+          "publish": "POST /interaction/v1/interactions/publishAsync/{id}?versionNumber=",
+          "scope": "page names Automation | Interactions | Read"
+        },
+        "source": "https://developer.salesforce.com/docs/marketing/marketing-cloud/guide/postCreateInteraction.html",
+        "confidence": "VERIFIED",
+        "note": "status is assigned by Journey Builder and never sent; publishing is a separate call (https://developer.salesforce.com/docs/marketing/marketing-cloud/guide/jb-api-specification.html)"
+      },
+      "activity_types": {
+        "value": {
+          "wait": "Wait",
+          "email": "EMAILV2"
+        },
+        "source": "https://developer.salesforce.com/docs/marketing/marketing-cloud/guide/wait.html",
+        "confidence": "VERIFIED",
+        "note": "Wait from the Wait Format page; EMAILV2 from the Email Activity Format page (https://developer.salesforce.com/docs/marketing/marketing-cloud/guide/send-email.html)"
+      },
+      "decision_split": {
+        "value": {
+          "type": "MULTICRITERIADECISION",
+          "criteria": "Filter XML per outcome"
+        },
+        "source": "https://developer.salesforce.com/docs/marketing/marketing-cloud/guide/multiCriteriaDecision.html",
+        "confidence": "UNVERIFIED",
+        "note": "the Multi-Criteria Decision Split format page could not be read this session; type string and criteria shape are unverified"
+      },
+      "goal": {
+        "value": {
+          "type": "ContactEvent",
+          "criteria": "Filter XML in configurationArguments.criteria"
+        },
+        "source": "https://developer.salesforce.com/docs/marketing/marketing-cloud/guide/getting-started-spec.html",
+        "confidence": "VERIFIED",
+        "note": "the Filter XML format itself is not documented on the page read"
+      },
+      "frequency": {
+        "value": null,
+        "source": "https://trailhead.salesforce.com/content/learn/modules/einstein-send-time-and-frequency-optimization/send-messages-at-the-right-time-1",
+        "confidence": "UNVERIFIED",
+        "note": "no hard Journey Builder frequency cap was found; Einstein Engagement Frequency exists (details not read)"
+      },
+      "send_window": {
+        "value": {
+          "step": "Wait Until a time of day, or Contact Scheduling / blackout windows"
+        },
+        "source": "https://trailhead.salesforce.com/ko/trailblazer-community/feed/0D5KX00000kSbbt0AC",
+        "confidence": "LIKELY"
+      },
+      "in_app": {
+        "value": false,
+        "source": "https://developer.salesforce.com/docs/marketing/marketing-cloud/guide/getting-started-spec.html",
+        "confidence": "UNVERIFIED"
+      },
+      "dedupe_key": {
+        "value": null,
+        "source": "https://developer.salesforce.com/docs/marketing/marketing-cloud/references/mc_rest_interaction/postEvent.html",
+        "confidence": "VERIFIED",
+        "note": "no idempotency key is documented for API Event entry"
+      },
+      "event_ingest_rate": {
+        "value": {
+          "retry": "429 error 50100 carries Retry-After: 5; 50200 has no retry header"
+        },
+        "source": "https://developer.salesforce.com/docs/atlas.en-us.noversion.mc-apis.meta/mc-%20%20apis/rate-limiting-errors.htm",
+        "confidence": "VERIFIED"
+      }
+    }
+  },
+  "checks": [
+    {
+      "id": "hubspot.custom_event_enrollment",
+      "platform": "hubspot",
+      "when": "custom_event_trigger",
+      "kind": "requirement",
+      "hard": true,
+      "requires": {
+        "tier_in": [
+          "professional",
+          "enterprise"
+        ]
+      },
+      "requirement": "Custom behavioral event enrollment needs Professional or Enterprise (Marketing, Sales, Service, Data, Content, Smart CRM or Revenue Hub); since March 2026 it is no longer Enterprise only",
+      "source": "https://knowledge.hubspot.com/events/create-custom-events",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "hubspot.send_email_action",
+      "platform": "hubspot",
+      "when": "email_step",
+      "kind": "requirement",
+      "hard": true,
+      "requires": {
+        "tier_in": [
+          "professional",
+          "enterprise"
+        ]
+      },
+      "requirement": "The Send email workflow action needs Marketing Hub (or Service Hub) Professional or Enterprise",
+      "source": "https://knowledge.hubspot.com/workflows/choose-your-workflow-actions",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "hubspot.frequency_safeguard",
+      "platform": "hubspot",
+      "when": "frequency_cap",
+      "kind": "requirement",
+      "hard": false,
+      "requires": {
+        "tier_in": [
+          "enterprise"
+        ]
+      },
+      "requirement": "The email frequency safeguard (a send cap across emails) is Marketing Hub Enterprise; on lower tiers the plan's cap holds only inside this workflow",
+      "source": "https://knowledge.hubspot.com/marketing-email/set-up-an-email-frequency-safeguard",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "hubspot.workflow_time_windows",
+      "platform": "hubspot",
+      "when": "send_window",
+      "kind": "requirement",
+      "hard": false,
+      "requires": {
+        "tier_in": [
+          "professional",
+          "enterprise"
+        ]
+      },
+      "requirement": "Workflow time windows ('Run actions at specific times only') need Professional or Enterprise, and use the account time zone, not the recipient's",
+      "source": "https://knowledge.hubspot.com/workflows/manage-your-workflow-settings",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "hubspot.create_api_beta",
+      "platform": "hubspot",
+      "when": "create_api",
+      "kind": "advisory",
+      "requirement": "The automation v4 flows API is beta and subject to change: the artifact pins POST /automation/v4/flows and is created with isEnabled false",
+      "source": "https://developers.hubspot.com/docs/api-reference/legacy/automation/workflows/guide",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "hubspot.event_data_in_email",
+      "platform": "hubspot",
+      "when": "product_block",
+      "kind": "advisory",
+      "requirement": "Workflow emails cannot loop over event data (256 characters per value, 50 properties): write lcm_last_item_name and lcm_last_item_url to the contact when the event is sent",
+      "source": "https://developers.hubspot.com/docs/api-reference/2026-03/events/send-event-data/guide.md",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "hubspot.non_email_steps",
+      "platform": "hubspot",
+      "when": "non_email_step",
+      "kind": "advisory",
+      "requirement": "SMS, push and in-app steps are not in the verified workflow action list: the artifact sends the email version at those steps; add an SMS action by hand where your account has one",
+      "source": "https://developers.hubspot.com/docs/api-reference/2027-03-beta/automation/workflows/action-enrollment-reference.md",
+      "confidence": "UNVERIFIED"
+    },
+    {
+      "id": "klaviyo.create_daily_limit",
+      "platform": "klaviyo",
+      "when": "create_api",
+      "kind": "limit",
+      "limit": {
+        "per_day": 100,
+        "counts": [
+          "flow",
+          "segment"
+        ]
+      },
+      "requirement": "Create Flow and Create Segment are limited to 1 per second, 15 per minute and 100 per day",
+      "source": "https://raw.githubusercontent.com/klaviyo/openapi/main/openapi/stable.json",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "klaviyo.definition_not_editable",
+      "platform": "klaviyo",
+      "when": "create_api",
+      "kind": "advisory",
+      "requirement": "A flow definition cannot be changed through the API after it is created (only its status): review the artifact before --create, then edit in the flow builder",
+      "source": "https://developers.klaviyo.com/en/reference/flows_api_overview",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "klaviyo.smart_sending_is_a_window",
+      "platform": "klaviyo",
+      "when": "frequency_cap",
+      "kind": "advisory",
+      "requirement": "Smart Sending is a per-channel time window (email 16 hours by default), not a count: the plan's weekly cap is approximated by Smart Sending plus the flow's own spacing",
+      "source": "https://help.klaviyo.com/hc/en-us/articles/115002779311",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "klaviyo.no_hour_window_on_delays",
+      "platform": "klaviyo",
+      "when": "send_window",
+      "kind": "advisory",
+      "requirement": "Klaviyo has no hour-range window on a minutes or hours delay: hour-level touches send when the delay ends (SMS keeps its quiet hours)",
+      "source": "https://help.klaviyo.com/hc/en-us/articles/115003885212",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "klaviyo.no_in_app",
+      "platform": "klaviyo",
+      "when": "in_app_step",
+      "kind": "advisory",
+      "requirement": "Klaviyo flows have no in-app message action: in-app steps are left out of the artifact; deliver them from your product",
+      "source": "https://raw.githubusercontent.com/klaviyo/openapi/main/openapi/stable.json",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "braze.canvas_context",
+      "platform": "braze",
+      "when": "product_block",
+      "kind": "requirement",
+      "hard": true,
+      "requires": {
+        "option": "canvas_context",
+        "equals": true
+      },
+      "requirement": "The product block reads {{context.${items}}}: Canvas Context must be available in the workspace (availability varies by workspace)",
+      "source": "https://braze.com/docs/user_guide/engagement_tools/canvas/canvas_components/context",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "braze.no_create_api",
+      "platform": "braze",
+      "when": "always",
+      "kind": "info",
+      "requirement": "No Braze endpoint creates or updates a Canvas: the pack is a build sheet (optionally a /canvas/duplicate request from a template Canvas you made)",
+      "source": "https://www.braze.com/docs/api/home",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "braze.duplicate_unverified",
+      "platform": "braze",
+      "when": "duplicate_request",
+      "kind": "advisory",
+      "requirement": "The /canvas/duplicate body, resulting status and limits are not documented on the page read: the request is UNVERIFIED and is sent only with --allow-unverified",
+      "source": "https://www.braze.com/docs/api/endpoints/messaging/duplicate_messages/post_duplicate_canvases",
+      "confidence": "UNVERIFIED"
+    },
+    {
+      "id": "braze.no_segment_entry",
+      "platform": "braze",
+      "when": "scheduled_segment",
+      "kind": "advisory",
+      "requirement": "Braze has no 'enters segment' entry: the native mode is a daily Scheduled Canvas on a segment that holds people only on the day they cross the line",
+      "source": "https://www.braze.com/docs/user_guide/messaging/messaging_fundamentals/delivery_and_entry_types",
+      "confidence": "LIKELY"
+    },
+    {
+      "id": "braze.quiet_hours_canvas_level",
+      "platform": "braze",
+      "when": "send_window",
+      "kind": "advisory",
+      "requirement": "Quiet hours are set on the Canvas, not per step (user local time; Send at next available time)",
+      "source": "https://www.braze.com/docs/user_guide/messaging/messaging_fundamentals/quiet_hours",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "braze.capped_users_advance",
+      "platform": "braze",
+      "when": "frequency_cap",
+      "kind": "advisory",
+      "requirement": "Global frequency caps count by calendar day in the user's time zone, and a capped user advances past a Message step without the send",
+      "source": "https://www.braze.com/docs/user_guide/messaging/messaging_fundamentals/frequency_capping/faq",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "braze.no_dedupe",
+      "platform": "braze",
+      "when": "warehouse_job",
+      "kind": "advisory",
+      "requirement": "/users/track has no idempotency key: lcm send keeps a client-side sent log so a rerun never pushes an entrant twice",
+      "source": "https://braze.com/docs/api/endpoints/user_data/post_user_track",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "customerio.no_create_api",
+      "platform": "customerio",
+      "when": "always",
+      "kind": "info",
+      "requirement": "The App API cannot create campaigns (only update an existing action): the pack is a build sheet",
+      "source": "https://docs.customer.io/integrations/api/app/tag/automations",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "customerio.message_limits_opt_in",
+      "platform": "customerio",
+      "when": "frequency_cap",
+      "kind": "advisory",
+      "requirement": "Message limits apply only to workflows that opt in: turn the limit on in this campaign's settings, or the plan's cap is not enforced across campaigns",
+      "source": "https://docs.customer.io/messaging/send/message-limits/overview/",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "customerio.minutes_unverified",
+      "platform": "customerio",
+      "when": "sub_hour_wait",
+      "kind": "advisory",
+      "requirement": "A Time Delay in minutes is LIKELY but not stated on the pages read: confirm a sub-hour delay saves, or round it to the hour",
+      "source": "https://docs.customer.io/messaging/send/workflows/delays/wait-until.md",
+      "confidence": "LIKELY"
+    },
+    {
+      "id": "customerio.latest_liquid",
+      "platform": "customerio",
+      "when": "always",
+      "kind": "requirement",
+      "hard": true,
+      "requires": {
+        "option": "liquid",
+        "equals": "latest"
+      },
+      "requirement": "The templates use the default filter, which legacy Liquid lacks: the workspace must be on latest Liquid (accounts from 28 Nov 2023 are)",
+      "source": "https://docs.customer.io/messaging/liquid/",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "customerio.event_age",
+      "platform": "customerio",
+      "when": "warehouse_job",
+      "kind": "advisory",
+      "requirement": "Only events timestamped in the last 72 hours trigger a campaign: push the day's entrants the same day",
+      "source": "https://docs.customer.io/integrations/api/track/tag/track-events/track/",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "iterable.no_create_api",
+      "platform": "iterable",
+      "when": "always",
+      "kind": "info",
+      "requirement": "No create or update journey endpoint was found (only list and trigger): the pack is a build sheet",
+      "source": "https://community.iterable.com/product-updates/new-api-endpoint-to-get-journeys-1142",
+      "confidence": "LIKELY"
+    },
+    {
+      "id": "iterable.frequency_management_off",
+      "platform": "iterable",
+      "when": "frequency_cap",
+      "kind": "advisory",
+      "requirement": "Frequency Management is off by default: set the cap in project settings; capped messages are skipped and the user moves on",
+      "source": "https://support.iterable.com/hc/articles/15342990564372",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "iterable.quiet_hours_per_tile",
+      "platform": "iterable",
+      "when": "send_window",
+      "kind": "advisory",
+      "requirement": "Quiet Hours are set on each send tile (Delivery and Compliance), from the user's timeZone field",
+      "source": "https://support.iterable.com/hc/articles/16928857601940",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "iterable.event_fields_trigger_only",
+      "platform": "iterable",
+      "when": "product_block",
+      "kind": "advisory",
+      "requirement": "Event fields (items) reach the template only when the journey is triggered by that event; that they reach every send tile is LIKELY",
+      "source": "https://support.iterable.com/hc/articles/206430615",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "iterable.upsert_retrigger_unknown",
+      "platform": "iterable",
+      "when": "warehouse_job",
+      "kind": "advisory",
+      "requirement": "Re-sending an event with the same id updates it; whether that update re-triggers a journey is unknown, so lcm send never re-sends an accepted row",
+      "source": "https://www.withone.ai/knowledge/iterable/conn_mod_def%3A%3AGMpa_AAb4JM%3A%3AFyDNEPtOQXemxSpKtQdOrg",
+      "confidence": "UNVERIFIED"
+    },
+    {
+      "id": "sfmc.created_as_draft",
+      "platform": "sfmc",
+      "when": "create_api",
+      "kind": "info",
+      "requirement": "The journey is created in Draft; publishing is a separate call (publishAsync) the pack never makes",
+      "source": "https://developer.salesforce.com/docs/marketing/marketing-cloud/guide/postCreateInteraction.html",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "sfmc.decision_criteria_unverified",
+      "platform": "sfmc",
+      "when": "create_api",
+      "kind": "advisory",
+      "requirement": "The Decision Split's type string and Filter XML criteria are UNVERIFIED (the format page could not be read): the journey is created only with --allow-unverified; check the split in Journey Builder",
+      "source": "https://developer.salesforce.com/docs/marketing/marketing-cloud/guide/multiCriteriaDecision.html",
+      "confidence": "UNVERIFIED"
+    },
+    {
+      "id": "sfmc.no_global_cap",
+      "platform": "sfmc",
+      "when": "frequency_cap",
+      "kind": "advisory",
+      "requirement": "No hard Journey Builder frequency cap was found: the plan's cap holds only inside this journey",
+      "source": "https://trailhead.salesforce.com/content/learn/modules/einstein-send-time-and-frequency-optimization/send-messages-at-the-right-time-1",
+      "confidence": "UNVERIFIED"
+    },
+    {
+      "id": "sfmc.short_waits",
+      "platform": "sfmc",
+      "when": "short_wait",
+      "kind": "advisory",
+      "requirement": "Trailhead advises avoiding waits under an hour",
+      "source": "https://trailhead.salesforce.com/content/learn/modules/journey-builder-campaigns/build-a-journey-campaign",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "sfmc.no_dedupe",
+      "platform": "sfmc",
+      "when": "warehouse_job",
+      "kind": "advisory",
+      "requirement": "API Event entry has no idempotency key: a row whose push succeeded and whose ledger mark failed enters twice",
+      "source": "https://developer.salesforce.com/docs/marketing/marketing-cloud/references/mc_rest_interaction/postEvent.html",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "sfmc.non_email_steps",
+      "platform": "sfmc",
+      "when": "non_email_step",
+      "kind": "advisory",
+      "requirement": "SMS and push activity formats were not verified: the artifact sends the email version at those steps; add MobileConnect or MobilePush activities by hand",
+      "source": "https://developer.salesforce.com/docs/marketing/marketing-cloud/guide/getting-started-spec.html",
+      "confidence": "UNVERIFIED"
+    },
+    {
+      "id": "all.events_in_esp",
+      "platform": "*",
+      "when": "always",
+      "kind": "requirement",
+      "hard": true,
+      "requires": {
+        "events_in_esp": true
+      },
+      "requirement": "Every event the flow reads inside the platform (the trigger, the exit, the exclusions) must reach the platform: account option events_in_esp lists them. A native absence trigger whose events are not in the platform needs --warehouse-job",
+      "source": "https://help.klaviyo.com/hc/en-us/articles/115002779051",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "all.min_delay_unit",
+      "platform": "*",
+      "when": "sub_unit_wait",
+      "kind": "requirement",
+      "hard": true,
+      "requires": {
+        "whole_units": true
+      },
+      "requirement": "Every wait must be a whole number of the platform's smallest delay unit",
+      "source": "config/esp_capabilities.json platforms.<platform>.min_delay",
+      "confidence": "VERIFIED"
+    },
+    {
+      "id": "all.content_dialect",
+      "platform": "*",
+      "when": "always",
+      "kind": "requirement",
+      "hard": true,
+      "requires": {
+        "dialect_matches": true
+      },
+      "requirement": "The rendered copy must be in this platform's template dialect",
+      "source": "engine/models.py PLATFORM_DIALECT",
+      "confidence": "VERIFIED"
+    }
+  ]
+}

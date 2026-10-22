@@ -70,7 +70,7 @@ def test_outputs_are_written_and_free_of_em_dashes(plan, tmp_path):
     assert {p.name for p in (out / "cohort").iterdir()} >= {"entry_postgres.sql", "entry_snowflake.sql", "entry_bigquery.sql", "history_bigquery.sql"}
 
 
-@pytest.mark.parametrize("platform", ["klaviyo", "hubspot", "braze", "customerio", "sfmc"])
+@pytest.mark.parametrize("platform", ["klaviyo", "hubspot", "braze", "customerio", "sfmc", "iterable"])
 def test_every_platform_renders_valid_templates_and_payloads(platform):
     b = load_brief(EXAMPLE).model_copy(update={"platform": platform})
     p = orchestrator.run(b, copy_mode="offline")
@@ -83,7 +83,8 @@ def test_every_platform_renders_valid_templates_and_payloads(platform):
             for h in html:
                 assert template_lint.lint(h, b.template_dialect, email=True)["ok"]
     if platform != "sfmc":
-        name, errs = campaign_simulator.validate_request(p.cohort.trigger_payload_example)
+        from adapters.destinations.event_payloads import validate_request   # the simulator's endpoints plus Iterable
+        name, errs = validate_request(p.cohort.trigger_payload_example)
         assert not errs, (name, errs)
 
 

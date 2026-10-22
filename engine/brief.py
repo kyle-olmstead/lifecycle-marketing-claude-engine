@@ -26,7 +26,7 @@ from engine.models import Assumption, Brief, EventMatch
 
 NUMBER_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
 PLATFORMS = (("customer.io", "customerio"), ("customerio", "customerio"), ("klaviyo", "klaviyo"), ("hubspot", "hubspot"),
-             ("braze", "braze"), ("marketing cloud", "sfmc"), ("sfmc", "sfmc"))
+             ("braze", "braze"), ("marketing cloud", "sfmc"), ("sfmc", "sfmc"), ("iterable", "iterable"))
 WINBACK_WORDS = ("win-back", "winback", "win back", "win them back", "bring back", "bring them back", "come back", "re-engage",
                  "reengage", "re-engagement", "reactivat", "lapsed", "lapse", "inactive", "stopped", "dormant", "churn", "gone quiet")
 ACTIVATION_WORDS = ("onboarding flow", "onboarding series", "activation", "welcome", "new users", "new signups", "new sign-ups",
