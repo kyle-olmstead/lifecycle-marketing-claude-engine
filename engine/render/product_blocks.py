@@ -8,7 +8,7 @@ the vendor's documentation, checked 2026-10-21:
               event.extra.line_items (item.product.title, item.line_price, item.product.images.0.src) and Viewed Product
               carries event.Name / event.URL / event.ImageURL / event.Price
               (help.klaviyo.com/hc/en-us/articles/115002779071, /4408802597659, /115005080447); events the engine sends
-              carry items[] with product_name, url, image_url, price, quantity (developers.klaviyo.com, use_conditionals).
+              carry items[] with name, url, image_url, price, quantity (config/tracking_plan.json line_item) (developers.klaviyo.com, use_conditionals).
   Customer.io {{event.<attribute>}} in event-triggered campaigns, {% for p in event.products %} (docs.customer.io/messaging/liquid/).
   Braze       {{context.${...}}} is current (canvas_entry_properties is legacy); the documented loop is
               {% for item in {{context.${products}}} %} (braze.com/docs, context_and_event_properties, ecommerce_use_cases).
@@ -50,12 +50,14 @@ def item_name(brief: Brief, dialect: str) -> str:
     fb = _fb(brief)
     src = source(brief)
     if dialect == "klaviyo":
-        path = {"shopify_line_items": "event.extra.line_items.0.product.title", "shopify_viewed_product": "event.Name"}.get(src, "event.items.0.product_name")
+        path = {"shopify_line_items": "event.extra.line_items.0.product.title", "shopify_viewed_product": "event.Name"}.get(src, "event.items.0.name")
         return "{{ " + path + "|default:'" + fb + "' }}"
     if dialect == "customerio":
-        return '{{ event.items.first.product_name | default: "' + fb + '" }}'
+        path = "event.name" if brief.flow_type == "browse_abandon" else "event.items.first.name"
+        return '{{ ' + path + ' | default: "' + fb + '" }}'
     if dialect == "braze":
-        return "{{ context.${items}[0].product_name | default: '" + fb + "' }}"
+        path = "context.${name}" if brief.flow_type == "browse_abandon" else "context.${items}[0].name"
+        return "{{ " + path + " | default: '" + fb + "' }}"
     if dialect == "hubl":
         return '{{ personalization_token("contact.lcm_last_item_name", "' + fb + '") }}'
     if dialect == "ampscript":
@@ -106,6 +108,11 @@ def block(brief: Brief, dialect: str) -> Tuple[Optional[str], str]:
         return None, ""
     src = source(brief)
     fb = _fb(brief)
+    if brief.flow_type == "browse_abandon" and dialect in ("customerio", "braze"):
+        # one viewed product, carried on the product_viewed event itself (config/tracking_plan.json), not an items[] list
+        f = (lambda k: "{{ event." + k + " }}") if dialect == "customerio" else (lambda k: "{{context.${" + k + "}}}")
+        name = ("{{ event.name | default: '" + fb + "' }}") if dialect == "customerio" else ("{{context.${name} | default: '" + fb + "'}}")
+        return _row_mjml(name, f("url"), f("image_url"), f("price")), f"{name}: {f('url')}"
     if dialect == "klaviyo" and src == "shopify_viewed_product":
         row = _row_mjml("{{ event.Name|default:'" + fb + "' }}", "{{ event.URL }}", "{{ event.ImageURL }}", "{{ event.Price }}")
         return row, "{{ event.Name|default:'" + fb + "' }}: {{ event.URL }}"
@@ -115,21 +122,21 @@ def block(brief: Brief, dialect: str) -> Tuple[Optional[str], str]:
                                              "{{ organization.url }}products/{{ item.product.handle }}", "{{ item.product.images.0.src }}",
                                              "{{ item.quantity }} x {{ item.line_price }}")
         else:
-            coll, name, url, image, price = ("event.items", "{{ item.product_name }}", "{{ item.url }}", "{{ item.image_url }}",
+            coll, name, url, image, price = ("event.items", "{{ item.name }}", "{{ item.url }}", "{{ item.image_url }}",
                                              "{{ item.quantity }} x {{ item.price }}")
         loop = "{% for item in " + coll + "|slice:':3' %}"
         return (f"          <mj-raw>{loop}</mj-raw>\n" + _row_mjml(name, url, image, price) + "          <mj-raw>{% endfor %}</mj-raw>\n",
                 loop + name + ": " + url + "\n{% endfor %}")
     if dialect == "customerio":
         loop = "{% for item in event.items limit: 3 %}"
-        row = _row_mjml("{{ item.product_name }}", "{{ item.url }}", "{{ item.image_url }}", "{{ item.quantity }} x {{ item.price }}")
+        row = _row_mjml("{{ item.name }}", "{{ item.url }}", "{{ item.image_url }}", "{{ item.quantity }} x {{ item.price }}")
         return (f"          <mj-raw>{loop}</mj-raw>\n" + row + "          <mj-raw>{% endfor %}</mj-raw>\n",
-                loop + "{{ item.product_name }}: {{ item.url }}\n{% endfor %}")
+                loop + "{{ item.name }}: {{ item.url }}\n{% endfor %}")
     if dialect == "braze":
         loop = "{% for item in {{context.${items}}} limit: 3 %}"
-        row = _row_mjml("{{item.product_name}}", "{{item.url}}", "{{item.image_url}}", "{{item.quantity}} x {{item.price}}")
+        row = _row_mjml("{{item.name}}", "{{item.url}}", "{{item.image_url}}", "{{item.quantity}} x {{item.price}}")
         return (f"          <mj-raw>{loop}</mj-raw>\n" + row + "          <mj-raw>{% endfor %}</mj-raw>\n",
-                loop + "{{item.product_name}}: {{item.url}}\n{% endfor %}")
+                loop + "{{item.name}}: {{item.url}}\n{% endfor %}")
     if dialect == "hubl":
         name = '{{ personalization_token("contact.lcm_last_item_name", "' + fb + '") }}'
         url = '{{ personalization_token("contact.lcm_last_item_url", "") }}'
@@ -155,4 +162,4 @@ def sync_note(brief: Brief) -> Optional[str]:
         return "Pass the items array as a Canvas context variable named items (Canvas Context must be enabled in the workspace)"
     if source(brief).startswith("shopify"):
         return "Uses Shopify's own Klaviyo events (Checkout Started / Placed Order line items, Viewed Product); no extra sync"
-    return "The trigger event must carry items[] with product_name, url, image_url, price and quantity"
+    return "The trigger event must carry items[] with name, url, image_url, price and quantity (config/tracking_plan.json line_item)"
