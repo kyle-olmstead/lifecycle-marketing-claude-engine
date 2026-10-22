@@ -147,3 +147,44 @@ def test_each_cap_phrase_keeps_its_own_channel():
     caps = parse_cap_text("no more than 2 texts a day and 6 emails a month")
     assert [(c.channels, c.max, c.window) for c in caps] == [(["sms"], 2, "P1D"), (["email"], 6, "P30D")]
     assert parse_cap_text("three messages a week")[0].channels == ["email", "sms", "push"]
+
+
+def _briefs():
+    import yaml
+    return [(p, yaml.safe_load(p.read_text())) for p in sorted((ROOT / "examples" / "brands").glob("*/briefs/**/*.yaml"))]
+
+
+def test_every_example_brief_matches_the_brief_schema():
+    briefs = _briefs()
+    assert len(briefs) >= 4
+    for path, doc in briefs:
+        assert _schema_ok("brief.schema.json", {k: v for k, v in doc.items() if v is not None}), (path, schemas.errors("brief.schema.json", doc))
+
+
+@pytest.mark.parametrize("field,value", [("flow_type", "referral"), ("touches", 0), ("platform", "mailchimp"), ("holdout_pct", 80),
+                                         ("channels", ["fax"]), ("surprise", 1)])
+def test_the_brief_schema_and_model_reject_the_same_bad_briefs(field, value):
+    from engine.models import Brief
+    good = {"product_name": "Acme", "flow_type": "winback", "core_conversion_event": {"event": "feature_used"}, "churn_threshold_days": 14}
+    assert _schema_ok("brief.schema.json", good) and _model_ok(Brief, good)
+    bad = {**good, field: value}
+    assert not _schema_ok("brief.schema.json", bad), field
+    assert not _model_ok(Brief, bad), field
+
+
+def test_the_event_envelope_accepts_planned_events_and_rejects_bad_envelopes():
+    good = json.loads((ROOT / "examples/events/valid_events.json").read_text())
+    for e in good:
+        assert _schema_ok("event_envelope.schema.json", e), schemas.errors("event_envelope.schema.json", e)
+    e = good[0]
+    for broken in ({k: v for k, v in e.items() if k != "event_id"}, {**e, "event": "Signed Up"},
+                   {k: v for k, v in e.items() if k not in ("user_id", "anonymous_id")}, {**e, "timestamp": "yesterday"}):
+        assert not _schema_ok("event_envelope.schema.json", broken), broken
+
+
+def test_every_flow_event_is_in_the_tracking_plan():
+    from engine.flows.library import FLOWS
+    plan = json.loads((ROOT / "config/tracking_plan.json").read_text())
+    events = {e for f in FLOWS.values() for d in (f.trigger_event, f.goal_event) for e in d.values()}
+    missing = sorted(e for e in events if e not in plan["$defs"] and not e.startswith("message_"))   # message_* live in message_events
+    assert not missing, missing

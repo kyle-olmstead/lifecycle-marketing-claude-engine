@@ -27,7 +27,11 @@
         "subscription_started",
         "subscription_cancelled",
         "push_permission_changed",
-        "sms_consent_changed"
+        "sms_consent_changed",
+        "product_added",
+        "trial_started",
+        "payment_failed",
+        "payment_succeeded"
       ]
     },
     "event_id": {
@@ -328,6 +332,82 @@
         "properties": {
           "properties": {
             "$ref": "#/$defs/sms_consent_changed"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "product_added"
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "then": {
+        "properties": {
+          "properties": {
+            "$ref": "#/$defs/product_added"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "trial_started"
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "then": {
+        "properties": {
+          "properties": {
+            "$ref": "#/$defs/trial_started"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "payment_failed"
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "then": {
+        "properties": {
+          "properties": {
+            "$ref": "#/$defs/payment_failed"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "payment_succeeded"
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "then": {
+        "properties": {
+          "properties": {
+            "$ref": "#/$defs/payment_succeeded"
           }
         }
       }
@@ -733,6 +813,181 @@
           "description": "a product image (PNG or JPG); the product block shows it at 96 px"
         }
       }
+    },
+    "trial_started": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subscription_id"
+      ],
+      "properties": {
+        "subscription_id": {
+          "type": "string"
+        },
+        "plan": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "trial_end": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    },
+    "payment_failed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invoice_id"
+      ],
+      "properties": {
+        "invoice_id": {
+          "type": "string"
+        },
+        "subscription_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "amount_due": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "currency units"
+        },
+        "currency": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Z]{3}$"
+        },
+        "attempt_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "next_payment_attempt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "invoice_status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dated_at": {
+          "enum": [
+            "invoice_finalized",
+            "invoice_created",
+            "attempt",
+            null
+          ],
+          "description": "what the time is: the billing system's attempt, or the invoice's finalization when attempts are not exported"
+        }
+      }
+    },
+    "payment_succeeded": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invoice_id"
+      ],
+      "properties": {
+        "invoice_id": {
+          "type": "string"
+        },
+        "subscription_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "amount_paid": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "currency units"
+        },
+        "currency": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Z]{3}$"
+        },
+        "attempt_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "product_added": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product_id"
+      ],
+      "properties": {
+        "product_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "price": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "currency units"
+        },
+        "quantity": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "currency": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Z]{3}$"
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https://"
+        },
+        "image_url": {
+          "type": "string",
+          "pattern": "^https://"
+        }
+      }
     }
   },
   "x-tracking-plan": [
@@ -878,6 +1133,52 @@
       ],
       "unlocks": [
         "SMS channel eligibility with an auditable consent record (source, timestamp, mechanism)"
+      ]
+    },
+    {
+      "event": "product_added",
+      "layer": "behavior",
+      "sources": [
+        "web",
+        "server"
+      ],
+      "unlocks": [
+        "browse and cart abandonment context",
+        "add-to-cart rate in the leak map"
+      ]
+    },
+    {
+      "event": "trial_started",
+      "layer": "transaction",
+      "sources": [
+        "server",
+        "warehouse"
+      ],
+      "unlocks": [
+        "trial conversion flow entry"
+      ]
+    },
+    {
+      "event": "payment_failed",
+      "layer": "transaction",
+      "sources": [
+        "server",
+        "warehouse"
+      ],
+      "unlocks": [
+        "failed payment (dunning) flow entry"
+      ]
+    },
+    {
+      "event": "payment_succeeded",
+      "layer": "transaction",
+      "sources": [
+        "server",
+        "warehouse"
+      ],
+      "unlocks": [
+        "dunning exit and recovery rate",
+        "subscription revenue"
       ]
     }
   ],

@@ -269,8 +269,8 @@ lifecycle-marketing-claude-engine/
 │                    GA4, Segment, RudderStack) and the webhook receiver; destinations: ESP request bodies, Sheets
 ├── prompts/         the method as prompts: core principles, template syntax, diagnostics, one prompt per job, examples
 ├── skills/          the Claude plugin skills; each calls lcm for the deterministic work
-├── schemas/         machine-readable contracts: flow spec, trigger, sending gate, frequency and offer policy, consent,
-│                    workspace, brand kit, experiment, and every tool input
+├── schemas/         machine-readable contracts: brief, flow spec, trigger, sending gate, frequency and offer policy, consent,
+│                    event envelope, workspace, brand kit, experiment, and every tool input
 ├── templates/       the workspace (lmm.yaml), brief and brand kit templates, MJML email components
 ├── workflows/       named job graphs: morning_check, new_flow, quarterly_review
 ├── config/          compliance rules (each with its source), the tracking plan, ESP request schemas, the question bank

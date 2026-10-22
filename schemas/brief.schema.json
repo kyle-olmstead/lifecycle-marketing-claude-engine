@@ -1,0 +1,1097 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kyle-olmstead/lifecycle-marketing-claude-engine/schemas/brief.schema.json",
+  "description": "A campaign brief (engine/models.py Brief). Fields left out come from the workspace's lmm.yaml, then the engine's defaults. Cross-field rules (a send hour inside every channel's permitted window, a flow's touch limit) are enforced by the model when the brief is read, not by this schema.",
+  "$defs": {
+    "AbsenceRule": {
+      "additionalProperties": false,
+      "description": "Enter when `missing` has not happened for `after` since the last `anchor` (anchor defaults to missing itself).",
+      "properties": {
+        "anchor": {
+          "$ref": "#/$defs/EventRef"
+        },
+        "missing": {
+          "$ref": "#/$defs/EventRef"
+        },
+        "after": {
+          "title": "After",
+          "type": "string"
+        }
+      },
+      "required": [
+        "anchor",
+        "missing",
+        "after"
+      ],
+      "title": "AbsenceRule",
+      "type": "object"
+    },
+    "Assumption": {
+      "additionalProperties": false,
+      "description": "A brief field the marketer did not supply, the value used instead, and why.",
+      "properties": {
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value"
+        },
+        "why": {
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "field",
+        "value",
+        "why"
+      ],
+      "title": "Assumption",
+      "type": "object"
+    },
+    "Cap": {
+      "additionalProperties": false,
+      "properties": {
+        "channels": {
+          "items": {
+            "enum": [
+              "email",
+              "sms",
+              "push",
+              "in_app"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Channels",
+          "type": "array"
+        },
+        "max": {
+          "minimum": 0,
+          "title": "Max",
+          "type": "integer"
+        },
+        "window": {
+          "title": "Window",
+          "type": "string"
+        }
+      },
+      "required": [
+        "channels",
+        "max",
+        "window"
+      ],
+      "title": "Cap",
+      "type": "object"
+    },
+    "EventMatch": {
+      "additionalProperties": false,
+      "description": "One event, optionally narrowed by property equality (compared as text in every dialect).",
+      "properties": {
+        "event": {
+          "title": "Event",
+          "type": "string"
+        },
+        "where": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "title": "Where",
+          "type": "object"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "how a marketer says it, e.g. 'created a report'",
+          "title": "Label"
+        }
+      },
+      "required": [
+        "event"
+      ],
+      "title": "EventMatch",
+      "type": "object"
+    },
+    "EventRef": {
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "title": "Event",
+          "type": "string"
+        },
+        "where": {
+          "additionalProperties": true,
+          "title": "Where",
+          "type": "object"
+        }
+      },
+      "required": [
+        "event"
+      ],
+      "title": "EventRef",
+      "type": "object"
+    },
+    "FrequencyPolicy": {
+      "additionalProperties": false,
+      "description": "One policy across every flow (schemas/frequency_policy.schema.json).",
+      "properties": {
+        "caps": {
+          "items": {
+            "$ref": "#/$defs/Cap"
+          },
+          "minItems": 1,
+          "title": "Caps",
+          "type": "array"
+        },
+        "send_windows": {
+          "items": {
+            "$ref": "#/$defs/SendWindow"
+          },
+          "title": "Send Windows",
+          "type": "array"
+        },
+        "flow_priority": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Flow Priority",
+          "type": "array"
+        },
+        "collision_rule": {
+          "default": "higher_priority_preempts",
+          "enum": [
+            "higher_priority_preempts",
+            "queue_lower_priority",
+            "drop_lower_priority"
+          ],
+          "title": "Collision Rule",
+          "type": "string"
+        }
+      },
+      "required": [
+        "caps"
+      ],
+      "title": "FrequencyPolicy",
+      "type": "object"
+    },
+    "Offer": {
+      "additionalProperties": false,
+      "properties": {
+        "offer_id": {
+          "title": "Offer Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "percent_off",
+            "amount_off",
+            "free_shipping",
+            "gift",
+            "credit",
+            "trial_extension"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "eligible": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "who or which order it applies to, in words: 'second order'",
+          "title": "Eligible"
+        },
+        "stackable": {
+          "default": false,
+          "title": "Stackable",
+          "type": "boolean"
+        },
+        "expires_after": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "a real deadline, as a duration from send (P3D). Absent means no deadline: no urgency copy",
+          "title": "Expires After"
+        }
+      },
+      "required": [
+        "offer_id",
+        "kind"
+      ],
+      "title": "Offer",
+      "type": "object"
+    },
+    "OfferLimit": {
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "minimum": 0,
+          "title": "Count",
+          "type": "integer"
+        },
+        "window": {
+          "title": "Window",
+          "type": "string"
+        }
+      },
+      "required": [
+        "count",
+        "window"
+      ],
+      "title": "OfferLimit",
+      "type": "object"
+    },
+    "OfferPolicy": {
+      "additionalProperties": false,
+      "description": "What the copy may offer (schemas/offer_policy.schema.json). No offers listed means none may be offered.",
+      "properties": {
+        "offers": {
+          "items": {
+            "$ref": "#/$defs/Offer"
+          },
+          "title": "Offers",
+          "type": "array"
+        },
+        "max_offers_per_person": {
+          "$ref": "#/$defs/OfferLimit"
+        },
+        "min_days_between_offers": {
+          "default": 30,
+          "minimum": 0,
+          "title": "Min Days Between Offers",
+          "type": "integer"
+        },
+        "never_in_first_touch": {
+          "default": true,
+          "title": "Never In First Touch",
+          "type": "boolean"
+        },
+        "exclude_if": {
+          "items": {
+            "enum": [
+              "discount_share_over_50pct_last_3_orders",
+              "redeemed_offer_last_30d",
+              "segment_champions",
+              "segment_cannot_lose"
+            ],
+            "type": "string"
+          },
+          "title": "Exclude If",
+          "type": "array"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the marketer's own words, when the policy was parsed from text",
+          "title": "Text"
+        }
+      },
+      "title": "OfferPolicy",
+      "type": "object"
+    },
+    "ReEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "never",
+            "after_exit",
+            "cooldown"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "cooldown": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cooldown"
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "title": "ReEntry",
+      "type": "object"
+    },
+    "SendWindow": {
+      "additionalProperties": false,
+      "description": "When a channel may send, in the recipient's local time. A permitted window, never a 'quiet hours' range.",
+      "properties": {
+        "channel": {
+          "enum": [
+            "email",
+            "sms",
+            "push",
+            "in_app"
+          ],
+          "title": "Channel",
+          "type": "string"
+        },
+        "allowed_from": {
+          "title": "Allowed From",
+          "type": "string"
+        },
+        "allowed_until": {
+          "title": "Allowed Until",
+          "type": "string"
+        },
+        "basis": {
+          "const": "recipient_local",
+          "default": "recipient_local",
+          "title": "Basis",
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the rule that sets it, e.g. a compliance_rules.json id",
+          "title": "Source"
+        }
+      },
+      "required": [
+        "channel",
+        "allowed_from",
+        "allowed_until"
+      ],
+      "title": "SendWindow",
+      "type": "object"
+    },
+    "SendingGateRecord": {
+      "additionalProperties": false,
+      "description": "What the deliverability check concluded, when, and on what evidence (schemas/sending_gate.schema.json).",
+      "properties": {
+        "verdict": {
+          "enum": [
+            "GREEN",
+            "AMBER",
+            "RED"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        },
+        "assessed_at": {
+          "format": "date-time",
+          "title": "Assessed At",
+          "type": "string"
+        },
+        "auth_label": {
+          "enum": [
+            "LIVE PULL",
+            "SUPPLIED",
+            "UNKNOWN"
+          ],
+          "title": "Auth Label",
+          "type": "string"
+        },
+        "domain": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Domain"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "what produced it, e.g. 'lcm deliverability example.com'",
+          "title": "Source"
+        },
+        "signals": {
+          "additionalProperties": true,
+          "title": "Signals",
+          "type": "object"
+        },
+        "critical_findings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Critical Findings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "verdict",
+        "assessed_at",
+        "auth_label"
+      ],
+      "title": "SendingGateRecord",
+      "type": "object"
+    },
+    "StateRule": {
+      "additionalProperties": false,
+      "description": "Enter when a record's field changes to a value: invoices.status to open with a failed attempt, a trial nearing its end.",
+      "properties": {
+        "object": {
+          "title": "Object",
+          "type": "string"
+        },
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "to": {
+          "title": "To",
+          "type": "string"
+        },
+        "offset": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "enter this long before (negative) or after a timestamp field, e.g. -P3D before trial_end_at",
+          "title": "Offset"
+        },
+        "relative_to": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Relative To"
+        }
+      },
+      "required": [
+        "object",
+        "field",
+        "to"
+      ],
+      "title": "StateRule",
+      "type": "object"
+    },
+    "TriggerDefinition": {
+      "additionalProperties": false,
+      "description": "How a person enters a flow (schemas/trigger.schema.json). Waits can be hours: a 2-hour browse abandonment is\nPT2H in `abandon_after`.",
+      "properties": {
+        "flow_id": {
+          "pattern": "^[a-z0-9_]+$",
+          "title": "Flow Id",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "event",
+            "absence",
+            "state_change",
+            "schedule"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "event": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EventRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "absence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AbsenceRule"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "state": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StateRule"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "schedule": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "cron, for schedule triggers",
+          "title": "Schedule"
+        },
+        "abandon_after": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "event triggers: enter only if the goal has not happened this long after the event",
+          "title": "Abandon After"
+        },
+        "exclude_if": {
+          "description": "events after the trigger that stop entry (a checkout ends a browse journey)",
+          "items": {
+            "$ref": "#/$defs/EventRef"
+          },
+          "title": "Exclude If",
+          "type": "array"
+        },
+        "re_entry": {
+          "$ref": "#/$defs/ReEntry"
+        },
+        "dedupe_key": {
+          "title": "Dedupe Key",
+          "type": "string"
+        },
+        "source": {
+          "default": "esp_native",
+          "enum": [
+            "esp_native",
+            "warehouse_job",
+            "stream"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "holdout_experiment_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Holdout Experiment Id"
+        }
+      },
+      "required": [
+        "flow_id",
+        "type",
+        "re_entry",
+        "dedupe_key"
+      ],
+      "title": "TriggerDefinition",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "product_name": {
+      "minLength": 1,
+      "title": "Product Name",
+      "type": "string"
+    },
+    "flow_type": {
+      "default": "winback",
+      "enum": [
+        "welcome",
+        "activation",
+        "winback",
+        "cart_abandon",
+        "browse_abandon",
+        "post_purchase",
+        "replenishment",
+        "dunning",
+        "trial_convert",
+        "sunset"
+      ],
+      "title": "Flow Type",
+      "type": "string"
+    },
+    "goal": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Goal"
+    },
+    "platform": {
+      "default": "customerio",
+      "enum": [
+        "klaviyo",
+        "hubspot",
+        "braze",
+        "customerio",
+        "sfmc"
+      ],
+      "title": "Platform",
+      "type": "string"
+    },
+    "business_model": {
+      "default": "saas",
+      "enum": [
+        "saas",
+        "subscription",
+        "ecommerce",
+        "marketplace",
+        "services",
+        "sales_led_b2b"
+      ],
+      "title": "Business Model",
+      "type": "string"
+    },
+    "qualifying_event": {
+      "$ref": "#/$defs/EventMatch"
+    },
+    "core_conversion_event": {
+      "$ref": "#/$defs/EventMatch"
+    },
+    "churn_threshold_days": {
+      "default": 14,
+      "description": "win-back: days without the core action before someone enters; sunset: days without a click",
+      "maximum": 365,
+      "minimum": 3,
+      "title": "Churn Threshold Days",
+      "type": "integer"
+    },
+    "abandon_after_hours": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "maximum": 72,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "cart and browse: hours without the goal after the trigger before someone enters",
+      "title": "Abandon After Hours"
+    },
+    "replenish_after_days": {
+      "anyOf": [
+        {
+          "maximum": 365,
+          "minimum": 3,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "replenishment: days one unit lasts (measured from repeat orders when blank)",
+      "title": "Replenish After Days"
+    },
+    "replenish_lead_days": {
+      "default": 5,
+      "description": "replenishment: remind this many days before it runs out",
+      "maximum": 30,
+      "minimum": 0,
+      "title": "Replenish Lead Days",
+      "type": "integer"
+    },
+    "trial_days": {
+      "anyOf": [
+        {
+          "maximum": 90,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "trial conversion: trial length in days (default 14)",
+      "title": "Trial Days"
+    },
+    "touches": {
+      "default": 5,
+      "maximum": 8,
+      "minimum": 1,
+      "title": "Touches",
+      "type": "integer"
+    },
+    "channels": {
+      "items": {
+        "enum": [
+          "email",
+          "sms",
+          "push",
+          "in_app"
+        ],
+        "type": "string"
+      },
+      "title": "Channels",
+      "type": "array"
+    },
+    "holdout_pct": {
+      "default": 15,
+      "maximum": 50,
+      "minimum": 0,
+      "title": "Holdout Pct",
+      "type": "number"
+    },
+    "randomization_unit": {
+      "default": "user",
+      "enum": [
+        "user",
+        "account"
+      ],
+      "title": "Randomization Unit",
+      "type": "string"
+    },
+    "global_holdout_pct": {
+      "default": 0,
+      "description": "program-wide holdout every flow excludes (engine/measurement)",
+      "maximum": 20,
+      "minimum": 0,
+      "title": "Global Holdout Pct",
+      "type": "number"
+    },
+    "stopping_rule": {
+      "default": "fixed_horizon",
+      "description": "one planned read; or planned interim looks with alpha spending; or a read valid at any time",
+      "enum": [
+        "fixed_horizon",
+        "group_sequential",
+        "always_valid"
+      ],
+      "title": "Stopping Rule",
+      "type": "string"
+    },
+    "looks": {
+      "default": 5,
+      "description": "group_sequential: planned looks, equally spaced in information",
+      "maximum": 10,
+      "minimum": 2,
+      "title": "Looks",
+      "type": "integer"
+    },
+    "monthly_entrants": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Monthly Entrants"
+    },
+    "baseline_conversion_rate": {
+      "anyOf": [
+        {
+          "exclusiveMaximum": 1,
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Baseline Conversion Rate"
+    },
+    "min_detectable_lift": {
+      "default": 0.2,
+      "description": "relative lift worth acting on, 0.20 = 20%",
+      "exclusiveMinimum": 0,
+      "maximum": 5,
+      "title": "Min Detectable Lift",
+      "type": "number"
+    },
+    "outcome_window_days": {
+      "anyOf": [
+        {
+          "maximum": 365,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "default: the whole flow plus a week (win-back: at least 30 days or twice the threshold)",
+      "title": "Outcome Window Days"
+    },
+    "sending_gate": {
+      "anyOf": [
+        {
+          "enum": [
+            "GREEN",
+            "AMBER",
+            "RED",
+            "UNKNOWN"
+          ],
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/SendingGateRecord"
+        }
+      ],
+      "default": "UNKNOWN",
+      "title": "Sending Gate"
+    },
+    "warehouse_dialect": {
+      "default": "postgres",
+      "enum": [
+        "postgres",
+        "snowflake",
+        "bigquery"
+      ],
+      "title": "Warehouse Dialect",
+      "type": "string"
+    },
+    "sender_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Sender Name"
+    },
+    "brand_voice": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Brand Voice"
+    },
+    "postal_address": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Postal Address"
+    },
+    "brand_kit": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "path to brand.yaml (logo, colors, footer, voice); default: the workspace's kit when it is this brand's, else a neutral kit",
+      "title": "Brand Kit"
+    },
+    "cta_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "where the main button goes: a deep link to the core action, on your own domain",
+      "title": "Cta Url"
+    },
+    "recipient_countries": {
+      "description": "ISO country codes of the audience, when there is no data to measure it",
+      "items": {
+        "type": "string"
+      },
+      "title": "Recipient Countries",
+      "type": "array"
+    },
+    "offer_policy": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/OfferPolicy"
+        }
+      ],
+      "default": "no discounts or offers",
+      "title": "Offer Policy"
+    },
+    "frequency_cap_per_week": {
+      "default": 3,
+      "description": "legacy shorthand for one weekly cap across email, SMS and push",
+      "maximum": 14,
+      "minimum": 1,
+      "title": "Frequency Cap Per Week",
+      "type": "integer"
+    },
+    "frequency": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/FrequencyPolicy"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "the typed policy; built from frequency_cap_per_week and the compliance rules when not given"
+    },
+    "send_hour_local": {
+      "default": 10,
+      "maximum": 20,
+      "minimum": 6,
+      "title": "Send Hour Local",
+      "type": "integer"
+    },
+    "quiet_hours": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "deprecated: read once as the permitted email window outside it",
+      "title": "Quiet Hours"
+    },
+    "copy_variants": {
+      "default": 2,
+      "maximum": 4,
+      "minimum": 1,
+      "title": "Copy Variants",
+      "type": "integer"
+    },
+    "trigger": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TriggerDefinition"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "override the flow type's default trigger"
+    },
+    "assumptions": {
+      "items": {
+        "$ref": "#/$defs/Assumption"
+      },
+      "title": "Assumptions",
+      "type": "array"
+    }
+  },
+  "required": [
+    "product_name"
+  ],
+  "title": "Brief",
+  "type": "object"
+}
