@@ -16,7 +16,7 @@ from tests.conftest import ROOT
 HISTORY = {"CHANGELOG.md", "AUDIT.md"}          # records of what was true then
 PROSE = [p for p in [ROOT / "README.md", ROOT / "CONNECTORS.md", ROOT / "QUICKSTART.md", *sorted((ROOT / "docs").glob("*.md")),
                      *sorted((ROOT / "skills").glob("*/SKILL.md")), *sorted((ROOT / "prompts").rglob("*.md")),
-                     *sorted((ROOT / "templates").rglob("*.yaml"))] if p.name not in HISTORY]
+                     *sorted((ROOT / "templates").rglob("*.yaml")), *sorted((ROOT / "templates").rglob("README.md"))] if p.name not in HISTORY]
 
 
 def _rel(p):
