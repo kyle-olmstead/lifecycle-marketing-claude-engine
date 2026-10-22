@@ -86,3 +86,11 @@ def test_the_flow_count_in_prose_matches_the_library():
             if word in ("these", "the", "all", "every", "its", "your", "live", "new", "lifecycle", "those"):
                 continue
             assert word in (str(n), words.get(n)), f"{_rel(p)}: '{m.group(0)}' but the library has {n}"
+
+
+def test_doctor_checks_the_credential_names_the_code_reads():
+    from engine.cli.commands import KEY_NAMES
+    code = "\n".join(p.read_text(encoding="utf-8") for d in ("engine", "adapters") for p in (ROOT / d).rglob("*.py")
+                     if p.name != "commands.py")
+    missing = [name for name, _ in KEY_NAMES if name not in code]
+    assert not missing, f"lcm doctor checks names no code reads: {missing}"

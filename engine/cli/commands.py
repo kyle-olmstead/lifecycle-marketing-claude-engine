@@ -79,9 +79,10 @@ OPTIONAL_PACKAGES = (("anthropic", "anthropic", "Claude writes the copy (copy-mo
                      ("mcp", "mcp", "the MCP server (lcm mcp)"), ("fastapi", "fastapi", "the webhook receiver (lcm webhooks serve)"),
                      ("gspread", "gspread", "Google Sheets logging (--sheet)"))
 KEY_NAMES = (("ANTHROPIC_API_KEY", "Claude-written copy"), ("LCM_SHEET_ID", "Google Sheets logging"),
-             ("KLAVIYO_API_KEY", "lcm send to Klaviyo"), ("CUSTOMERIO_APP_API_KEY", "lcm send to Customer.io"),
-             ("BRAZE_API_KEY", "lcm send to Braze"), ("HUBSPOT_ACCESS_TOKEN", "lcm send to HubSpot"),
-             ("ITERABLE_API_KEY", "lcm send to Iterable"), ("SFMC_CLIENT_ID", "lcm send to Salesforce Marketing Cloud"))
+             ("KLAVIYO_PRIVATE_KEY", "pushing events and profiles to Klaviyo"),
+             ("HUBSPOT_PRIVATE_APP_TOKEN", "pushing events and contacts to HubSpot (with HUBSPOT_HUB_ID)"),
+             ("BRAZE_REST_API_KEY", "pushing events and attributes to Braze (with BRAZE_INSTANCE)"),
+             ("CUSTOMERIO_PIPELINES_API_KEY_BASE64", "pushing events and attributes to Customer.io"))
 
 
 def _version(mod: Any) -> str:
