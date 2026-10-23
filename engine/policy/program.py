@@ -5,8 +5,9 @@ checkout the next day and comes due for a reorder the week after is in three flo
 weekly cap of 3 can still send them 7 messages. v2 simulated one flow at a time and gave every flow priority 3.
 
 This module compiles every brief in the workspace's briefs/active/ (plus a candidate brief, when planning a new flow),
-walks synthetic people who enter several flows close together, applies the policy's collision rule in flow_priority order,
-and checks every cap in the frequency policy across all flows:
+walks synthetic people who enter several flows close together (every pair and triple at every spacing, larger groups at
+the worst spacings), applies the policy's collision rule in flow_priority order, and checks every cap in the frequency
+policy across all flows:
 
   higher_priority_preempts  a lower-priority flow's sends are skipped while a higher-priority flow is running for the person
   queue_lower_priority      they wait until the higher-priority flow has finished
@@ -102,54 +103,91 @@ def _cap_breaks(sends: List[Dict[str, Any]], policy: FrequencyPolicy) -> List[st
     return breaks
 
 
+EXHAUSTIVE_UP_TO = 3   # groups this size or smaller are walked at every spacing; larger groups at a few worst-case spacings
+
+
+def scenarios(briefs: List[Brief], policy: FrequencyPolicy) -> List[List[Tuple[Brief, float]]]:
+    """The entries to walk: every group of two or more live flows one person could be in. A group of up to three is entered at
+    every combination of the spacings in OFFSETS (0, 24 and 72 hours after the first, in every order); a larger group is
+    entered all at once, and a day apart and three days apart in priority order and in reverse."""
+    out: List[List[Tuple[Brief, float]]] = []
+    seen = set()
+    for k in range(2, len(briefs) + 1):
+        for group in itertools.combinations(briefs, k):
+            if k <= EXHAUSTIVE_UP_TO:
+                timings = [list(ts) for ts in itertools.product(OFFSETS, repeat=k)]
+            else:
+                ranked = sorted(range(k), key=lambda i: _rank(policy, group[i].flow_type))
+                timings = [[0.0] * k]
+                for gap in (24.0, 72.0):
+                    for order in (ranked, ranked[::-1]):
+                        ts = [0.0] * k
+                        for pos, i in enumerate(order):
+                            ts[i] = pos * gap
+                        timings.append(ts)
+            for ts in timings:
+                low = min(ts)
+                entry = tuple(sorted(((b.slug, h - low) for b, h in zip(group, ts)), key=lambda x: (x[1], x[0])))
+                if entry in seen:
+                    continue
+                seen.add(entry)
+                out.append(sorted(((b, h - low) for b, h in zip(group, ts)), key=lambda x: (x[1], x[0].slug)))
+    return out
+
+
+def _label(s: Dict[str, Any]) -> str:
+    return ", ".join(f"{f} {'at entry' if h == 0 else f'+{h:g}h'}" for f, h in zip(s["flows"], s["entry_hours"]))
+
+
 def simulate(briefs: List[Brief], workspace_policy: Optional[FrequencyPolicy] = None) -> Dict[str, Any]:
-    """Every pair of live flows, entered 0, 24 and 72 hours apart in both orders, with and without the collision rule."""
+    """Every group of live flows one person could be in (pairs, triples and up), entered at several spacings, with and
+    without the collision rule. A cap broken even with the rule is a warning: the program sends more than its policy."""
     policy = policy_for(briefs, workspace_policy)
     sends = {b.slug: _sends(b) for b in briefs}
     checks: List[Dict[str, str]] = []
-    scenarios: List[Dict[str, Any]] = []
+    out_scenarios: List[Dict[str, Any]] = []
     for b in briefs:
         own = [{"t": h, "channel": ch} for h, ch in sends[b.slug]]
         breaks = _cap_breaks(own, policy)
         checks.append({"name": f"{b.slug} alone respects the program caps", "status": "fail" if breaks else "pass",
                        "detail": "; ".join(breaks) if breaks else f"{len(own)} send(s)"})
+    walks = scenarios(briefs, policy)
     unmanaged = 0
-    for a, b in itertools.combinations(briefs, 2):
-        for first, second in ((a, b), (b, a)):
-            for off in OFFSETS:
-                entries = [(first, 0.0, sends[first.slug]), (second, off, sends[second.slug])]
-                raw = sorted([{"t": s + h, "channel": ch, "flow": br.slug} for br, s, ss in entries for h, ch in ss], key=lambda x: x["t"])
-                raw_breaks = _cap_breaks(raw, policy)
-                managed = combine(entries, policy)
-                managed_breaks = _cap_breaks(managed, policy)
-                same_day = _same_day(managed)
-                unmanaged += bool(raw_breaks)
-                scenarios.append({"flows": [first.slug, second.slug], "second_enters_after_hours": off,
-                                  "without_rule": raw_breaks, "with_rule": managed_breaks, "same_day_flows": same_day,
-                                  "sends_with_rule": len(managed), "sends_without_rule": len(raw)})
-    failing = [s for s in scenarios if s["with_rule"]]
+    for walk in walks:
+        entries = [(br, h, sends[br.slug]) for br, h in walk]
+        raw = sorted([{"t": s + h, "channel": ch, "flow": br.slug} for br, s, ss in entries for h, ch in ss], key=lambda x: x["t"])
+        raw_breaks = _cap_breaks(raw, policy)
+        managed = combine(entries, policy)
+        managed_breaks = _cap_breaks(managed, policy)
+        unmanaged += bool(raw_breaks)
+        out_scenarios.append({"flows": [br.slug for br, _ in walk], "entry_hours": [h for _, h in walk],
+                              "without_rule": raw_breaks, "with_rule": managed_breaks, "same_day_flows": _same_day(managed),
+                              "sends_with_rule": len(managed), "sends_without_rule": len(raw)})
+    failing = sorted([s for s in out_scenarios if s["with_rule"]], key=lambda s: (len(s["flows"]), s["entry_hours"]))
     holds = []
     for rule in ("higher_priority_preempts", "queue_lower_priority", "drop_lower_priority"):
         alt = policy.model_copy(update={"collision_rule": rule})
-        if not any(_cap_breaks(combine([(x, 0.0, sends[x.slug]), (y, off, sends[y.slug])], alt), alt)
-                   for x, y in itertools.permutations(briefs, 2) for off in OFFSETS):
+        if not any(_cap_breaks(combine([(br, h, sends[br.slug]) for br, h in walk], alt), alt) for walk in walks):
             holds.append(rule)
     from engine.agents.campaign_architect import VOCAB
     esp_caps = sorted({VOCAB[b.platform]["freq"] for b in briefs})
     fix = (f"switch collision_rule to {holds[0].replace('_', ' ')}, which holds every cap in these scenarios, or " if holds else "") + \
           f"turn on the platform's own limit ({'; '.join(esp_caps)}) so the cap is enforced at send time"
+    groups = max((len(w) for w in walks), default=0)
     checks.append({"name": f"caps hold across flows with the collision rule ({policy.collision_rule.replace('_', ' ')})",
                    "status": "warn" if failing else "pass",
-                   "detail": (("; ".join(f"{' then '.join(s['flows'])} +{s['second_enters_after_hours']:g}h: {s['with_rule'][0]}" for s in failing[:3])
-                               + f". To hold the cap: {fix}") if failing else
-                              f"{len(scenarios)} scenario(s); {unmanaged} would break a cap without the rule")})
-    clashes = [s for s in scenarios if s["same_day_flows"]]
+                   "detail": (("; ".join(f"{_label(s)}: {s['with_rule'][0]}" for s in failing[:3])
+                               + (f" ({len(failing)} scenarios in all)" if len(failing) > 3 else "") + f". To hold the cap: {fix}")
+                              if failing else
+                              f"{len(out_scenarios)} scenario(s), groups of up to {groups} flows; {unmanaged} would break a cap "
+                              f"without the rule")})
+    clashes = [s for s in out_scenarios if s["same_day_flows"] and len(s["flows"]) == 2]
     checks.append({"name": "no two flows send to the same person on the same day", "status": "warn" if clashes else "pass",
-                   "detail": ("; ".join(f"{' and '.join(s['same_day_flows'][0])} +{s['second_enters_after_hours']:g}h" for s in clashes[:4])
+                   "detail": ("; ".join(f"{' and '.join(s['same_day_flows'][0])} ({_label(s)})" for s in clashes[:4])
                               if clashes else "none")})
     status = "fail" if any(c["status"] == "fail" for c in checks) else ("warn" if any(c["status"] == "warn" for c in checks) else "pass")
     return {"status": status, "policy": policy.model_dump(mode="json"), "flows": [b.slug for b in briefs], "checks": checks,
-            "rules_that_hold": holds, "scenarios": scenarios}
+            "rules_that_hold": holds, "scenarios": out_scenarios}
 
 
 def _same_day(sends: List[Dict[str, Any]]) -> List[Tuple[str, str]]:
@@ -173,17 +211,18 @@ def workspace_policy() -> Optional[FrequencyPolicy]:
 
 
 def render(r: Dict[str, Any]) -> str:
-    mark = {"pass": "PASS", "warn": "NOTE", "fail": "FAIL"}
+    mark = {"pass": "PASS", "warn": "WARN", "fail": "FAIL"}
     lines = [f"Program simulation ({len(r['flows'])} flows): {r['status'].upper()}", ""]
     lines += [f"  {mark[c['status']]:4}  {c['name']}: {c['detail']}" for c in r["checks"]]
     return "\n".join(lines) + "\n"
 
 
 def _cli(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Simulate every live flow at once against one frequency policy")
+    ap = argparse.ArgumentParser(prog="lcm simulate --program", description="Simulate every live flow at once against one frequency "
+                                 "policy. Exit 0 when every check passes, 1 when a cap or a same-day clash needs attention, 2 on error.")
     ap.add_argument("--briefs", help="folder of live briefs (default: briefs/active/ in the workspace)")
     ap.add_argument("--add", action="append", default=[], help="a candidate brief to include (repeatable)")
-    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--json", action="store_true", help="print the checks and every scenario as JSON")
     a = ap.parse_args(argv)
     from engine.brief import load_brief
     briefs = active_briefs(Path(a.briefs) if a.briefs else None) + [load_brief(Path(p)) for p in a.add]
@@ -192,7 +231,7 @@ def _cli(argv: Optional[List[str]] = None) -> int:
         return 0
     r = simulate(briefs, workspace_policy())
     print(json.dumps(r, indent=2) if a.json else render(r))
-    return 1 if r["status"] == "fail" else 0
+    return 0 if r["status"] == "pass" else 1
 
 
 if __name__ == "__main__":

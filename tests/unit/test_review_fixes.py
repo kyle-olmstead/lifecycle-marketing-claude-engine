@@ -161,3 +161,25 @@ def test_item_flow_buttons_return_to_the_trigger(platform, flow, cta):
                         assert any("checkout_url" in (a or b) for a, b in hrefs), hrefs
                     else:
                         assert any(prop in (a or b) for a, b in hrefs), hrefs
+
+
+# ----------------------------------------------------------------------------------------------
+# Finding 5: the program simulator checks every group of flows, and a broken cap needs attention
+# ----------------------------------------------------------------------------------------------
+
+def test_three_flows_that_pass_in_pairs_still_break_the_cap_together(tmp_path):
+    from engine.brief import to_yaml
+    from engine.policy import program
+    from engine.policy.contracts import Cap, FrequencyPolicy
+    over = {"platform": "klaviyo"}
+    briefs = [parse_text(s, "Acme", dict(over), defaults={}) for s in
+              ("a 1-touch abandoned cart flow", "a 1-touch browse abandonment flow", "a 2-touch welcome series")]
+    policy = FrequencyPolicy(caps=[Cap(channels=["email"], max=3, window="P7D")])
+    r = program.simulate(briefs, policy)
+    cross = next(c for c in r["checks"] if c["name"].startswith("caps hold across flows"))
+    assert cross["status"] == "warn" and "4 in P7D" in cross["detail"]
+    assert all(len(s["flows"]) == 3 for s in r["scenarios"] if s["with_rule"])      # no pair breaks it
+    assert "WARN" in program.render(r) and "NOTE" not in program.render(r)
+    for b in briefs:
+        (tmp_path / f"{b.slug}.yaml").write_text(to_yaml(b), encoding="utf-8")
+    assert program._cli(["--briefs", str(tmp_path)]) == 1
