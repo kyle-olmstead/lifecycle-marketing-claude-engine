@@ -199,7 +199,7 @@ def entry_sql(brief: Brief, dialect_name: str, as_of: Optional[str] = None, catc
             f"       u.sms_consent_at IS NOT NULL AS sms_consent,\n"
             f"       {bucket} AS holdout_bucket,\n"
             f"       {bucket} < {pct:g} AS in_holdout\n")
-    if brief.flow_type == "activation":
+    if brief.flow_type in NEW_QUALIFIER_FLOWS:     # a new qualifier, then the goal: activation, welcome, trial
         return (header +
                 f"-- Entry: qualified on the run date or up to {catch_up} days before, and has not done the core action. The live trigger\n"
                 f"-- is the ESP's own {brief.qualifying_event.event} event; this query audits and backfills it.\n"
@@ -333,7 +333,7 @@ def history_sql(brief: Brief, dialect_name: str, as_of: Optional[str] = None) ->
     D = dialect(dialect_name)
     a = _as_of_expr(D, as_of)
     w = _window(brief)
-    if brief.flow_type == "activation":
+    if brief.flow_type in NEW_QUALIFIER_FLOWS:     # a new qualifier, then the goal: activation, welcome, trial
         return (f"-- dialect: {dialect_name}\n"
                 f"-- {brief.product_name}: new qualifiers by month (would-be entrants), and the unaided activation rate: the share of\n"
                 f"-- matured qualifiers (at least {w} days ago) who did the core action within {w} days, with no flow running.\n"
@@ -365,7 +365,7 @@ def audit_sql(brief: Brief, dialect_name: str, as_of: Optional[str] = None, look
     half = max(1, math.ceil(n / 2))
     in_window = lambda col: f"{D.to_date(col)} BETWEEN {start} AND {a}"  # noqa: E731
     c = brief.core_conversion_event
-    if brief.flow_type == "activation":
+    if brief.flow_type in NEW_QUALIFIER_FLOWS:     # a new qualifier, then the goal: activation, welcome, trial
         ctes = _new_qualifiers_ctes(D, brief, a)
         entries = (f"SELECT n.entered_on AS day, 'new_qualifiers' AS metric, COUNT(*) AS value\n"
                    f"FROM newcomers n WHERE n.entered_on BETWEEN {start} AND {a} GROUP BY 1\n")

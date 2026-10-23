@@ -42,16 +42,19 @@ def design(brief: Brief, cohort: CohortDefinition) -> ExperimentDesign:
     deff, m_bar = 1.0, None
     deff_note = ""
     if hash_field == "account_id":
-        if cl.get("design_effect"):
+        icc_seen = cl.get("icc_for_design", cl.get("icc"))
+        if cl.get("design_effect") and icc_seen is not None:
             deff, m_bar = float(cl["design_effect"]), cl.get("mean_size")
-            deff_note = (f"; design effect {deff:.2f} from the data (ICC {cl.get('icc_for_design', cl.get('icc')):.3f} across "
+            deff_note = (f"; design effect {deff:.2f} from the data (ICC {float(icc_seen):.3f} across "
                          f"{cl.get('clusters')} accounts, {cl.get('label', 'ESTIMATE')})")
         else:
             from engine.measurement.cluster import design_effect as _deff
-            m_bar = 3.0
-            deff = _deff(0.05, mean_cluster_size=m_bar)
-            deff_note = (f"; design effect {deff:.2f} ASSUMED (ICC 0.05, 3 people per account) because the data could not measure it: "
-                         f"run with --data to measure it")
+            m_bar = float(cl.get("mean_size") or 3.0)
+            r = _deff(0.05, mean_cluster_size=m_bar)
+            deff = float(r["design_effect"] if isinstance(r, dict) else r)
+            why = ("the data has accounts but too few to measure how alike their people are" if cl.get("clusters") else
+                   "there is no account_id in the data to measure it from (plan with --data on exports that carry account_id)")
+            deff_note = f"; design effect {deff:.2f} ASSUMED (ICC 0.05, {m_bar:g} people per account) because {why}"
     where = ("computed in the daily queue query and pushed on the trigger event as in_holdout" if brief.flow_type == "winback" else
              f"added as in_holdout to the live {brief.qualifying_event.event} event by the system that sends it")
     rule = (f"persistent, by {brief.randomization_unit}: bucket = first 7 hex digits of md5({hash_field} || ':{salt}') mod 100; "
