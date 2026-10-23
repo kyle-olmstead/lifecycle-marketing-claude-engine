@@ -9,9 +9,9 @@
 
 | You use | Do this | Setup |
 |---|---|---|
-| Claude with the LMM Engine plugin | Type your brief into Claude (section 2) | Install once: see the README, section 4 |
+| Claude with the LMM Engine plugin | Type your brief into Claude (section 2) | Install once: see the README, "Try it" |
 | Claude Desktop without the plugin | Add the teammate as a local tool (section 6), then type your brief | 10 minutes, once |
-| A terminal | Make a workspace, then type what you want after `lcm` (section 3) | the install block in the README, section 5, once |
+| A terminal | Make a workspace, then type what you want after `lcm` (section 3) | [QUICKSTART.md](../QUICKSTART.md), once |
 
 ## 2. Say what you want
 

@@ -84,4 +84,4 @@ sends. Typing GREEN by hand also runs as AMBER, because only an observed check c
 - Every command and what it does: [`docs/COMMANDS.md`](docs/COMMANDS.md), or `lcm --help`
 - Reading a plan, revising it, and who writes the copy: [`docs/quickstart_for_marketers.md`](docs/quickstart_for_marketers.md)
 - Vendor exports and what each one leaves out: [`docs/IMPORTING_DATA.md`](docs/IMPORTING_DATA.md)
-- Using it inside Claude as a plugin instead of a terminal: the README, section 5
+- Using it inside Claude as a plugin instead of a terminal: the README, "Try it"
