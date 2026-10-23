@@ -84,7 +84,8 @@ RETURN_PROPERTY = {"cart_abandon": ("checkout_url", "lcm_last_checkout_url"), "b
 
 def return_url(brief: Brief, dialect: str, fallback: Optional[str]) -> Optional[str]:
     """Where the button of a cart or browse email goes: back to that checkout, or to that product, in the platform's syntax,
-    with the store's home page as the fallback. None for other flows (they use cta_url).
+    with `fallback` (the brief's cta_url, else the brand kit's website) for when the event lacks the link. None for other
+    flows (they use cta_url). cta_url never replaces the way back, only backs it up.
 
     Klaviyo's own abandoned-cart template uses event.extra.checkout_url with organization.url as the default (Shopify's
     Checkout Started event); its Viewed Product event carries URL. Elsewhere the trigger event carries checkout_url or url
@@ -97,18 +98,19 @@ def return_url(brief: Brief, dialect: str, fallback: Optional[str]) -> Optional[
     if dialect == "klaviyo":
         path = {"shopify_line_items": "event.extra.checkout_url", "shopify_viewed_product": "event.URL"}.get(src, f"event.{prop}")
         return "{{ " + path + "|default:organization.url }}"
-    if not fallback:
-        return None
+    # with no fallback (no cta_url and no brand-kit website) the link is the trigger's own property alone; QA warns
     if dialect == "customerio":
-        return "{{ event." + prop + " | default: '" + fallback + "' }}"
+        return "{{ event." + prop + (" | default: '" + fallback + "'" if fallback else "") + " }}"
     if dialect == "braze":
-        return "{{context.${" + prop + "} | default: '" + fallback + "'}}"
+        return "{{context.${" + prop + "}" + (" | default: '" + fallback + "'" if fallback else "") + "}}"
     if dialect == "hubl":
-        return "{{ personalization_token('contact." + contact_prop + "', '" + fallback + "') }}"
+        return "{{ personalization_token('contact." + contact_prop + "', '" + (fallback or "") + "') }}"
     if dialect == "ampscript":
+        if not fallback:
+            return "%%=AttributeValue('" + prop + "')=%%"
         return "%%=IIf(Empty(AttributeValue('" + prop + "')), '" + fallback + "', AttributeValue('" + prop + "'))=%%"
     if dialect == "handlebars":
-        return '{{defaultIfEmpty ' + prop + ' "' + fallback + '"}}'
+        return '{{defaultIfEmpty ' + prop + ' "' + fallback + '"}}' if fallback else "{{" + prop + "}}"
     return None
 
 

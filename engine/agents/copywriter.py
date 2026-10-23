@@ -194,7 +194,7 @@ def render_email_mjml(f: Dict[str, Any], brief: Brief, step_id: str, brand: Opti
     kit = brand or DEFAULT_BRAND
     d = brief.template_dialect
     from engine.render import product_blocks
-    back = None if brief.cta_url else product_blocks.return_url(brief, d, kit.website)
+    back = product_blocks.return_url(brief, d, brief.cta_url or kit.website)
     if back:
         # a link built from the trigger event (that checkout, that product) already carries the platform's own query string,
         # so no UTM is appended here; turn on the platform's UTM tracking for the flow instead
@@ -258,7 +258,7 @@ def render_short(channel: str, f: Dict[str, Any], brief: Brief) -> Dict[str, Any
         # asks for {link}. The platform shortens the link, so the preview counts a shortened one.
         wants_link = "{link}" in text
         text = re.sub(r"\s*\{link\}", "", text).strip()
-        url = product_blocks.return_url(brief, d, brand_for(brief).website) or (
+        url = product_blocks.return_url(brief, d, brief.cta_url or brand_for(brief).website) or (
             (brief.cta_url or PLACEHOLDER_CTA) if wants_link else None)
         tail = "" if has_opt_out(text) else " Reply STOP to opt out."
         rendered = _tokens(text, d, brief, escape=False, inline=True) + (f" {url}" if url else "") + tail
@@ -266,6 +266,16 @@ def render_short(channel: str, f: Dict[str, Any], brief: Brief) -> Dict[str, Any
     keys = ("title", "body") if channel == "push" else ("headline", "body", "cta_label")
     return ({k: _tokens(f[k], d, brief, escape=False, inline=True) for k in keys}
             | {"preview": {k: _preview(f[k], brief) for k in keys}})
+
+
+def _no_fallback(brief: Brief) -> List[str]:
+    """A cart or browse button returns to the trigger's own link; with no fallback it is empty when the event lacks one."""
+    from engine.render.product_blocks import RETURN_PROPERTY
+    if brief.flow_type not in RETURN_PROPERTY or brief.template_dialect == "klaviyo" or brief.cta_url or brand_for(brief).website:
+        return []
+    prop = RETURN_PROPERTY[brief.flow_type][0]
+    return [f"the button returns to {prop} from the trigger event, with nothing to fall back on when an event lacks it: set "
+            f"website in brand.yaml (your store's home page) as the fallback"]
 
 
 def _offer_allowed(brief: Brief, role: Optional[str], index: Optional[int]) -> bool:
@@ -339,6 +349,7 @@ def check_variant(channel: str, f: Dict[str, Any], brief: Brief, step_id: str, v
                 warnings.append("no postal address: CAN-SPAM requires one; add postal_address to the brief")
             if PLACEHOLDER_CTA in body:
                 warnings.append("the button links to a placeholder; set cta_url in the brief to a deep link on your own domain")
+            warnings += _no_fallback(brief)
             subj = subject_lines(f, brief)
             lint_s = template_lint.lint(subj, brief.template_dialect)
             errors += [f"subject: {x}" for x in lint_s["errors"]]
@@ -356,6 +367,7 @@ def check_variant(channel: str, f: Dict[str, Any], brief: Brief, step_id: str, v
         errors += [f"template: {x}" for x in lint["errors"]]
         if PLACEHOLDER_CTA in r["text"]:
             warnings.append("the text links to a placeholder; set cta_url in the brief to a deep link on your own domain")
+        warnings += _no_fallback(brief)
         rendered = {f"{step_id}_{vid}.json": json.dumps(r, indent=2, ensure_ascii=False)}
     else:
         r = render_short(channel, f, brief)

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 
@@ -135,3 +136,28 @@ def test_store_priorities_never_propose_software_flows(tmp_path):
     r = priorities.run(str(NORTHFIELD / "data"), out=tmp_path)
     text = json.dumps(r, default=str)
     assert "Win-back" in text and "Activation" not in text and "created a report" not in text
+
+
+# ----------------------------------------------------------------------------------------------
+# Finding 4: cart and browse buttons always go back to that cart or product
+# ----------------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("platform", ["klaviyo", "hubspot", "braze", "customerio", "sfmc", "iterable"])
+@pytest.mark.parametrize("flow", ["abandoned cart", "browse abandonment"])
+@pytest.mark.parametrize("cta", [None, "https://shop.example/help"])
+def test_item_flow_buttons_return_to_the_trigger(platform, flow, cta):
+    from engine.agents.copywriter import PLACEHOLDER_CTA
+    b = parse_text(f"a 2-touch {flow} flow on {platform}", product_name="Acme",
+                   overrides={"cta_url": cta} if cta else None, defaults={})
+    p = orchestrator.run(b, None, copy_mode="offline")
+    prop = "checkout_url" if flow == "abandoned cart" else ("URL" if platform == "klaviyo" else "url")
+    for tc in p.copy_plan:
+        for v in tc.variants:
+            for name, body in (v.rendered or {}).items():
+                if name.endswith(".html"):
+                    assert PLACEHOLDER_CTA not in body
+                    hrefs = re.findall(r"href=(?:'([^']*)'|\"([^\"]*)\")", body)
+                    if flow == "abandoned cart":
+                        assert any("checkout_url" in (a or b) for a, b in hrefs), hrefs
+                    else:
+                        assert any(prop in (a or b) for a, b in hrefs), hrefs
