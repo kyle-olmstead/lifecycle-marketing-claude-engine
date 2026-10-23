@@ -1,6 +1,6 @@
 # Build pack: Win-back: Ridgeview, 14 days since the core action (created a report) on Customer.io
 
-**Status: READY WITH WARNINGS** | mode: native segment | run 6ed162279d2c | slug `ridgeview_winback_14d`
+**Status: READY WITH WARNINGS** | mode: native segment | run dacab4fe3217 | slug `ridgeview_winback_14d`
 
 ## What is automatic
 

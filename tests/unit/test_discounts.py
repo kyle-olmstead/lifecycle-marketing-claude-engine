@@ -11,7 +11,7 @@ from engine.measurement import discounts as D
 from engine.sql import check as sql_check
 from engine.sql.dialects import DIALECTS
 
-DEMO = ROOT / "examples/brands/ridgeview_saas/data"
+DEMO = ROOT / "tests" / "fixtures" / "ridgeview_small" / "data"   # the 400-person world these numbers are pinned to
 
 
 def o(oid, uid, at, disc, net=100.0, status="completed"):

@@ -2,8 +2,8 @@
 #   lcm plan --brief <this file>
 #
 # Assumed, not stated. Confirm or change each one:
-#   monthly_entrants: estimated from the data (DEMO DATA): 28 a month, mean threshold crossings over 3 complete month(s) to 2026-09
-#   baseline_conversion_rate: estimated from the data (DEMO DATA): 17.5%, 22 of 126 matured threshold crossings came back within 30 days with no flow
+#   monthly_entrants: estimated from the data (DEMO DATA): 613 a month, mean threshold crossings a month over 2026-07 to 2026-09 that pass the AMBER gate's entry filter (clicked or replied in 90 days): 613 of 1,214
+#   baseline_conversion_rate: estimated from the data (DEMO DATA): 29.2%, 684 of 2,343 matured threshold crossings that pass the gate's filter came back within 30 days with no flow
 #   outcome_window_days: not stated; set to 30 days so the whole flow (last touch on day 18) plus a week is inside it
 product_name: Ridgeview
 flow_type: winback
@@ -27,7 +27,7 @@ channels:
 - email
 - in_app
 holdout_pct: 15.0
-randomization_unit: user
+randomization_unit: account
 global_holdout_pct: 0.0
 stopping_rule: fixed_horizon
 looks: 5

@@ -14,7 +14,7 @@ from engine.brief import load_brief, parse_text, to_yaml
 from engine.models import Brief, EventMatch, base_form
 from engine.sql.dialects import dialect, holdout_bucket
 
-FIX = ROOT / "examples" / "brands" / "ridgeview_saas" / "data"
+FIX = ROOT / "tests" / "fixtures" / "ridgeview_small" / "data"   # the 400-person world these numbers are pinned to
 EXAMPLE = ROOT / "examples" / "brands" / "ridgeview_saas" / "briefs" / "winback_14d.yaml"
 SPEC_SENTENCE = ("Build a 5-touch automated win-back flow for users who completed onboarding but haven't triggered a core "
                  "action in 14 days")

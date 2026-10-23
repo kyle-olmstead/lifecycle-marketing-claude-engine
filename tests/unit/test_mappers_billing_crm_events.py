@@ -27,8 +27,8 @@ from engine.data.schema import TABLES
 from engine.sql import check as sql_check
 
 EXPORTS = ROOT / "examples/brands/ridgeview_saas/exports"
-DEMO_USERS = ROOT / "examples/brands/ridgeview_saas/data/users.csv"
-DEMO_EVENTS = ROOT / "examples/brands/ridgeview_saas/data/track_events.csv"
+DEMO_USERS = ROOT / "tests/fixtures/ridgeview_small/data/users.csv"        # the exports' ten people come from the small world
+DEMO_EVENTS = ROOT / "tests/fixtures/ridgeview_small/data/track_events.csv"
 SQL = ROOT / "adapters/sources/sql"
 MAPPERS = {"stripe": stripe, "hubspot": hubspot_export, "customerio": customerio_export, "ga4": ga4_bigquery,
            "rudderstack": rudderstack, "segment": segment}
@@ -529,15 +529,16 @@ def test_every_warehouse_sql_file_declares_and_parses_its_dialect():
 
 
 def test_sample_exports_are_deterministic(tmp_path):
-    (tmp_path / "data").mkdir()
-    (tmp_path / "exports").mkdir()
-    shutil.copy(DEMO_USERS, tmp_path / "data/users.csv")
-    shutil.copy(DEMO_EVENTS, tmp_path / "data/track_events.csv")
-    shutil.copy(EXPORTS / "make_exports.py", tmp_path / "exports/make_exports.py")
-    subprocess.run([sys.executable, str(tmp_path / "exports/make_exports.py")], check=True, capture_output=True)
+    data, exports = tmp_path / "tests/fixtures/ridgeview_small/data", tmp_path / "examples/brands/ridgeview_saas/exports"
+    data.mkdir(parents=True)
+    exports.mkdir(parents=True)
+    shutil.copy(DEMO_USERS, data / "users.csv")
+    shutil.copy(DEMO_EVENTS, data / "track_events.csv")
+    shutil.copy(EXPORTS / "make_exports.py", exports / "make_exports.py")
+    subprocess.run([sys.executable, str(exports / "make_exports.py")], check=True, capture_output=True)
     for f in sorted(p for p in EXPORTS.rglob("*") if p.is_file() and p.name != "make_exports.py" and "__pycache__" not in p.parts):
         rel = f.relative_to(EXPORTS)
-        assert filecmp.cmp(f, tmp_path / "exports" / rel, shallow=False), rel
+        assert filecmp.cmp(f, exports / rel, shallow=False), rel
 
 
 def test_decimal_amounts_are_exact(mapped):

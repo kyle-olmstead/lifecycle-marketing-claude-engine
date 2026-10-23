@@ -3,9 +3,10 @@ Deterministic sample vendor exports for Ridgeview, the fictional B2B SaaS demo, 
 
 Nothing here is real: users u_0001 to u_0010 with addresses at the reserved .test domain, names "User 0001",
 fictional workspaces, documentation-range IP addresses (203.0.113.0/24) and the reserved example domain
-ridgeview.example. The same ten people appear in every export, with the sign-up time, country and plan they have
-in ../data/users.csv and the product events they have in ../data/track_events.csv, so each export is a view of one
-consistent world:
+ridgeview.example. The same ten people appear in every export, with the sign-up time, country and plan they have in
+the small Ridgeview world the tests pin (tests/fixtures/ridgeview_small/data/users.csv) and the product events they have
+in its track_events.csv, so each export is a view of one consistent world. The demo's own data (../data) is the same
+company at full size; the exports stay small so every mapped row can be checked by hand:
 
   stripe/       customers.csv, subscriptions.csv, invoices.csv   Dashboard-style CSV exports
   hubspot/      all-contacts.csv                                 contacts export with subscription columns
@@ -34,7 +35,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 HERE = Path(__file__).resolve().parent
-DATA = HERE.parent / "data"
+DATA = HERE.parents[3] / "tests" / "fixtures" / "ridgeview_small" / "data"   # the ten people, from the small world
 USERS = [f"u_{i:04d}" for i in range(1, 11)]
 UTC = timezone.utc
 COUNTRY_NAME = {"US": "United States", "DE": "Germany", "CA": "Canada", "GB": "United Kingdom", "AU": "Australia"}

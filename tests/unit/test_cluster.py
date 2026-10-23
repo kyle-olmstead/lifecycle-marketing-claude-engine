@@ -181,8 +181,8 @@ def test_icc_from_the_canonical_tables_in_duckdb():
     assert windowed["icc"] is None   # no events after March: the outcome does not vary
 
 
-def test_icc_cli_on_the_demo_data_says_there_are_no_accounts():
-    r = subprocess.run([sys.executable, "engine/measurement/cluster.py", "icc", "--data", "examples/brands/ridgeview_saas/data",
+def test_icc_cli_on_data_without_accounts_says_so():
+    r = subprocess.run([sys.executable, "engine/measurement/cluster.py", "icc", "--data", "tests/fixtures/ridgeview_small/data",
                         "--event", "report_created"], cwd=ROOT, capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     out = json.loads(r.stdout)

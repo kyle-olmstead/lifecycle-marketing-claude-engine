@@ -26,10 +26,13 @@ def root() -> Path:
     return ROOT
 
 
+SMALL_DATA = ROOT / "tests" / "fixtures" / "ridgeview_small" / "data"   # the 400-person world the SQL tests pin numbers to
+
+
 @pytest.fixture(scope="session")
 def duck():
     from engine.sql import check as sql_check
-    return sql_check.connect()
+    return sql_check.connect(SMALL_DATA)
 
 
 @pytest.fixture(scope="session")

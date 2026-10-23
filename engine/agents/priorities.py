@@ -31,7 +31,7 @@ import json
 import sys
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from pydantic import BaseModel, Field
 
@@ -77,16 +77,36 @@ class Opportunity(BaseModel):
 # inputs measured from the data
 # ----------------------------------------------------------------------------------------------
 
+VALUE_PER_CUSTOMER = "ESTIMATE: monthly revenue per paying customer, last 90 days; counts one month of value per person"
+VALUE_PER_SEAT = ("ESTIMATE: monthly revenue per person in a paying account (a seat), last 90 days; counts one month of value per "
+                  "person")
+
+
 def value_per_conversion(con, as_of: date) -> Optional[float]:
-    """Monthly net revenue per paying customer over the 90 days to as_of: a stand-in for one converted person's value."""
-    row = con.execute(
-        f"SELECT SUM(CAST(net_amount AS DOUBLE)), COUNT(DISTINCT user_id) FROM orders "
-        f"WHERE status = 'completed' AND CAST(order_at AS DATE) > DATE '{(as_of - timedelta(days=90)).isoformat()}' "
-        f"AND CAST(order_at AS DATE) <= DATE '{as_of.isoformat()}'").fetchone()
-    total, payers = row if row else (None, 0)
+    """Monthly net revenue per paying customer over the 90 days to as_of: a stand-in for one converted person's value.
+
+    When people belong to accounts (users.account_id) the payer is the account, and a flow converts people, not accounts:
+    an account's bill is spread over everyone in it, so one returning person is worth a seat, not the whole invoice."""
+    return value_and_basis(con, as_of)[0]
+
+
+def value_and_basis(con, as_of: date) -> Tuple[Optional[float], str]:
+    since, until = (as_of - timedelta(days=90)).isoformat(), as_of.isoformat()
+    window = (f"o.status = 'completed' AND CAST(o.order_at AS DATE) > DATE '{since}' AND CAST(o.order_at AS DATE) <= DATE '{until}'")
+    total, payers = con.execute(f"SELECT SUM(CAST(o.net_amount AS DOUBLE)), COUNT(DISTINCT o.user_id) FROM orders o WHERE {window}").fetchone() or (None, 0)
     if not total or not payers:
-        return None
-    return round(float(total) / payers / 3, 2)
+        return None, VALUE_PER_CUSTOMER
+    seats, solo = con.execute(
+        f"WITH payer AS (SELECT DISTINCT o.user_id, NULLIF(u.account_id, '') AS account_id FROM orders o "
+        f"LEFT JOIN users u ON u.user_id = o.user_id WHERE {window}), "
+        f"paying AS (SELECT DISTINCT account_id FROM payer WHERE account_id IS NOT NULL) "
+        f"SELECT (SELECT COUNT(*) FROM users u JOIN paying p ON p.account_id = u.account_id "
+        f"        WHERE CAST(u.created_at AS DATE) <= DATE '{until}'), "
+        f"       (SELECT COUNT(*) FROM payer WHERE account_id IS NULL)").fetchone()
+    seats = (seats or 0) + (solo or 0)        # a payer with no account is one seat of its own
+    if seats > payers:
+        return round(float(total) / seats / 3, 2), VALUE_PER_SEAT
+    return round(float(total) / payers / 3, 2), VALUE_PER_CUSTOMER
 
 
 def _variant(base: Brief, flow_type: str, gate: str = "UNKNOWN") -> Optional[Brief]:
@@ -152,15 +172,21 @@ def _size(o: Opportunity, people: Optional[float], baseline: Optional[float], va
         o.revenue_high = round(high * value, 0)
 
 
-def _measurable(people: Optional[float], baseline: Optional[float], lift: float, window_days: int = 0) -> Optional[str]:
-    """How long a 15% holdout takes to read the lift, including the outcome window the last entrant still has to finish."""
+def _measurable(people: Optional[float], baseline: Optional[float], lift: float, window_days: int = 0,
+                cluster: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    """How long a 15% holdout takes to read the lift, including the outcome window the last entrant still has to finish, and
+    the account-level design effect when accounts are randomized (the same solve the plan's measurement section uses)."""
     if not people or not baseline:
         return None
     from engine.measurement import stats
     f = stats.feasibility(entries_per_month=people, holdout_share=0.15, p_control=baseline, mde_rel=lift,
                           outcome_window_days=window_days)
+    if (cluster or {}).get("basis") == "flow" and cluster.get("by_entrants"):
+        from engine.agents.experimentation_agent import account_design
+        f = account_design(people, 0.15, baseline, lift, window_days, cluster)[0]
     months = f.get("months_to_read")
-    return (f"a 15% holdout could prove a {lift:.0%} lift in about {months:.0f} months" if f["expected_read"].startswith("causal")
+    return (f"a 15% holdout could prove a {lift:.0%} lift in about {months:.0f} month{'s' if round(months) != 1 else ''}"
+            if f["expected_read"].startswith("causal")
             else f"too few people to prove a {lift:.0%} lift inside a year: results will be directional")
 
 
@@ -231,16 +257,19 @@ def _build_candidates(briefs: List[Brief], live: List[Brief], data: str, as_of: 
             else:
                 did = b.core_conversion_event.label or did
                 title = f"Win-back: bring back people {b.churn_threshold_days} days after they last {did}"
-                why = [f"{people:,.0f} people a month reach {b.churn_threshold_days} days since they last {did} ({me.label}); "
-                       f"{baseline:.1%} come back within {window} days with nothing sent ({br.label})" if baseline is not None else
-                       f"{people:,.0f} people a month lapse ({me.label})"]
+                gated = (cohort.audience_after_gate or {}).get("monthly") if me.label != "SUPPLIED" else None
+                reach = (f"{people:,.0f} people a month reach {b.churn_threshold_days} days since they last {did} and pass the "
+                         f"{gate} gate's filter ({gated['rule']}; {gated['monthly_entrants_before']:,.0f} reach it in all)" if gated else
+                         f"{people:,.0f} people a month reach {b.churn_threshold_days} days since they last {did}")
+                why = [f"{reach} ({me.label}); {baseline:.1%} come back within {window} days with nothing sent ({br.label})"
+                       if baseline is not None else f"{people:,.0f} people a month lapse ({me.label})"]
                 effort, effort_why = "M", "5 touches ending with re-permission" + (", email and in-app" if "in_app" in b.channels else "")
                 why += _blast_evidence(b, data, as_of)
             why.append("no live flow in briefs/active/ catches them")
             o = Opportunity(key=f"{b.slug}{suffix}", kind="build", title=title, why=why, effort=effort, effort_why=effort_why)
             _size(o, people, baseline, value, value_label, lift_low, lift_high)
             o.confidence, o.confidence_why = _confidence(people, br.basis, br.label)
-            o.measurable = _measurable(people, baseline, lift_high, window)
+            o.measurable = _measurable(people, baseline, lift_high, window, cohort.cluster)
             o.confirm = [f"the core action is right: {core.detail()}",
                          f"the lift range ({lift_low:.0%} to {lift_high:.0%} relative) is an assumption, not a measurement"]
             if out is not None:
@@ -448,8 +477,7 @@ def run(data: str, briefs: Optional[List[Brief]] = None, live: Optional[List[Bri
     if value is not None:
         value_label = "SUPPLIED"
     else:
-        value = value_per_conversion(con, as_of_date)
-        value_label = "ESTIMATE: monthly revenue per paying customer, last 90 days; counts one month of value per person"
+        value, value_label = value_and_basis(con, as_of_date)
         if value is None:
             notes.append("no completed orders in the last 90 days: sizes are in conversions; give --value-per-conversion for dollars")
     if value is not None and value <= 0:

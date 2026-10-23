@@ -43,7 +43,7 @@ TEAMMATE_TREE = [
     "engine/pipeline/core.py", "engine/pipeline/stages.py", "engine/agents/strategist.py", "engine/policy/compliance.py", "engine/agents/engagement.py", "engine/cli/main.py",
     "engine/deliverability/dns_collect.py", "engine/contracts.py", "engine/workflows/daily.py", "config/compliance_rules.json", "pyproject.toml",
     "schemas/deliverability_input.schema.json", "schemas/readout_input.schema.json", "schemas/warmup_tiers.schema.json",
-    "examples/brands/ridgeview_saas/data/message_events.csv", "docs/AUDIT.md", "examples/brands/ridgeview_saas/briefs/active/README.md", "docs/ROI_MEMO.md", "engine/measurement/roi.py",
+    "examples/brands/ridgeview_saas/data/message_events.parquet", "docs/AUDIT.md", "examples/brands/ridgeview_saas/briefs/active/README.md", "docs/ROI_MEMO.md", "engine/measurement/roi.py",
     "engine/agents/priorities.py", "engine/agents/tracking.py", "engine/agents/retention.py", "config/question_bank.yaml", "docs/QUESTION_BANK.md",
     "engine/questions.py",
 ]
@@ -72,10 +72,24 @@ def test_repository_examples_pass_their_own_rules():
 
 
 def test_fixtures_are_deterministic(tmp_path):
-    shutil.copy(ROOT / "examples/brands/ridgeview_saas/data/make_data.py", tmp_path / "make_fixtures.py")
+    """Both Ridgeview worlds regenerate exactly: the small one byte for byte, the demo's Parquet tables row for row (the
+    file bytes carry the writer's version)."""
+    small = ROOT / "tests/fixtures/ridgeview_small/data"
+    shutil.copy(small / "make_data.py", tmp_path / "make_fixtures.py")
     subprocess.run([sys.executable, str(tmp_path / "make_fixtures.py")], check=True, capture_output=True)
     for name in ("users.csv", "orders.csv", "track_events.csv", "message_events.csv"):
-        assert filecmp.cmp(tmp_path / name, ROOT / "examples/brands/ridgeview_saas/data" / name, shallow=False), name
+        assert filecmp.cmp(tmp_path / name, small / name, shallow=False), name
+    demo, out = ROOT / "examples/brands/ridgeview_saas/data", tmp_path / "demo"
+    out.mkdir()
+    subprocess.run([sys.executable, str(demo / "make_data.py"), str(out)], check=True, capture_output=True)
+    for name in ("users.csv", "orders.csv"):
+        assert filecmp.cmp(out / name, demo / name, shallow=False), name
+    import duckdb
+    con = duckdb.connect()
+    for name in ("track_events.parquet", "message_events.parquet"):
+        diff = con.execute(f"SELECT COUNT(*) FROM ((SELECT * FROM '{out / name}' EXCEPT ALL SELECT * FROM '{demo / name}') "
+                           f"UNION ALL (SELECT * FROM '{demo / name}' EXCEPT ALL SELECT * FROM '{out / name}'))").fetchone()[0]
+        assert diff == 0, name
 
 
 def test_cli_entry_points_run():

@@ -12,7 +12,7 @@ from engine.measurement import stats as S
 from engine.sql import check as sql_check
 from engine.sql.dialects import DIALECTS, holdout_bucket
 
-DEMO = ROOT / "examples/brands/ridgeview_saas/data"
+DEMO = ROOT / "tests" / "fixtures" / "ridgeview_small" / "data"   # the 400-person world these numbers are pinned to
 
 
 def test_python_and_sql_agree_on_every_demo_user():

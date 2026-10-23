@@ -1,83 +1,89 @@
 {
   "holdout_pct": 15.0,
-  "unit": "user",
+  "unit": "account",
   "salt": "ridgeview_winback_14d",
   "assignment_sql": {
-    "postgres": "((('x' || substr(md5(user_id || ':ridgeview_winback_14d'), 1, 7))::bit(28)::int) % 100) < 15",
-    "snowflake": "MOD(TO_NUMBER(SUBSTR(MD5(user_id || ':ridgeview_winback_14d'), 1, 7), 'XXXXXXX'), 100) < 15",
-    "bigquery": "MOD(CAST(CONCAT('0x', SUBSTR(TO_HEX(MD5(CONCAT(user_id, ':ridgeview_winback_14d'))), 1, 7)) AS INT64), 100) < 15"
+    "postgres": "((('x' || substr(md5(COALESCE(account_id, user_id) || ':ridgeview_winback_14d'), 1, 7))::bit(28)::int) % 100) < 15",
+    "snowflake": "MOD(TO_NUMBER(SUBSTR(MD5(COALESCE(account_id, user_id) || ':ridgeview_winback_14d'), 1, 7), 'XXXXXXX'), 100) < 15",
+    "bigquery": "MOD(CAST(CONCAT('0x', SUBSTR(TO_HEX(MD5(CONCAT(COALESCE(account_id, user_id), ':ridgeview_winback_14d'))), 1, 7)) AS INT64), 100) < 15"
   },
-  "assignment_rule": "persistent, by user: bucket = first 7 hex digits of md5(user_id || ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout, computed in the daily queue query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population",
+  "assignment_rule": "persistent, by account: bucket = first 7 hex digits of md5(account_id || ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout, computed in the daily queue query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population",
   "primary_metric": "created a report (feature_used where feature = reports) within 30 days of entry, treatment vs holdout, both arms counted from their entry date",
   "outcome_window_days": 30,
-  "read": "directional only",
-  "sizing": "about 28 entrants a month (DEMO DATA), 17.5% return within 30 days with no flow (DEMO DATA), 25% relative lift (4.4 pts) worth acting on: 781 holdout entrants at 15%, 186.0 months of entries plus the 30-day outcome window, so the read lands about 186.9 months after launch (engine/measurement/stats.py feasible --entries-per-month 28 --holdout 0.15 --baseline 0.1746 --mde-rel 0.25 --outcome-window-days 30)",
-  "read_after": "not inside 12 months at this volume (it would take about 187 months): keep the holdout, report against a pre/post baseline, and label every result directional",
+  "read": "causal, slow",
+  "sizing": "about 613 entrants a month (DEMO DATA), 29.2% return within 30 days with no flow (DEMO DATA), 25% relative lift (7.3 pts) worth acting on: 475 holdout entrants at 15%, 5.2 months of entries plus the 30-day outcome window, so the read lands about 6.2 months after launch (engine/measurement/stats.py feasible --entries-per-month 612.7 --holdout 0.15 --baseline 0.2919 --mde-rel 0.25 --outcome-window-days 30 --design-effect 1.225); account-level: design effect 1.23 at the read, measured on the flow's own entrants (how much more the return rate varies across 1,095 accounts than across people drawn one by one; DEMO DATA). Over the last 4.63 months it was 1.17 (95% range 1.06 to 1.28); at 1.28 the read lands about 7.1 months after launch",
+  "read_after": "475 holdout entrants have each completed 30 days (about 6.2 months after launch)",
   "feasibility": {
-    "entries_per_month": 28.0,
+    "entries_per_month": 612.7,
     "holdout_share": 0.15,
-    "p_control": 0.1746,
-    "mde_abs": 0.04365,
-    "design_effect": 1.0,
-    "required_holdout_n": 781,
-    "required_treatment_n": 4426,
-    "power_holdout_n": 781,
-    "power_treatment_n": 4426,
+    "p_control": 0.2919,
+    "mde_abs": 0.072975,
+    "design_effect": 1.2251849014084506,
+    "required_holdout_n": 475,
+    "required_treatment_n": 2687,
+    "power_holdout_n": 475,
+    "power_treatment_n": 2687,
     "size_set_by": "power",
     "readout_floor": {
       "n_control": 30,
       "n_treatment": 170,
-      "rule": "at least 30 entrants and 5 expected conversions per arm, at the baseline and at the treatment rate (the readout refuses smaller arms)"
+      "rule": "at least 30 entrants and 5 expected conversions per arm, at the baseline and at the treatment rate (the readout refuses smaller arms), and at least 10 randomized accounts per arm"
     },
     "p_readable": 1.0,
-    "enrollment_months": 186.0,
+    "enrollment_months": 5.2,
     "outcome_window_days": 30,
-    "months_to_read": 186.9,
-    "recommended_design": "the holdout will not reach a readable sample inside the horizon. Use a pre/post baseline, label it directional, and watch an operational signal instead; do not report a lift percentage",
-    "expected_read": "directional only",
+    "months_to_read": 6.2,
+    "recommended_design": "persistent randomized holdout at 15% reads in about 6.2 months; a 25% holdout would read in about 4.5 months at the cost of withholding more audience",
+    "expected_read": "causal, slow",
     "alternatives": [
       {
         "holdout_share": 0.25,
-        "months_to_read": 126.7,
-        "fits_horizon": false,
+        "months_to_read": 4.5,
+        "fits_horizon": true,
         "cost": "withholds 25% of entrants from the flow while it reads"
       },
       {
         "holdout_share": 0.5,
-        "months_to_read": 93.8,
-        "fits_horizon": false,
+        "months_to_read": 3.6,
+        "fits_horizon": true,
         "cost": "withholds 50% of entrants from the flow while it reads"
       }
     ],
     "horizon_months": 12,
-    "randomization_unit": "account (company or workspace) where the buying unit is an account; entrants in one unit are not independent, so set design_effect = 1 + (entrants per unit - 1) x ICC"
+    "randomization_unit": "account (company or workspace) where the buying unit is an account; entrants in one unit are not independent, so set design_effect = 1 + (entrants per unit - 1) x ICC",
+    "mean_cluster_size": 2.5498133642034864,
+    "required_holdout_clusters": 187,
+    "required_treatment_clusters": 1054
   },
   "mde_by_horizon": [
     {
       "months_of_entries": 3,
-      "holdout_n": 12,
-      "treatment_n": 71,
-      "mde_abs_pts": null,
-      "mde_rel": null
+      "holdout_n": 275,
+      "treatment_n": 1562,
+      "mde_abs_pts": 9.5,
+      "mde_rel": 0.3254,
+      "design_effect": 1.18
     },
     {
       "months_of_entries": 6,
-      "holdout_n": 25,
-      "treatment_n": 142,
-      "mde_abs_pts": null,
-      "mde_rel": null
+      "holdout_n": 551,
+      "treatment_n": 3124,
+      "mde_abs_pts": 6.85,
+      "mde_rel": 0.2348,
+      "design_effect": 1.26
     },
     {
       "months_of_entries": 12,
-      "holdout_n": 50,
-      "treatment_n": 285,
-      "mde_abs_pts": 19.35,
-      "mde_rel": 1.108
+      "holdout_n": 1102,
+      "treatment_n": 6249,
+      "mde_abs_pts": 5.28,
+      "mde_rel": 0.181,
+      "design_effect": 1.52
     }
   ],
   "sensitivity": [],
   "decision_rule": "Keep the flow when the 95% interval for (treatment minus holdout) rate of feature_used where feature = reports lies above zero and the guardrails hold. If it spans zero at the planned read, report it as inconclusive: keep the holdout running or change the flow. Report attributed, incremental and the gap together (lcm readout).",
-  "srm_rule": "At every look, test the split against 85/15 (lcm readout --expected-holdout 0.15). A chi-square p below 0.001 means assignment or logging is broken; read nothing until it is fixed.",
+  "srm_rule": "At every look, test the split against 85/15 (lcm readout --expected-holdout 0.15), counting accounts, not people. A chi-square p below 0.001 means assignment or logging is broken; read nothing until it is fixed.",
   "peeking_policy": "One planned read on the date above. Earlier looks check sample ratio and guardrails only; no early stop for a good-looking lift.",
   "guardrail_metrics": [
     "spam complaint rate per send below 0.1% (Gmail's target; 0.3% is its hard limit)",
@@ -87,16 +93,16 @@
   "variant_tests": [
     "Copy variants rotate evenly inside the treatment arm. Read them on clicks or the core action, never opens, and only directionally below about 1,000 sends per variant (size exactly with engine/measurement/stats.py size --baseline <click rate> --mde-rel 0.2)"
   ],
-  "hash_field": "user_id",
+  "hash_field": "account_id",
   "global_holdout_pct": 0.0,
   "registry_entry": {
     "experiment_id": "ridgeview_winback_14d_holdout",
     "flow": "ridgeview_winback_14d",
-    "unit": "user",
+    "unit": "account",
     "assignment": {
-      "hash_field": "user_id",
+      "hash_field": "account_id",
       "salt": "ridgeview_winback_14d",
-      "rule": "persistent, by user: bucket = first 7 hex digits of md5(user_id || ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout, computed in the daily queue query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population"
+      "rule": "persistent, by account: bucket = first 7 hex digits of md5(account_id || ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout, computed in the daily queue query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population"
     },
     "holdout_share": 0.15,
     "primary_metric": {
@@ -105,17 +111,19 @@
       "description": "created a report (feature_used where feature = reports) within 30 days of entry, treatment vs holdout, both arms counted from their entry date"
     },
     "plan": {
-      "baseline": 0.1746,
-      "mde_abs": 0.04365,
+      "baseline": 0.2919,
+      "mde_abs": 0.072975,
       "n_per_arm": {
-        "holdout": 781,
-        "treatment": 4426
+        "holdout": 475,
+        "treatment": 2687
       },
-      "design_effect": 1.0,
+      "design_effect": 1.2251849014084506,
       "alpha": 0.05,
       "power": 0.8,
       "read_on": null,
-      "expected_read": "directional only"
+      "expected_read": "causal, slow",
+      "icc": 0.0568,
+      "mean_cluster_size": 2.5498133642034864
     },
     "stopping_rule": {
       "design": "fixed_horizon",

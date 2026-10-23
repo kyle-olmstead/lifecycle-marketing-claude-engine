@@ -1,0 +1,65 @@
+# Brand kit for Ridgeview, the fictional B2B reporting product in the demo workspace. Every name, address and
+# domain is invented (the domains use the reserved .example and example.com names). The voice and senders match
+# examples/brands/ridgeview_saas/context.xml. Field guide: templates/brand/brand.yaml and docs/BRAND_KIT.md.
+#   python3 engine/render/brand.py examples/brands/ridgeview_saas/brand.yaml
+#   python3 engine/render/mjml_render.py --brand examples/brands/ridgeview_saas/brand.yaml --dialect all
+brand_name: Ridgeview
+lang: en
+website: https://www.ridgeview.example
+
+logo:
+  url: https://www.ridgeview.example/email/ridgeview-logo-280x64.png
+  alt: Ridgeview
+  width: 140
+  height: 32
+
+colors:
+  primary: "#2B4C7E"       # Ridgeview navy
+  button_text: "#FFFFFF"
+  text: "#1F2933"
+  background: "#F3F5F8"
+  card: "#FFFFFF"
+  link: "#2B4C7E"
+  dark:
+    primary: "#8DB8F2"     # a lighter blue, so the button still stands out on the dark card
+    button_text: "#10203A"
+    text: "#E6EBF2"
+    background: "#10161F"
+    card: "#18212D"
+    link: "#8DB8F2"
+
+fonts:
+  stack: Arial, Helvetica, sans-serif
+
+footer:
+  legal_name: Ridgeview Analytics, Inc. (fictional)
+  postal_address: 100 Example Way, Suite 400, Springfield, OR 97477
+  extra_lines:
+    - You are getting this because you have a {product_name} account.
+    - Questions? Reply to this email and a person on our team will answer.
+
+voice:
+  register: plain, specific, second person; short sentences; no exclamation marks
+  vocabulary:
+    - avoid: dashboarding solution
+      use_instead: the Monday numbers
+    - avoid: leverage insights
+      use_instead: see what changed
+    - avoid: stakeholders
+      use_instead: whoever asks you for the numbers
+  forbidden_phrases: [unlock, supercharge, game-changing, act now]
+  sign_off: The Ridgeview team
+
+senders:
+  marketing:
+    from_name: Ridgeview
+    from_address: news@example.com
+    reply_to: support@example.com
+  person:
+    from_name: Dana Ortiz
+    from_address: dana@example.com
+    reply_to: dana@example.com
+
+social:
+  - label: LinkedIn
+    url: https://www.linkedin.example/company/ridgeview

@@ -16,7 +16,8 @@ esp:
   tier: Premium
 warehouse_dialect: postgres
 
-# Supplied, not observed: 400,000 of 600,000 contacts are unengaged, so plans mail engaged people only.
+# Supplied from the list's engagement (lcm engagement): about 44% of the people Ridgeview can email got 5 or more emails in
+# six months and clicked none, which is AMBER. Plans mail engaged people only until a re-permission send and a sunset fix it.
 sending_gate: AMBER
 
 frequency:
@@ -34,7 +35,7 @@ offer_policy:
   never_in_first_touch: true
 
 measurement:
-  randomization_unit: user
+  randomization_unit: account
   global_holdout_pct: 0
   stopping_rule: fixed_horizon
 

@@ -74,10 +74,10 @@
   "holdout": {
     "percent": 15.0,
     "persistent": true,
-    "unit": "user",
-    "assignment": "persistent, by user: bucket = first 7 hex digits of md5(user_id || ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout, computed in the daily queue query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population",
-    "sizing": "about 28 entrants a month (DEMO DATA), 17.5% return within 30 days with no flow (DEMO DATA), 25% relative lift (4.4 pts) worth acting on: 781 holdout entrants at 15%, 186.0 months of entries plus the 30-day outcome window, so the read lands about 186.9 months after launch (engine/measurement/stats.py feasible --entries-per-month 28 --holdout 0.15 --baseline 0.1746 --mde-rel 0.25 --outcome-window-days 30)",
-    "read": "directional only"
+    "unit": "account",
+    "assignment": "persistent, by account: bucket = first 7 hex digits of md5(account_id || ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout, computed in the daily queue query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population",
+    "sizing": "about 613 entrants a month (DEMO DATA), 29.2% return within 30 days with no flow (DEMO DATA), 25% relative lift (7.3 pts) worth acting on: 475 holdout entrants at 15%, 5.2 months of entries plus the 30-day outcome window, so the read lands about 6.2 months after launch (engine/measurement/stats.py feasible --entries-per-month 612.7 --holdout 0.15 --baseline 0.2919 --mde-rel 0.25 --outcome-window-days 30 --design-effect 1.225); account-level: design effect 1.23 at the read, measured on the flow's own entrants (how much more the return rate varies across 1,095 accounts than across people drawn one by one; DEMO DATA). Over the last 4.63 months it was 1.17 (95% range 1.06 to 1.28); at 1.28 the read lands about 7.1 months after launch",
+    "read": "causal, slow"
   },
   "frequency": {
     "cap": "at most 3 email/sms/push message(s) per week across flows (the workspace message limit)",
@@ -200,7 +200,7 @@
   },
   "measurement": {
     "primary_metric": "created a report (feature_used where feature = reports) within 30 days of entry, treatment vs holdout, both arms counted from their entry date",
-    "read_after": "not inside 12 months at this volume (it would take about 187 months): keep the holdout, report against a pre/post baseline, and label every result directional",
+    "read_after": "475 holdout entrants have each completed 30 days (about 6.2 months after launch)",
     "compared_against": "holdout",
     "guardrails": [
       "spam complaint rate per send below 0.1% (Gmail's target; 0.3% is its hard limit)",
@@ -214,14 +214,14 @@
       "kind": "event",
       "status": "verified",
       "fill_rate": 1.0,
-      "note": "qualifies a person for the flow; 708 events from 324 people; property step_index filled on 100% of events, 158 match 3"
+      "note": "qualifies a person for the flow; 42528 events from 21132 people; property step_index filled on 100% of events, 9499 match 3"
     },
     {
       "name": "feature_used (feature=reports)",
       "kind": "event",
       "status": "verified",
       "fill_rate": 1.0,
-      "note": "the core action: entry clock, exit and primary metric; 915 events from 209 people; property feature filled on 100% of events, 242 match reports"
+      "note": "the core action: entry clock, exit and primary metric; 222764 events from 9428 people; property feature filled on 100% of events, 174188 match reports"
     },
     {
       "name": "email",
@@ -231,11 +231,18 @@
       "note": "address for every email touch; users.email filled 100%"
     },
     {
+      "name": "account_id",
+      "kind": "attribute",
+      "status": "verified",
+      "fill_rate": 1.0,
+      "note": "the holdout hashes the account, so everyone in one account lands in the same arm; users.account_id filled 100%"
+    },
+    {
       "name": "email_consent",
       "kind": "attribute",
       "status": "verified",
-      "fill_rate": 0.8625,
-      "note": "email marketing consent; users.email_consent_at filled 86%"
+      "fill_rate": 0.8482,
+      "note": "email marketing consent; users.email_consent_at filled 85%"
     },
     {
       "name": "session_started",

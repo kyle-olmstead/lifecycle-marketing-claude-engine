@@ -1,6 +1,6 @@
 import sqlglot
 
-from tests.conftest import ROOT
+from tests.conftest import SMALL_DATA, ROOT
 from engine.sql import check as sql_check
 
 RFM = ROOT / "prompts/jobs/sql/rfm_segmentation"
@@ -34,7 +34,7 @@ def _equivalent(path, dialect, duck, key_cols, val_cols):
     src = _first(path, dialect)
     assert sql_check.parse(src, dialect)[0]
     # Snowflake and BigQuery divide integers to a decimal, so their transpiled SQL runs without PostgreSQL's integer division
-    cur = sql_check.connect(integer_division=False).execute(sqlglot.transpile(src, read=dialect, write="duckdb")[0])
+    cur = sql_check.connect(SMALL_DATA, integer_division=False).execute(sqlglot.transpile(src, read=dialect, write="duckdb")[0])
     cols = [d[0] for d in cur.description]
     other = cur.fetchall()
 

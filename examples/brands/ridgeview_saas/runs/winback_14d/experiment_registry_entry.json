@@ -1,11 +1,11 @@
 {
   "experiment_id": "ridgeview_winback_14d_holdout",
   "flow": "ridgeview_winback_14d",
-  "unit": "user",
+  "unit": "account",
   "assignment": {
-    "hash_field": "user_id",
+    "hash_field": "account_id",
     "salt": "ridgeview_winback_14d",
-    "rule": "persistent, by user: bucket = first 7 hex digits of md5(user_id || ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout, computed in the daily queue query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population"
+    "rule": "persistent, by account: bucket = first 7 hex digits of md5(account_id || ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout, computed in the daily queue query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population"
   },
   "holdout_share": 0.15,
   "primary_metric": {
@@ -14,17 +14,19 @@
     "description": "created a report (feature_used where feature = reports) within 30 days of entry, treatment vs holdout, both arms counted from their entry date"
   },
   "plan": {
-    "baseline": 0.1746,
-    "mde_abs": 0.04365,
+    "baseline": 0.2919,
+    "mde_abs": 0.072975,
     "n_per_arm": {
-      "holdout": 781,
-      "treatment": 4426
+      "holdout": 475,
+      "treatment": 2687
     },
-    "design_effect": 1.0,
+    "design_effect": 1.2251849014084506,
     "alpha": 0.05,
     "power": 0.8,
     "read_on": null,
-    "expected_read": "directional only"
+    "expected_read": "causal, slow",
+    "icc": 0.0568,
+    "mean_cluster_size": 2.5498133642034864
   },
   "stopping_rule": {
     "design": "fixed_horizon",

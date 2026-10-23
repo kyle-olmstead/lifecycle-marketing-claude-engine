@@ -1,6 +1,6 @@
 {
-  "run_id": "6ed162279d2c",
-  "generated_at": "2026-10-23T03:04:55+00:00",
+  "run_id": "dacab4fe3217",
+  "generated_at": "2026-10-23T05:39:12+00:00",
   "engine_version": "3.0.0",
   "brief": {
     "product_name": "Ridgeview",
@@ -33,7 +33,7 @@
       "in_app"
     ],
     "holdout_pct": 15.0,
-    "randomization_unit": "user",
+    "randomization_unit": "account",
     "global_holdout_pct": 0.0,
     "stopping_rule": "fixed_horizon",
     "looks": 5,
@@ -105,13 +105,13 @@
     "assumptions": [
       {
         "field": "monthly_entrants",
-        "value": 28.0,
-        "why": "estimated from the data (DEMO DATA): 28 a month, mean threshold crossings over 3 complete month(s) to 2026-09"
+        "value": 612.7,
+        "why": "estimated from the data (DEMO DATA): 613 a month, mean threshold crossings a month over 2026-07 to 2026-09 that pass the AMBER gate's entry filter (clicked or replied in 90 days): 613 of 1,214"
       },
       {
         "field": "baseline_conversion_rate",
-        "value": 0.1746,
-        "why": "estimated from the data (DEMO DATA): 17.5%, 22 of 126 matured threshold crossings came back within 30 days with no flow"
+        "value": 0.2919,
+        "why": "estimated from the data (DEMO DATA): 29.2%, 684 of 2,343 matured threshold crossings that pass the gate's filter came back within 30 days with no flow"
       },
       {
         "field": "outcome_window_days",
@@ -147,10 +147,10 @@
     "exit_rule": "leaves the moment they create a report again (checked before every step)",
     "platform_pattern": "Event-triggered campaign on core_action_lapsed_14d, re-entry allowed. Exit: performs feature_used where feature = reports (conversion goal with exit on conversion). Holdout: True/False branch on the event attribute in_holdout.",
     "sql": {
-      "postgres": "-- dialect: postgres\n-- Ridgeview, winback flow: who is due on the run date (today).\n-- Qualifying: completed onboarding (onboarding_step_completed where step_index = 3). Core action: created a report (feature_used where feature = reports).\n-- Entry: 14 calendar days or more since the last core action (or since qualifying, if none since): the anchor date is\n-- between 14 and 17 days before the run date, and this lapse (user, anchor date) is not yet in lcm_flow_entries.\n-- A missed run catches up for 3 days. The ESP applies consent and suppression; this query decides who crossed.\n-- Holdout: holdout_bucket < 15 (salt 'ridgeview_winback_14d'); identical in every dialect and in engine/sql/dialects.holdout_bucket.\nWITH qualified AS (\n  SELECT s.user_id, MIN(s.event_at) AS qualified_at\n  FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND (qe.properties ->> 'step_index') = '3' AND qe.user_id IS NOT NULL) s\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE\n  GROUP BY s.user_id\n),\nlast_core AS (\n  SELECT s.user_id, MAX(s.event_at) AS last_core_at\n  FROM (SELECT ce.user_id, ce.event_at FROM track_events ce WHERE ce.event_name = 'feature_used' AND (ce.properties ->> 'feature') = 'reports' AND ce.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE\n  GROUP BY s.user_id\n),\nanchored AS (\n  SELECT q.user_id, q.qualified_at, lc.last_core_at,\n         CAST(GREATEST(COALESCE(lc.last_core_at, q.qualified_at), q.qualified_at) AS DATE) AS anchor_date\n  FROM qualified q\n  LEFT JOIN last_core lc ON lc.user_id = q.user_id\n)\nSELECT u.user_id, u.email, a.qualified_at, a.last_core_at, a.anchor_date,\n       (CURRENT_DATE - a.anchor_date) AS days_inactive,\n       u.email_consent_at IS NOT NULL AS email_consent,\n       u.sms_consent_at IS NOT NULL AS sms_consent,\n       ((('x' || substr(md5(u.user_id || ':ridgeview_winback_14d'), 1, 7))::bit(28)::int) % 100) AS holdout_bucket,\n       ((('x' || substr(md5(u.user_id || ':ridgeview_winback_14d'), 1, 7))::bit(28)::int) % 100) < 15 AS in_holdout\nFROM anchored a\nJOIN users u ON u.user_id = a.user_id\nLEFT JOIN lcm_flow_entries l ON l.flow = 'ridgeview_winback_14d' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date\nWHERE a.anchor_date BETWEEN (CURRENT_DATE - 17) AND (CURRENT_DATE - 14)\n  AND l.user_id IS NULL\nORDER BY u.user_id\n",
-      "snowflake": "-- dialect: snowflake\n-- Ridgeview, winback flow: who is due on the run date (today).\n-- Qualifying: completed onboarding (onboarding_step_completed where step_index = 3). Core action: created a report (feature_used where feature = reports).\n-- Entry: 14 calendar days or more since the last core action (or since qualifying, if none since): the anchor date is\n-- between 14 and 17 days before the run date, and this lapse (user, anchor date) is not yet in lcm_flow_entries.\n-- A missed run catches up for 3 days. The ESP applies consent and suppression; this query decides who crossed.\n-- Holdout: holdout_bucket < 15 (salt 'ridgeview_winback_14d'); identical in every dialect and in engine/sql/dialects.holdout_bucket.\nWITH qualified AS (\n  SELECT s.user_id, MIN(s.event_at) AS qualified_at\n  FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND qe.properties:step_index::string = '3' AND qe.user_id IS NOT NULL) s\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nlast_core AS (\n  SELECT s.user_id, MAX(s.event_at) AS last_core_at\n  FROM (SELECT ce.user_id, ce.event_at FROM track_events ce WHERE ce.event_name = 'feature_used' AND ce.properties:feature::string = 'reports' AND ce.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nanchored AS (\n  SELECT q.user_id, q.qualified_at, lc.last_core_at,\n         CAST(GREATEST(COALESCE(lc.last_core_at, q.qualified_at), q.qualified_at) AS DATE) AS anchor_date\n  FROM qualified q\n  LEFT JOIN last_core lc ON lc.user_id = q.user_id\n)\nSELECT u.user_id, u.email, a.qualified_at, a.last_core_at, a.anchor_date,\n       DATEDIFF(day, a.anchor_date, CURRENT_DATE()) AS days_inactive,\n       u.email_consent_at IS NOT NULL AS email_consent,\n       u.sms_consent_at IS NOT NULL AS sms_consent,\n       MOD(TO_NUMBER(SUBSTR(MD5(u.user_id || ':ridgeview_winback_14d'), 1, 7), 'XXXXXXX'), 100) AS holdout_bucket,\n       MOD(TO_NUMBER(SUBSTR(MD5(u.user_id || ':ridgeview_winback_14d'), 1, 7), 'XXXXXXX'), 100) < 15 AS in_holdout\nFROM anchored a\nJOIN users u ON u.user_id = a.user_id\nLEFT JOIN lcm_flow_entries l ON l.flow = 'ridgeview_winback_14d' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date\nWHERE a.anchor_date BETWEEN DATEADD(day, -17, CURRENT_DATE()) AND DATEADD(day, -14, CURRENT_DATE())\n  AND l.user_id IS NULL\nORDER BY u.user_id\n",
-      "bigquery": "-- dialect: bigquery\n-- Ridgeview, winback flow: who is due on the run date (today).\n-- Qualifying: completed onboarding (onboarding_step_completed where step_index = 3). Core action: created a report (feature_used where feature = reports).\n-- Entry: 14 calendar days or more since the last core action (or since qualifying, if none since): the anchor date is\n-- between 14 and 17 days before the run date, and this lapse (user, anchor date) is not yet in lcm_flow_entries.\n-- A missed run catches up for 3 days. The ESP applies consent and suppression; this query decides who crossed.\n-- Holdout: holdout_bucket < 15 (salt 'ridgeview_winback_14d'); identical in every dialect and in engine/sql/dialects.holdout_bucket.\nWITH qualified AS (\n  SELECT s.user_id, MIN(s.event_at) AS qualified_at\n  FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND JSON_VALUE(qe.properties, '$.step_index') = '3' AND qe.user_id IS NOT NULL) s\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nlast_core AS (\n  SELECT s.user_id, MAX(s.event_at) AS last_core_at\n  FROM (SELECT ce.user_id, ce.event_at FROM track_events ce WHERE ce.event_name = 'feature_used' AND JSON_VALUE(ce.properties, '$.feature') = 'reports' AND ce.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nanchored AS (\n  SELECT q.user_id, q.qualified_at, lc.last_core_at,\n         CAST(GREATEST(COALESCE(lc.last_core_at, q.qualified_at), q.qualified_at) AS DATE) AS anchor_date\n  FROM qualified q\n  LEFT JOIN last_core lc ON lc.user_id = q.user_id\n)\nSELECT u.user_id, u.email, a.qualified_at, a.last_core_at, a.anchor_date,\n       DATE_DIFF(CURRENT_DATE(), a.anchor_date, DAY) AS days_inactive,\n       u.email_consent_at IS NOT NULL AS email_consent,\n       u.sms_consent_at IS NOT NULL AS sms_consent,\n       MOD(CAST(CONCAT('0x', SUBSTR(TO_HEX(MD5(CONCAT(u.user_id, ':ridgeview_winback_14d'))), 1, 7)) AS INT64), 100) AS holdout_bucket,\n       MOD(CAST(CONCAT('0x', SUBSTR(TO_HEX(MD5(CONCAT(u.user_id, ':ridgeview_winback_14d'))), 1, 7)) AS INT64), 100) < 15 AS in_holdout\nFROM anchored a\nJOIN users u ON u.user_id = a.user_id\nLEFT JOIN lcm_flow_entries l ON l.flow = 'ridgeview_winback_14d' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date\nWHERE a.anchor_date BETWEEN DATE_ADD(CURRENT_DATE(), INTERVAL -17 DAY) AND DATE_ADD(CURRENT_DATE(), INTERVAL -14 DAY)\n  AND l.user_id IS NULL\nORDER BY u.user_id\n",
-      "duckdb": "-- dialect: duckdb\n-- Ridgeview, winback flow: who is due on the run date (the literal as-of date).\n-- Qualifying: completed onboarding (onboarding_step_completed where step_index = 3). Core action: created a report (feature_used where feature = reports).\n-- Entry: 14 calendar days or more since the last core action (or since qualifying, if none since): the anchor date is\n-- between 14 and 17 days before the run date, and this lapse (user, anchor date) is not yet in lcm_flow_entries.\n-- A missed run catches up for 3 days. The ESP applies consent and suppression; this query decides who crossed.\n-- Holdout: holdout_bucket < 15 (salt 'ridgeview_winback_14d'); identical in every dialect and in engine/sql/dialects.holdout_bucket.\nWITH qualified AS (\n  SELECT s.user_id, MIN(s.event_at) AS qualified_at\n  FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND json_extract_string(qe.properties, '$.step_index') = '3' AND qe.user_id IS NOT NULL) s\n  WHERE CAST(s.event_at AS DATE) <= DATE '2026-10-18'\n  GROUP BY s.user_id\n),\nlast_core AS (\n  SELECT s.user_id, MAX(s.event_at) AS last_core_at\n  FROM (SELECT ce.user_id, ce.event_at FROM track_events ce WHERE ce.event_name = 'feature_used' AND json_extract_string(ce.properties, '$.feature') = 'reports' AND ce.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id\n  WHERE CAST(s.event_at AS DATE) <= DATE '2026-10-18'\n  GROUP BY s.user_id\n),\nanchored AS (\n  SELECT q.user_id, q.qualified_at, lc.last_core_at,\n         CAST(GREATEST(COALESCE(lc.last_core_at, q.qualified_at), q.qualified_at) AS DATE) AS anchor_date\n  FROM qualified q\n  LEFT JOIN last_core lc ON lc.user_id = q.user_id\n)\nSELECT u.user_id, u.email, a.qualified_at, a.last_core_at, a.anchor_date,\n       (DATE '2026-10-18' - a.anchor_date) AS days_inactive,\n       u.email_consent_at IS NOT NULL AS email_consent,\n       u.sms_consent_at IS NOT NULL AS sms_consent,\n       (CAST('0x' || substr(md5(u.user_id || ':ridgeview_winback_14d'), 1, 7) AS INTEGER) % 100) AS holdout_bucket,\n       (CAST('0x' || substr(md5(u.user_id || ':ridgeview_winback_14d'), 1, 7) AS INTEGER) % 100) < 15 AS in_holdout\nFROM anchored a\nJOIN users u ON u.user_id = a.user_id\nLEFT JOIN lcm_flow_entries l ON l.flow = 'ridgeview_winback_14d' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date\nWHERE a.anchor_date BETWEEN (DATE '2026-10-18' - 17) AND (DATE '2026-10-18' - 14)\n  AND l.user_id IS NULL\nORDER BY u.user_id\n"
+      "postgres": "-- dialect: postgres\n-- Ridgeview, winback flow: who is due on the run date (today).\n-- Qualifying: completed onboarding (onboarding_step_completed where step_index = 3). Core action: created a report (feature_used where feature = reports).\n-- Entry: 14 calendar days or more since the last core action (or since qualifying, if none since): the anchor date is\n-- between 14 and 17 days before the run date, and this lapse (user, anchor date) is not yet in lcm_flow_entries.\n-- A missed run catches up for 3 days. The ESP applies consent and suppression; this query decides who crossed.\n-- Holdout: holdout_bucket < 15 (salt 'ridgeview_winback_14d'); identical in every dialect and in engine/sql/dialects.holdout_bucket.\nWITH qualified AS (\n  SELECT s.user_id, MIN(s.event_at) AS qualified_at\n  FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND (qe.properties ->> 'step_index') = '3' AND qe.user_id IS NOT NULL) s\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE\n  GROUP BY s.user_id\n),\nlast_core AS (\n  SELECT s.user_id, MAX(s.event_at) AS last_core_at\n  FROM (SELECT ce.user_id, ce.event_at FROM track_events ce WHERE ce.event_name = 'feature_used' AND (ce.properties ->> 'feature') = 'reports' AND ce.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE\n  GROUP BY s.user_id\n),\nanchored AS (\n  SELECT q.user_id, q.qualified_at, lc.last_core_at,\n         CAST(GREATEST(COALESCE(lc.last_core_at, q.qualified_at), q.qualified_at) AS DATE) AS anchor_date\n  FROM qualified q\n  LEFT JOIN last_core lc ON lc.user_id = q.user_id\n)\nSELECT u.user_id, u.email, a.qualified_at, a.last_core_at, a.anchor_date,\n       (CURRENT_DATE - a.anchor_date) AS days_inactive,\n       u.email_consent_at IS NOT NULL AS email_consent,\n       u.sms_consent_at IS NOT NULL AS sms_consent,\n       ((('x' || substr(md5(COALESCE(u.account_id, u.user_id) || ':ridgeview_winback_14d'), 1, 7))::bit(28)::int) % 100) AS holdout_bucket,\n       ((('x' || substr(md5(COALESCE(u.account_id, u.user_id) || ':ridgeview_winback_14d'), 1, 7))::bit(28)::int) % 100) < 15 AS in_holdout\nFROM anchored a\nJOIN users u ON u.user_id = a.user_id\nLEFT JOIN lcm_flow_entries l ON l.flow = 'ridgeview_winback_14d' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date\nWHERE a.anchor_date BETWEEN (CURRENT_DATE - 17) AND (CURRENT_DATE - 14)\n  AND l.user_id IS NULL\nORDER BY u.user_id\n",
+      "snowflake": "-- dialect: snowflake\n-- Ridgeview, winback flow: who is due on the run date (today).\n-- Qualifying: completed onboarding (onboarding_step_completed where step_index = 3). Core action: created a report (feature_used where feature = reports).\n-- Entry: 14 calendar days or more since the last core action (or since qualifying, if none since): the anchor date is\n-- between 14 and 17 days before the run date, and this lapse (user, anchor date) is not yet in lcm_flow_entries.\n-- A missed run catches up for 3 days. The ESP applies consent and suppression; this query decides who crossed.\n-- Holdout: holdout_bucket < 15 (salt 'ridgeview_winback_14d'); identical in every dialect and in engine/sql/dialects.holdout_bucket.\nWITH qualified AS (\n  SELECT s.user_id, MIN(s.event_at) AS qualified_at\n  FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND qe.properties:step_index::string = '3' AND qe.user_id IS NOT NULL) s\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nlast_core AS (\n  SELECT s.user_id, MAX(s.event_at) AS last_core_at\n  FROM (SELECT ce.user_id, ce.event_at FROM track_events ce WHERE ce.event_name = 'feature_used' AND ce.properties:feature::string = 'reports' AND ce.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nanchored AS (\n  SELECT q.user_id, q.qualified_at, lc.last_core_at,\n         CAST(GREATEST(COALESCE(lc.last_core_at, q.qualified_at), q.qualified_at) AS DATE) AS anchor_date\n  FROM qualified q\n  LEFT JOIN last_core lc ON lc.user_id = q.user_id\n)\nSELECT u.user_id, u.email, a.qualified_at, a.last_core_at, a.anchor_date,\n       DATEDIFF(day, a.anchor_date, CURRENT_DATE()) AS days_inactive,\n       u.email_consent_at IS NOT NULL AS email_consent,\n       u.sms_consent_at IS NOT NULL AS sms_consent,\n       MOD(TO_NUMBER(SUBSTR(MD5(COALESCE(u.account_id, u.user_id) || ':ridgeview_winback_14d'), 1, 7), 'XXXXXXX'), 100) AS holdout_bucket,\n       MOD(TO_NUMBER(SUBSTR(MD5(COALESCE(u.account_id, u.user_id) || ':ridgeview_winback_14d'), 1, 7), 'XXXXXXX'), 100) < 15 AS in_holdout\nFROM anchored a\nJOIN users u ON u.user_id = a.user_id\nLEFT JOIN lcm_flow_entries l ON l.flow = 'ridgeview_winback_14d' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date\nWHERE a.anchor_date BETWEEN DATEADD(day, -17, CURRENT_DATE()) AND DATEADD(day, -14, CURRENT_DATE())\n  AND l.user_id IS NULL\nORDER BY u.user_id\n",
+      "bigquery": "-- dialect: bigquery\n-- Ridgeview, winback flow: who is due on the run date (today).\n-- Qualifying: completed onboarding (onboarding_step_completed where step_index = 3). Core action: created a report (feature_used where feature = reports).\n-- Entry: 14 calendar days or more since the last core action (or since qualifying, if none since): the anchor date is\n-- between 14 and 17 days before the run date, and this lapse (user, anchor date) is not yet in lcm_flow_entries.\n-- A missed run catches up for 3 days. The ESP applies consent and suppression; this query decides who crossed.\n-- Holdout: holdout_bucket < 15 (salt 'ridgeview_winback_14d'); identical in every dialect and in engine/sql/dialects.holdout_bucket.\nWITH qualified AS (\n  SELECT s.user_id, MIN(s.event_at) AS qualified_at\n  FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND JSON_VALUE(qe.properties, '$.step_index') = '3' AND qe.user_id IS NOT NULL) s\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nlast_core AS (\n  SELECT s.user_id, MAX(s.event_at) AS last_core_at\n  FROM (SELECT ce.user_id, ce.event_at FROM track_events ce WHERE ce.event_name = 'feature_used' AND JSON_VALUE(ce.properties, '$.feature') = 'reports' AND ce.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nanchored AS (\n  SELECT q.user_id, q.qualified_at, lc.last_core_at,\n         CAST(GREATEST(COALESCE(lc.last_core_at, q.qualified_at), q.qualified_at) AS DATE) AS anchor_date\n  FROM qualified q\n  LEFT JOIN last_core lc ON lc.user_id = q.user_id\n)\nSELECT u.user_id, u.email, a.qualified_at, a.last_core_at, a.anchor_date,\n       DATE_DIFF(CURRENT_DATE(), a.anchor_date, DAY) AS days_inactive,\n       u.email_consent_at IS NOT NULL AS email_consent,\n       u.sms_consent_at IS NOT NULL AS sms_consent,\n       MOD(CAST(CONCAT('0x', SUBSTR(TO_HEX(MD5(CONCAT(COALESCE(u.account_id, u.user_id), ':ridgeview_winback_14d'))), 1, 7)) AS INT64), 100) AS holdout_bucket,\n       MOD(CAST(CONCAT('0x', SUBSTR(TO_HEX(MD5(CONCAT(COALESCE(u.account_id, u.user_id), ':ridgeview_winback_14d'))), 1, 7)) AS INT64), 100) < 15 AS in_holdout\nFROM anchored a\nJOIN users u ON u.user_id = a.user_id\nLEFT JOIN lcm_flow_entries l ON l.flow = 'ridgeview_winback_14d' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date\nWHERE a.anchor_date BETWEEN DATE_ADD(CURRENT_DATE(), INTERVAL -17 DAY) AND DATE_ADD(CURRENT_DATE(), INTERVAL -14 DAY)\n  AND l.user_id IS NULL\nORDER BY u.user_id\n",
+      "duckdb": "-- dialect: duckdb\n-- Ridgeview, winback flow: who is due on the run date (the literal as-of date).\n-- Qualifying: completed onboarding (onboarding_step_completed where step_index = 3). Core action: created a report (feature_used where feature = reports).\n-- Entry: 14 calendar days or more since the last core action (or since qualifying, if none since): the anchor date is\n-- between 14 and 17 days before the run date, and this lapse (user, anchor date) is not yet in lcm_flow_entries.\n-- A missed run catches up for 3 days. The ESP applies consent and suppression; this query decides who crossed.\n-- Holdout: holdout_bucket < 15 (salt 'ridgeview_winback_14d'); identical in every dialect and in engine/sql/dialects.holdout_bucket.\nWITH qualified AS (\n  SELECT s.user_id, MIN(s.event_at) AS qualified_at\n  FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND json_extract_string(qe.properties, '$.step_index') = '3' AND qe.user_id IS NOT NULL) s\n  WHERE CAST(s.event_at AS DATE) <= DATE '2026-10-18'\n  GROUP BY s.user_id\n),\nlast_core AS (\n  SELECT s.user_id, MAX(s.event_at) AS last_core_at\n  FROM (SELECT ce.user_id, ce.event_at FROM track_events ce WHERE ce.event_name = 'feature_used' AND json_extract_string(ce.properties, '$.feature') = 'reports' AND ce.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id\n  WHERE CAST(s.event_at AS DATE) <= DATE '2026-10-18'\n  GROUP BY s.user_id\n),\nanchored AS (\n  SELECT q.user_id, q.qualified_at, lc.last_core_at,\n         CAST(GREATEST(COALESCE(lc.last_core_at, q.qualified_at), q.qualified_at) AS DATE) AS anchor_date\n  FROM qualified q\n  LEFT JOIN last_core lc ON lc.user_id = q.user_id\n)\nSELECT u.user_id, u.email, a.qualified_at, a.last_core_at, a.anchor_date,\n       (DATE '2026-10-18' - a.anchor_date) AS days_inactive,\n       u.email_consent_at IS NOT NULL AS email_consent,\n       u.sms_consent_at IS NOT NULL AS sms_consent,\n       (CAST('0x' || substr(md5(COALESCE(u.account_id, u.user_id) || ':ridgeview_winback_14d'), 1, 7) AS INTEGER) % 100) AS holdout_bucket,\n       (CAST('0x' || substr(md5(COALESCE(u.account_id, u.user_id) || ':ridgeview_winback_14d'), 1, 7) AS INTEGER) % 100) < 15 AS in_holdout\nFROM anchored a\nJOIN users u ON u.user_id = a.user_id\nLEFT JOIN lcm_flow_entries l ON l.flow = 'ridgeview_winback_14d' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date\nWHERE a.anchor_date BETWEEN (DATE '2026-10-18' - 17) AND (DATE '2026-10-18' - 14)\n  AND l.user_id IS NULL\nORDER BY u.user_id\n"
     },
     "history_sql": {
       "postgres": "-- dialect: postgres\n-- Ridgeview: threshold crossings by month (would-be entrants) and the natural return rate: the share of\n-- matured crossings (at least 30 days old) whose next core action came within 30 days, with no flow running.\nWITH qualified AS (\n  SELECT s.user_id, MIN(s.event_at) AS qualified_at\n  FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND (qe.properties ->> 'step_index') = '3' AND qe.user_id IS NOT NULL) s\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE\n  GROUP BY s.user_id\n),\nlast_core AS (\n  SELECT s.user_id, MAX(s.event_at) AS last_core_at\n  FROM (SELECT ce.user_id, ce.event_at FROM track_events ce WHERE ce.event_name = 'feature_used' AND (ce.properties ->> 'feature') = 'reports' AND ce.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE\n  GROUP BY s.user_id\n),\nanchored AS (\n  SELECT q.user_id, q.qualified_at, lc.last_core_at,\n         CAST(GREATEST(COALESCE(lc.last_core_at, q.qualified_at), q.qualified_at) AS DATE) AS anchor_date\n  FROM qualified q\n  LEFT JOIN last_core lc ON lc.user_id = q.user_id\n),\ncore_and_anchor AS (\n  SELECT s.user_id, s.event_at\n  FROM (SELECT ce2.user_id, ce2.event_at FROM track_events ce2 WHERE ce2.event_name = 'feature_used' AND (ce2.properties ->> 'feature') = 'reports' AND ce2.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id AND s.event_at >= q.qualified_at\n  UNION ALL\n  SELECT user_id, qualified_at AS event_at FROM qualified\n),\nseq AS (\n  SELECT user_id, CAST(event_at AS DATE) AS d,\n         LEAD(CAST(event_at AS DATE)) OVER (PARTITION BY user_id ORDER BY event_at) AS next_d\n  FROM core_and_anchor\n),\nlapses AS (\n  SELECT user_id, (d + 14) AS crossed_on, next_d\n  FROM seq\n  WHERE (next_d IS NULL OR next_d > (d + 14)) AND (d + 14) <= CURRENT_DATE\n)\nSELECT CAST(DATE_TRUNC('month', l.crossed_on) AS DATE) AS month,\n       COUNT(*) AS entrants,\n       SUM(CASE WHEN l.crossed_on <= (CURRENT_DATE - 30) THEN 1 ELSE 0 END) AS matured,\n       SUM(CASE WHEN l.crossed_on <= (CURRENT_DATE - 30) AND l.next_d IS NOT NULL\n                 AND l.next_d <= (l.crossed_on + 30) THEN 1 ELSE 0 END) AS returned\nFROM lapses l\nGROUP BY 1\nORDER BY 1\n",
@@ -160,19 +160,19 @@
     "job_sql": {
       "postgres": {
         "ledger": "-- dialect: postgres\n-- The ledger of win-back entries: an outbox. queue writes due lapses as 'pending', the job pushes every pending row,\n-- and mark sets them to 'pushed'. A lapse is in here at most once, so nobody enters twice for one lapse. Create once.\nCREATE TABLE IF NOT EXISTS lcm_flow_entries (\n  flow VARCHAR NOT NULL,\n  user_id VARCHAR NOT NULL,\n  anchor_date DATE NOT NULL,\n  holdout_bucket INTEGER NOT NULL,\n  in_holdout BOOLEAN NOT NULL,\n  status VARCHAR NOT NULL,\n  queued_at TIMESTAMP NOT NULL,\n  pushed_at TIMESTAMP,\n  detail VARCHAR,\n  PRIMARY KEY (flow, user_id, anchor_date)\n)\n-- Upgrading from v2: ALTER TABLE lcm_flow_entries ADD COLUMN detail VARCHAR;\n",
-        "queue": "-- dialect: postgres\n-- Daily step 1 of 3 for ridgeview_winback_14d: queue every lapse that is due as 'pending'.\nINSERT INTO lcm_flow_entries (flow, user_id, anchor_date, holdout_bucket, in_holdout, status, queued_at)\nSELECT 'ridgeview_winback_14d', e.user_id, e.anchor_date, e.holdout_bucket, e.in_holdout, 'pending', CURRENT_TIMESTAMP\nFROM (\nWITH qualified AS (\n  SELECT s.user_id, MIN(s.event_at) AS qualified_at\n  FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND (qe.properties ->> 'step_index') = '3' AND qe.user_id IS NOT NULL) s\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE\n  GROUP BY s.user_id\n),\nlast_core AS (\n  SELECT s.user_id, MAX(s.event_at) AS last_core_at\n  FROM (SELECT ce.user_id, ce.event_at FROM track_events ce WHERE ce.event_name = 'feature_used' AND (ce.properties ->> 'feature') = 'reports' AND ce.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE\n  GROUP BY s.user_id\n),\nanchored AS (\n  SELECT q.user_id, q.qualified_at, lc.last_core_at,\n         CAST(GREATEST(COALESCE(lc.last_core_at, q.qualified_at), q.qualified_at) AS DATE) AS anchor_date\n  FROM qualified q\n  LEFT JOIN last_core lc ON lc.user_id = q.user_id\n)\nSELECT u.user_id, u.email, a.qualified_at, a.last_core_at, a.anchor_date,\n       (CURRENT_DATE - a.anchor_date) AS days_inactive,\n       u.email_consent_at IS NOT NULL AS email_consent,\n       u.sms_consent_at IS NOT NULL AS sms_consent,\n       ((('x' || substr(md5(u.user_id || ':ridgeview_winback_14d'), 1, 7))::bit(28)::int) % 100) AS holdout_bucket,\n       ((('x' || substr(md5(u.user_id || ':ridgeview_winback_14d'), 1, 7))::bit(28)::int) % 100) < 15 AS in_holdout\nFROM anchored a\nJOIN users u ON u.user_id = a.user_id\nLEFT JOIN lcm_flow_entries l ON l.flow = 'ridgeview_winback_14d' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date\nWHERE a.anchor_date BETWEEN (CURRENT_DATE - 17) AND (CURRENT_DATE - 14)\n  AND l.user_id IS NULL\n) e\n",
+        "queue": "-- dialect: postgres\n-- Daily step 1 of 3 for ridgeview_winback_14d: queue every lapse that is due as 'pending'.\nINSERT INTO lcm_flow_entries (flow, user_id, anchor_date, holdout_bucket, in_holdout, status, queued_at)\nSELECT 'ridgeview_winback_14d', e.user_id, e.anchor_date, e.holdout_bucket, e.in_holdout, 'pending', CURRENT_TIMESTAMP\nFROM (\nWITH qualified AS (\n  SELECT s.user_id, MIN(s.event_at) AS qualified_at\n  FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND (qe.properties ->> 'step_index') = '3' AND qe.user_id IS NOT NULL) s\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE\n  GROUP BY s.user_id\n),\nlast_core AS (\n  SELECT s.user_id, MAX(s.event_at) AS last_core_at\n  FROM (SELECT ce.user_id, ce.event_at FROM track_events ce WHERE ce.event_name = 'feature_used' AND (ce.properties ->> 'feature') = 'reports' AND ce.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE\n  GROUP BY s.user_id\n),\nanchored AS (\n  SELECT q.user_id, q.qualified_at, lc.last_core_at,\n         CAST(GREATEST(COALESCE(lc.last_core_at, q.qualified_at), q.qualified_at) AS DATE) AS anchor_date\n  FROM qualified q\n  LEFT JOIN last_core lc ON lc.user_id = q.user_id\n)\nSELECT u.user_id, u.email, a.qualified_at, a.last_core_at, a.anchor_date,\n       (CURRENT_DATE - a.anchor_date) AS days_inactive,\n       u.email_consent_at IS NOT NULL AS email_consent,\n       u.sms_consent_at IS NOT NULL AS sms_consent,\n       ((('x' || substr(md5(COALESCE(u.account_id, u.user_id) || ':ridgeview_winback_14d'), 1, 7))::bit(28)::int) % 100) AS holdout_bucket,\n       ((('x' || substr(md5(COALESCE(u.account_id, u.user_id) || ':ridgeview_winback_14d'), 1, 7))::bit(28)::int) % 100) < 15 AS in_holdout\nFROM anchored a\nJOIN users u ON u.user_id = a.user_id\nLEFT JOIN lcm_flow_entries l ON l.flow = 'ridgeview_winback_14d' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date\nWHERE a.anchor_date BETWEEN (CURRENT_DATE - 17) AND (CURRENT_DATE - 14)\n  AND l.user_id IS NULL\n) e\n",
         "pending": "-- dialect: postgres\n-- Daily step 2 of 3 for ridgeview_winback_14d: push these rows, one trigger event each (adapters/destinations/event_payloads.py).\nSELECT l.user_id, u.email, l.anchor_date, (CURRENT_DATE - l.anchor_date) AS days_inactive,\n       l.holdout_bucket, l.in_holdout\nFROM lcm_flow_entries l\nJOIN users u ON u.user_id = l.user_id\nWHERE l.flow = 'ridgeview_winback_14d' AND l.status = 'pending'\nORDER BY l.anchor_date, l.user_id\n",
         "mark": "-- dialect: postgres\n-- no-run: needs bound parameters\n-- Daily step 3 of 3 for ridgeview_winback_14d: once per row whose push succeeded. Bind named parameters :user_id and :anchor_date (SQLAlchemy text() binds :name in every dialect).\nUPDATE lcm_flow_entries SET status = 'pushed', pushed_at = CURRENT_TIMESTAMP\nWHERE flow = 'ridgeview_winback_14d' AND status = 'pending' AND user_id = :user_id AND anchor_date = CAST(:anchor_date AS DATE)\n"
       },
       "snowflake": {
         "ledger": "-- dialect: snowflake\n-- The ledger of win-back entries: an outbox. queue writes due lapses as 'pending', the job pushes every pending row,\n-- and mark sets them to 'pushed'. A lapse is in here at most once, so nobody enters twice for one lapse. Create once.\nCREATE TABLE IF NOT EXISTS lcm_flow_entries (\n  flow VARCHAR NOT NULL,\n  user_id VARCHAR NOT NULL,\n  anchor_date DATE NOT NULL,\n  holdout_bucket INTEGER NOT NULL,\n  in_holdout BOOLEAN NOT NULL,\n  status VARCHAR NOT NULL,\n  queued_at TIMESTAMP NOT NULL,\n  pushed_at TIMESTAMP,\n  detail VARCHAR,\n  PRIMARY KEY (flow, user_id, anchor_date)\n)\n-- Upgrading from v2: ALTER TABLE lcm_flow_entries ADD COLUMN detail VARCHAR;\n",
-        "queue": "-- dialect: snowflake\n-- Daily step 1 of 3 for ridgeview_winback_14d: queue every lapse that is due as 'pending'.\nINSERT INTO lcm_flow_entries (flow, user_id, anchor_date, holdout_bucket, in_holdout, status, queued_at)\nSELECT 'ridgeview_winback_14d', e.user_id, e.anchor_date, e.holdout_bucket, e.in_holdout, 'pending', CURRENT_TIMESTAMP()\nFROM (\nWITH qualified AS (\n  SELECT s.user_id, MIN(s.event_at) AS qualified_at\n  FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND qe.properties:step_index::string = '3' AND qe.user_id IS NOT NULL) s\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nlast_core AS (\n  SELECT s.user_id, MAX(s.event_at) AS last_core_at\n  FROM (SELECT ce.user_id, ce.event_at FROM track_events ce WHERE ce.event_name = 'feature_used' AND ce.properties:feature::string = 'reports' AND ce.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nanchored AS (\n  SELECT q.user_id, q.qualified_at, lc.last_core_at,\n         CAST(GREATEST(COALESCE(lc.last_core_at, q.qualified_at), q.qualified_at) AS DATE) AS anchor_date\n  FROM qualified q\n  LEFT JOIN last_core lc ON lc.user_id = q.user_id\n)\nSELECT u.user_id, u.email, a.qualified_at, a.last_core_at, a.anchor_date,\n       DATEDIFF(day, a.anchor_date, CURRENT_DATE()) AS days_inactive,\n       u.email_consent_at IS NOT NULL AS email_consent,\n       u.sms_consent_at IS NOT NULL AS sms_consent,\n       MOD(TO_NUMBER(SUBSTR(MD5(u.user_id || ':ridgeview_winback_14d'), 1, 7), 'XXXXXXX'), 100) AS holdout_bucket,\n       MOD(TO_NUMBER(SUBSTR(MD5(u.user_id || ':ridgeview_winback_14d'), 1, 7), 'XXXXXXX'), 100) < 15 AS in_holdout\nFROM anchored a\nJOIN users u ON u.user_id = a.user_id\nLEFT JOIN lcm_flow_entries l ON l.flow = 'ridgeview_winback_14d' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date\nWHERE a.anchor_date BETWEEN DATEADD(day, -17, CURRENT_DATE()) AND DATEADD(day, -14, CURRENT_DATE())\n  AND l.user_id IS NULL\n) e\n",
+        "queue": "-- dialect: snowflake\n-- Daily step 1 of 3 for ridgeview_winback_14d: queue every lapse that is due as 'pending'.\nINSERT INTO lcm_flow_entries (flow, user_id, anchor_date, holdout_bucket, in_holdout, status, queued_at)\nSELECT 'ridgeview_winback_14d', e.user_id, e.anchor_date, e.holdout_bucket, e.in_holdout, 'pending', CURRENT_TIMESTAMP()\nFROM (\nWITH qualified AS (\n  SELECT s.user_id, MIN(s.event_at) AS qualified_at\n  FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND qe.properties:step_index::string = '3' AND qe.user_id IS NOT NULL) s\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nlast_core AS (\n  SELECT s.user_id, MAX(s.event_at) AS last_core_at\n  FROM (SELECT ce.user_id, ce.event_at FROM track_events ce WHERE ce.event_name = 'feature_used' AND ce.properties:feature::string = 'reports' AND ce.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nanchored AS (\n  SELECT q.user_id, q.qualified_at, lc.last_core_at,\n         CAST(GREATEST(COALESCE(lc.last_core_at, q.qualified_at), q.qualified_at) AS DATE) AS anchor_date\n  FROM qualified q\n  LEFT JOIN last_core lc ON lc.user_id = q.user_id\n)\nSELECT u.user_id, u.email, a.qualified_at, a.last_core_at, a.anchor_date,\n       DATEDIFF(day, a.anchor_date, CURRENT_DATE()) AS days_inactive,\n       u.email_consent_at IS NOT NULL AS email_consent,\n       u.sms_consent_at IS NOT NULL AS sms_consent,\n       MOD(TO_NUMBER(SUBSTR(MD5(COALESCE(u.account_id, u.user_id) || ':ridgeview_winback_14d'), 1, 7), 'XXXXXXX'), 100) AS holdout_bucket,\n       MOD(TO_NUMBER(SUBSTR(MD5(COALESCE(u.account_id, u.user_id) || ':ridgeview_winback_14d'), 1, 7), 'XXXXXXX'), 100) < 15 AS in_holdout\nFROM anchored a\nJOIN users u ON u.user_id = a.user_id\nLEFT JOIN lcm_flow_entries l ON l.flow = 'ridgeview_winback_14d' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date\nWHERE a.anchor_date BETWEEN DATEADD(day, -17, CURRENT_DATE()) AND DATEADD(day, -14, CURRENT_DATE())\n  AND l.user_id IS NULL\n) e\n",
         "pending": "-- dialect: snowflake\n-- Daily step 2 of 3 for ridgeview_winback_14d: push these rows, one trigger event each (adapters/destinations/event_payloads.py).\nSELECT l.user_id, u.email, l.anchor_date, DATEDIFF(day, l.anchor_date, CURRENT_DATE()) AS days_inactive,\n       l.holdout_bucket, l.in_holdout\nFROM lcm_flow_entries l\nJOIN users u ON u.user_id = l.user_id\nWHERE l.flow = 'ridgeview_winback_14d' AND l.status = 'pending'\nORDER BY l.anchor_date, l.user_id\n",
         "mark": "-- dialect: snowflake\n-- no-run: needs bound parameters\n-- Daily step 3 of 3 for ridgeview_winback_14d: once per row whose push succeeded. Bind named parameters :user_id and :anchor_date (SQLAlchemy text() binds :name in every dialect).\nUPDATE lcm_flow_entries SET status = 'pushed', pushed_at = CURRENT_TIMESTAMP()\nWHERE flow = 'ridgeview_winback_14d' AND status = 'pending' AND user_id = :user_id AND anchor_date = CAST(:anchor_date AS DATE)\n"
       },
       "bigquery": {
         "ledger": "-- dialect: bigquery\n-- The ledger of win-back entries: an outbox. queue writes due lapses as 'pending', the job pushes every pending row,\n-- and mark sets them to 'pushed'. A lapse is in here at most once, so nobody enters twice for one lapse. Create once.\nCREATE TABLE IF NOT EXISTS lcm_flow_entries (\n  flow STRING NOT NULL,\n  user_id STRING NOT NULL,\n  anchor_date DATE NOT NULL,\n  holdout_bucket INT64 NOT NULL,\n  in_holdout BOOL NOT NULL,\n  status STRING NOT NULL,\n  queued_at TIMESTAMP NOT NULL,\n  pushed_at TIMESTAMP,\n  detail STRING\n)\n-- Upgrading from v2: ALTER TABLE lcm_flow_entries ADD COLUMN detail STRING;\n",
-        "queue": "-- dialect: bigquery\n-- Daily step 1 of 3 for ridgeview_winback_14d: queue every lapse that is due as 'pending'.\nINSERT INTO lcm_flow_entries (flow, user_id, anchor_date, holdout_bucket, in_holdout, status, queued_at)\nSELECT 'ridgeview_winback_14d', e.user_id, e.anchor_date, e.holdout_bucket, e.in_holdout, 'pending', CURRENT_TIMESTAMP()\nFROM (\nWITH qualified AS (\n  SELECT s.user_id, MIN(s.event_at) AS qualified_at\n  FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND JSON_VALUE(qe.properties, '$.step_index') = '3' AND qe.user_id IS NOT NULL) s\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nlast_core AS (\n  SELECT s.user_id, MAX(s.event_at) AS last_core_at\n  FROM (SELECT ce.user_id, ce.event_at FROM track_events ce WHERE ce.event_name = 'feature_used' AND JSON_VALUE(ce.properties, '$.feature') = 'reports' AND ce.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nanchored AS (\n  SELECT q.user_id, q.qualified_at, lc.last_core_at,\n         CAST(GREATEST(COALESCE(lc.last_core_at, q.qualified_at), q.qualified_at) AS DATE) AS anchor_date\n  FROM qualified q\n  LEFT JOIN last_core lc ON lc.user_id = q.user_id\n)\nSELECT u.user_id, u.email, a.qualified_at, a.last_core_at, a.anchor_date,\n       DATE_DIFF(CURRENT_DATE(), a.anchor_date, DAY) AS days_inactive,\n       u.email_consent_at IS NOT NULL AS email_consent,\n       u.sms_consent_at IS NOT NULL AS sms_consent,\n       MOD(CAST(CONCAT('0x', SUBSTR(TO_HEX(MD5(CONCAT(u.user_id, ':ridgeview_winback_14d'))), 1, 7)) AS INT64), 100) AS holdout_bucket,\n       MOD(CAST(CONCAT('0x', SUBSTR(TO_HEX(MD5(CONCAT(u.user_id, ':ridgeview_winback_14d'))), 1, 7)) AS INT64), 100) < 15 AS in_holdout\nFROM anchored a\nJOIN users u ON u.user_id = a.user_id\nLEFT JOIN lcm_flow_entries l ON l.flow = 'ridgeview_winback_14d' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date\nWHERE a.anchor_date BETWEEN DATE_ADD(CURRENT_DATE(), INTERVAL -17 DAY) AND DATE_ADD(CURRENT_DATE(), INTERVAL -14 DAY)\n  AND l.user_id IS NULL\n) e\n",
+        "queue": "-- dialect: bigquery\n-- Daily step 1 of 3 for ridgeview_winback_14d: queue every lapse that is due as 'pending'.\nINSERT INTO lcm_flow_entries (flow, user_id, anchor_date, holdout_bucket, in_holdout, status, queued_at)\nSELECT 'ridgeview_winback_14d', e.user_id, e.anchor_date, e.holdout_bucket, e.in_holdout, 'pending', CURRENT_TIMESTAMP()\nFROM (\nWITH qualified AS (\n  SELECT s.user_id, MIN(s.event_at) AS qualified_at\n  FROM (SELECT qe.user_id, qe.event_at FROM track_events qe WHERE qe.event_name = 'onboarding_step_completed' AND JSON_VALUE(qe.properties, '$.step_index') = '3' AND qe.user_id IS NOT NULL) s\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nlast_core AS (\n  SELECT s.user_id, MAX(s.event_at) AS last_core_at\n  FROM (SELECT ce.user_id, ce.event_at FROM track_events ce WHERE ce.event_name = 'feature_used' AND JSON_VALUE(ce.properties, '$.feature') = 'reports' AND ce.user_id IS NOT NULL) s\n  JOIN qualified q ON q.user_id = s.user_id\n  WHERE CAST(s.event_at AS DATE) <= CURRENT_DATE()\n  GROUP BY s.user_id\n),\nanchored AS (\n  SELECT q.user_id, q.qualified_at, lc.last_core_at,\n         CAST(GREATEST(COALESCE(lc.last_core_at, q.qualified_at), q.qualified_at) AS DATE) AS anchor_date\n  FROM qualified q\n  LEFT JOIN last_core lc ON lc.user_id = q.user_id\n)\nSELECT u.user_id, u.email, a.qualified_at, a.last_core_at, a.anchor_date,\n       DATE_DIFF(CURRENT_DATE(), a.anchor_date, DAY) AS days_inactive,\n       u.email_consent_at IS NOT NULL AS email_consent,\n       u.sms_consent_at IS NOT NULL AS sms_consent,\n       MOD(CAST(CONCAT('0x', SUBSTR(TO_HEX(MD5(CONCAT(COALESCE(u.account_id, u.user_id), ':ridgeview_winback_14d'))), 1, 7)) AS INT64), 100) AS holdout_bucket,\n       MOD(CAST(CONCAT('0x', SUBSTR(TO_HEX(MD5(CONCAT(COALESCE(u.account_id, u.user_id), ':ridgeview_winback_14d'))), 1, 7)) AS INT64), 100) < 15 AS in_holdout\nFROM anchored a\nJOIN users u ON u.user_id = a.user_id\nLEFT JOIN lcm_flow_entries l ON l.flow = 'ridgeview_winback_14d' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date\nWHERE a.anchor_date BETWEEN DATE_ADD(CURRENT_DATE(), INTERVAL -17 DAY) AND DATE_ADD(CURRENT_DATE(), INTERVAL -14 DAY)\n  AND l.user_id IS NULL\n) e\n",
         "pending": "-- dialect: bigquery\n-- Daily step 2 of 3 for ridgeview_winback_14d: push these rows, one trigger event each (adapters/destinations/event_payloads.py).\nSELECT l.user_id, u.email, l.anchor_date, DATE_DIFF(CURRENT_DATE(), l.anchor_date, DAY) AS days_inactive,\n       l.holdout_bucket, l.in_holdout\nFROM lcm_flow_entries l\nJOIN users u ON u.user_id = l.user_id\nWHERE l.flow = 'ridgeview_winback_14d' AND l.status = 'pending'\nORDER BY l.anchor_date, l.user_id\n",
         "mark": "-- dialect: bigquery\n-- no-run: needs bound parameters\n-- Daily step 3 of 3 for ridgeview_winback_14d: once per row whose push succeeded. Bind BigQuery query parameters @user_id (STRING) and @anchor_date (DATE).\nUPDATE lcm_flow_entries SET status = 'pushed', pushed_at = CURRENT_TIMESTAMP()\nWHERE flow = 'ridgeview_winback_14d' AND status = 'pending' AND user_id = @user_id AND anchor_date = @anchor_date\n"
       }
@@ -196,7 +196,7 @@
       "mark postgres": "parses",
       "mark snowflake": "parses",
       "mark bigquery": "parses",
-      "entry duckdb": "ran on demo data: 3 entrant(s) on 2026-10-18"
+      "entry duckdb": "ran on demo data: 196 entrant(s) on 2026-10-18"
     },
     "data_dependencies": [
       {
@@ -204,14 +204,14 @@
         "kind": "event",
         "status": "verified",
         "fill_rate": 1.0,
-        "note": "qualifies a person for the flow; 708 events from 324 people; property step_index filled on 100% of events, 158 match 3"
+        "note": "qualifies a person for the flow; 42528 events from 21132 people; property step_index filled on 100% of events, 9499 match 3"
       },
       {
         "name": "feature_used (feature=reports)",
         "kind": "event",
         "status": "verified",
         "fill_rate": 1.0,
-        "note": "the core action: entry clock, exit and primary metric; 915 events from 209 people; property feature filled on 100% of events, 242 match reports"
+        "note": "the core action: entry clock, exit and primary metric; 222764 events from 9428 people; property feature filled on 100% of events, 174188 match reports"
       },
       {
         "name": "email",
@@ -221,11 +221,18 @@
         "note": "address for every email touch; users.email filled 100%"
       },
       {
+        "name": "account_id",
+        "kind": "attribute",
+        "status": "verified",
+        "fill_rate": 1.0,
+        "note": "the holdout hashes the account, so everyone in one account lands in the same arm; users.account_id filled 100%"
+      },
+      {
         "name": "email_consent",
         "kind": "attribute",
         "status": "verified",
-        "fill_rate": 0.8625,
-        "note": "email marketing consent; users.email_consent_at filled 86%"
+        "fill_rate": 0.8482,
+        "note": "email marketing consent; users.email_consent_at filled 85%"
       },
       {
         "name": "session_started",
@@ -257,23 +264,23 @@
       }
     ],
     "monthly_entrants": {
-      "value": 28.0,
+      "value": 612.7,
       "label": "DEMO DATA",
-      "basis": "mean threshold crossings over 3 complete month(s) to 2026-09"
+      "basis": "mean threshold crossings a month over 2026-07 to 2026-09 that pass the AMBER gate's entry filter (clicked or replied in 90 days): 613 of 1,214"
     },
     "baseline_conversion_rate": {
-      "value": 0.1746,
+      "value": 0.2919,
       "label": "DEMO DATA",
-      "basis": "22 of 126 matured threshold crossings came back within 30 days with no flow"
+      "basis": "684 of 2,343 matured threshold crossings that pass the gate's filter came back within 30 days with no flow"
     },
-    "entrants_on_as_of": 3,
+    "entrants_on_as_of": 196,
     "leak": null,
     "countries": {
-      "US": 0.4367,
-      "AU": 0.1582,
-      "CA": 0.1519,
-      "GB": 0.1266,
-      "DE": 0.1266
+      "US": 0.5673,
+      "DE": 0.1152,
+      "AU": 0.1121,
+      "CA": 0.1064,
+      "GB": 0.099
     },
     "as_of": "2026-10-18",
     "trigger_payload_example": {
@@ -300,12 +307,83 @@
     "trigger_source": "warehouse_job",
     "audience_after_gate": {
       "rule": "clicked or replied in 90 days",
-      "entrants": 3,
-      "kept": 1,
-      "share": 0.3333,
-      "message_events": true
+      "entrants": 196,
+      "kept": 94,
+      "share": 0.4796,
+      "message_events": true,
+      "monthly": {
+        "rule": "clicked or replied in 90 days",
+        "monthly_entrants_before": 1213.7,
+        "monthly_entrants": 612.7,
+        "monthly_share": 0.5048,
+        "matured": 2343,
+        "returned": 684,
+        "baseline": 0.2919,
+        "label": "DEMO DATA",
+        "months": "2026-07 to 2026-09"
+      }
     },
-    "cluster": null
+    "cluster": {
+      "basis": "flow",
+      "label": "DEMO DATA",
+      "clusters": 1095,
+      "entrants_in_window": 2343,
+      "window_months": 4.63,
+      "accounts_with_repeat_entrants": 477,
+      "unassigned_entrants": 0,
+      "design_effect": 1.1656,
+      "by_entrants": [
+        {
+          "months": 1.0,
+          "entrants": 667,
+          "accounts": 485,
+          "design_effect": 1.1021,
+          "measured": 1.1021,
+          "size_weighted": 1.798
+        },
+        {
+          "months": 2.0,
+          "entrants": 1224,
+          "accounts": 759,
+          "design_effect": 1.1768,
+          "measured": 1.1768,
+          "size_weighted": 2.412
+        },
+        {
+          "months": 3.0,
+          "entrants": 1708,
+          "accounts": 926,
+          "design_effect": 1.1854,
+          "measured": 1.1854,
+          "size_weighted": 3.052
+        },
+        {
+          "months": 4.0,
+          "entrants": 2114,
+          "accounts": 1054,
+          "design_effect": 1.174,
+          "measured": 1.174,
+          "size_weighted": 3.535
+        },
+        {
+          "months": 4.63,
+          "entrants": 2343,
+          "accounts": 1095,
+          "design_effect": 1.1656,
+          "measured": 1.1656,
+          "size_weighted": 3.917
+        }
+      ],
+      "mean_size": 2.1397260273972605,
+      "size_weighted_mean": 3.917,
+      "icc": 0.0568,
+      "icc_for_design": 0.0568,
+      "icc_basis": "implied by the measured design effect: (DE - 1) / (size-weighted entrants per account - 1)",
+      "design_effect_range": [
+        1.0572,
+        1.2844
+      ]
+    }
   },
   "flow": {
     "flow_spec": {
@@ -384,10 +462,10 @@
       "holdout": {
         "percent": 15.0,
         "persistent": true,
-        "unit": "user",
-        "assignment": "persistent, by user: bucket = first 7 hex digits of md5(user_id || ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout, computed in the daily queue query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population",
-        "sizing": "about 28 entrants a month (DEMO DATA), 17.5% return within 30 days with no flow (DEMO DATA), 25% relative lift (4.4 pts) worth acting on: 781 holdout entrants at 15%, 186.0 months of entries plus the 30-day outcome window, so the read lands about 186.9 months after launch (engine/measurement/stats.py feasible --entries-per-month 28 --holdout 0.15 --baseline 0.1746 --mde-rel 0.25 --outcome-window-days 30)",
-        "read": "directional only"
+        "unit": "account",
+        "assignment": "persistent, by account: bucket = first 7 hex digits of md5(account_id || ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout, computed in the daily queue query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population",
+        "sizing": "about 613 entrants a month (DEMO DATA), 29.2% return within 30 days with no flow (DEMO DATA), 25% relative lift (7.3 pts) worth acting on: 475 holdout entrants at 15%, 5.2 months of entries plus the 30-day outcome window, so the read lands about 6.2 months after launch (engine/measurement/stats.py feasible --entries-per-month 612.7 --holdout 0.15 --baseline 0.2919 --mde-rel 0.25 --outcome-window-days 30 --design-effect 1.225); account-level: design effect 1.23 at the read, measured on the flow's own entrants (how much more the return rate varies across 1,095 accounts than across people drawn one by one; DEMO DATA). Over the last 4.63 months it was 1.17 (95% range 1.06 to 1.28); at 1.28 the read lands about 7.1 months after launch",
+        "read": "causal, slow"
       },
       "frequency": {
         "cap": "at most 3 email/sms/push message(s) per week across flows (the workspace message limit)",
@@ -510,7 +588,7 @@
       },
       "measurement": {
         "primary_metric": "created a report (feature_used where feature = reports) within 30 days of entry, treatment vs holdout, both arms counted from their entry date",
-        "read_after": "not inside 12 months at this volume (it would take about 187 months): keep the holdout, report against a pre/post baseline, and label every result directional",
+        "read_after": "475 holdout entrants have each completed 30 days (about 6.2 months after launch)",
         "compared_against": "holdout",
         "guardrails": [
           "spam complaint rate per send below 0.1% (Gmail's target; 0.3% is its hard limit)",
@@ -524,14 +602,14 @@
           "kind": "event",
           "status": "verified",
           "fill_rate": 1.0,
-          "note": "qualifies a person for the flow; 708 events from 324 people; property step_index filled on 100% of events, 158 match 3"
+          "note": "qualifies a person for the flow; 42528 events from 21132 people; property step_index filled on 100% of events, 9499 match 3"
         },
         {
           "name": "feature_used (feature=reports)",
           "kind": "event",
           "status": "verified",
           "fill_rate": 1.0,
-          "note": "the core action: entry clock, exit and primary metric; 915 events from 209 people; property feature filled on 100% of events, 242 match reports"
+          "note": "the core action: entry clock, exit and primary metric; 222764 events from 9428 people; property feature filled on 100% of events, 174188 match reports"
         },
         {
           "name": "email",
@@ -541,11 +619,18 @@
           "note": "address for every email touch; users.email filled 100%"
         },
         {
+          "name": "account_id",
+          "kind": "attribute",
+          "status": "verified",
+          "fill_rate": 1.0,
+          "note": "the holdout hashes the account, so everyone in one account lands in the same arm; users.account_id filled 100%"
+        },
+        {
           "name": "email_consent",
           "kind": "attribute",
           "status": "verified",
-          "fill_rate": 0.8625,
-          "note": "email marketing consent; users.email_consent_at filled 86%"
+          "fill_rate": 0.8482,
+          "note": "email marketing consent; users.email_consent_at filled 85%"
         },
         {
           "name": "session_started",
@@ -1013,84 +1098,90 @@
   ],
   "experiment": {
     "holdout_pct": 15.0,
-    "unit": "user",
+    "unit": "account",
     "salt": "ridgeview_winback_14d",
     "assignment_sql": {
-      "postgres": "((('x' || substr(md5(user_id || ':ridgeview_winback_14d'), 1, 7))::bit(28)::int) % 100) < 15",
-      "snowflake": "MOD(TO_NUMBER(SUBSTR(MD5(user_id || ':ridgeview_winback_14d'), 1, 7), 'XXXXXXX'), 100) < 15",
-      "bigquery": "MOD(CAST(CONCAT('0x', SUBSTR(TO_HEX(MD5(CONCAT(user_id, ':ridgeview_winback_14d'))), 1, 7)) AS INT64), 100) < 15"
+      "postgres": "((('x' || substr(md5(COALESCE(account_id, user_id) || ':ridgeview_winback_14d'), 1, 7))::bit(28)::int) % 100) < 15",
+      "snowflake": "MOD(TO_NUMBER(SUBSTR(MD5(COALESCE(account_id, user_id) || ':ridgeview_winback_14d'), 1, 7), 'XXXXXXX'), 100) < 15",
+      "bigquery": "MOD(CAST(CONCAT('0x', SUBSTR(TO_HEX(MD5(CONCAT(COALESCE(account_id, user_id), ':ridgeview_winback_14d'))), 1, 7)) AS INT64), 100) < 15"
     },
-    "assignment_rule": "persistent, by user: bucket = first 7 hex digits of md5(user_id || ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout, computed in the daily queue query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population",
+    "assignment_rule": "persistent, by account: bucket = first 7 hex digits of md5(account_id || ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout, computed in the daily queue query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population",
     "primary_metric": "created a report (feature_used where feature = reports) within 30 days of entry, treatment vs holdout, both arms counted from their entry date",
     "outcome_window_days": 30,
-    "read": "directional only",
-    "sizing": "about 28 entrants a month (DEMO DATA), 17.5% return within 30 days with no flow (DEMO DATA), 25% relative lift (4.4 pts) worth acting on: 781 holdout entrants at 15%, 186.0 months of entries plus the 30-day outcome window, so the read lands about 186.9 months after launch (engine/measurement/stats.py feasible --entries-per-month 28 --holdout 0.15 --baseline 0.1746 --mde-rel 0.25 --outcome-window-days 30)",
-    "read_after": "not inside 12 months at this volume (it would take about 187 months): keep the holdout, report against a pre/post baseline, and label every result directional",
+    "read": "causal, slow",
+    "sizing": "about 613 entrants a month (DEMO DATA), 29.2% return within 30 days with no flow (DEMO DATA), 25% relative lift (7.3 pts) worth acting on: 475 holdout entrants at 15%, 5.2 months of entries plus the 30-day outcome window, so the read lands about 6.2 months after launch (engine/measurement/stats.py feasible --entries-per-month 612.7 --holdout 0.15 --baseline 0.2919 --mde-rel 0.25 --outcome-window-days 30 --design-effect 1.225); account-level: design effect 1.23 at the read, measured on the flow's own entrants (how much more the return rate varies across 1,095 accounts than across people drawn one by one; DEMO DATA). Over the last 4.63 months it was 1.17 (95% range 1.06 to 1.28); at 1.28 the read lands about 7.1 months after launch",
+    "read_after": "475 holdout entrants have each completed 30 days (about 6.2 months after launch)",
     "feasibility": {
-      "entries_per_month": 28.0,
+      "entries_per_month": 612.7,
       "holdout_share": 0.15,
-      "p_control": 0.1746,
-      "mde_abs": 0.04365,
-      "design_effect": 1.0,
-      "required_holdout_n": 781,
-      "required_treatment_n": 4426,
-      "power_holdout_n": 781,
-      "power_treatment_n": 4426,
+      "p_control": 0.2919,
+      "mde_abs": 0.072975,
+      "design_effect": 1.2251849014084506,
+      "required_holdout_n": 475,
+      "required_treatment_n": 2687,
+      "power_holdout_n": 475,
+      "power_treatment_n": 2687,
       "size_set_by": "power",
       "readout_floor": {
         "n_control": 30,
         "n_treatment": 170,
-        "rule": "at least 30 entrants and 5 expected conversions per arm, at the baseline and at the treatment rate (the readout refuses smaller arms)"
+        "rule": "at least 30 entrants and 5 expected conversions per arm, at the baseline and at the treatment rate (the readout refuses smaller arms), and at least 10 randomized accounts per arm"
       },
       "p_readable": 1.0,
-      "enrollment_months": 186.0,
+      "enrollment_months": 5.2,
       "outcome_window_days": 30,
-      "months_to_read": 186.9,
-      "recommended_design": "the holdout will not reach a readable sample inside the horizon. Use a pre/post baseline, label it directional, and watch an operational signal instead; do not report a lift percentage",
-      "expected_read": "directional only",
+      "months_to_read": 6.2,
+      "recommended_design": "persistent randomized holdout at 15% reads in about 6.2 months; a 25% holdout would read in about 4.5 months at the cost of withholding more audience",
+      "expected_read": "causal, slow",
       "alternatives": [
         {
           "holdout_share": 0.25,
-          "months_to_read": 126.7,
-          "fits_horizon": false,
+          "months_to_read": 4.5,
+          "fits_horizon": true,
           "cost": "withholds 25% of entrants from the flow while it reads"
         },
         {
           "holdout_share": 0.5,
-          "months_to_read": 93.8,
-          "fits_horizon": false,
+          "months_to_read": 3.6,
+          "fits_horizon": true,
           "cost": "withholds 50% of entrants from the flow while it reads"
         }
       ],
       "horizon_months": 12,
-      "randomization_unit": "account (company or workspace) where the buying unit is an account; entrants in one unit are not independent, so set design_effect = 1 + (entrants per unit - 1) x ICC"
+      "randomization_unit": "account (company or workspace) where the buying unit is an account; entrants in one unit are not independent, so set design_effect = 1 + (entrants per unit - 1) x ICC",
+      "mean_cluster_size": 2.5498133642034864,
+      "required_holdout_clusters": 187,
+      "required_treatment_clusters": 1054
     },
     "mde_by_horizon": [
       {
         "months_of_entries": 3,
-        "holdout_n": 12,
-        "treatment_n": 71,
-        "mde_abs_pts": null,
-        "mde_rel": null
+        "holdout_n": 275,
+        "treatment_n": 1562,
+        "mde_abs_pts": 9.5,
+        "mde_rel": 0.3254,
+        "design_effect": 1.18
       },
       {
         "months_of_entries": 6,
-        "holdout_n": 25,
-        "treatment_n": 142,
-        "mde_abs_pts": null,
-        "mde_rel": null
+        "holdout_n": 551,
+        "treatment_n": 3124,
+        "mde_abs_pts": 6.85,
+        "mde_rel": 0.2348,
+        "design_effect": 1.26
       },
       {
         "months_of_entries": 12,
-        "holdout_n": 50,
-        "treatment_n": 285,
-        "mde_abs_pts": 19.35,
-        "mde_rel": 1.108
+        "holdout_n": 1102,
+        "treatment_n": 6249,
+        "mde_abs_pts": 5.28,
+        "mde_rel": 0.181,
+        "design_effect": 1.52
       }
     ],
     "sensitivity": [],
     "decision_rule": "Keep the flow when the 95% interval for (treatment minus holdout) rate of feature_used where feature = reports lies above zero and the guardrails hold. If it spans zero at the planned read, report it as inconclusive: keep the holdout running or change the flow. Report attributed, incremental and the gap together (lcm readout).",
-    "srm_rule": "At every look, test the split against 85/15 (lcm readout --expected-holdout 0.15). A chi-square p below 0.001 means assignment or logging is broken; read nothing until it is fixed.",
+    "srm_rule": "At every look, test the split against 85/15 (lcm readout --expected-holdout 0.15), counting accounts, not people. A chi-square p below 0.001 means assignment or logging is broken; read nothing until it is fixed.",
     "peeking_policy": "One planned read on the date above. Earlier looks check sample ratio and guardrails only; no early stop for a good-looking lift.",
     "guardrail_metrics": [
       "spam complaint rate per send below 0.1% (Gmail's target; 0.3% is its hard limit)",
@@ -1100,16 +1191,16 @@
     "variant_tests": [
       "Copy variants rotate evenly inside the treatment arm. Read them on clicks or the core action, never opens, and only directionally below about 1,000 sends per variant (size exactly with engine/measurement/stats.py size --baseline <click rate> --mde-rel 0.2)"
     ],
-    "hash_field": "user_id",
+    "hash_field": "account_id",
     "global_holdout_pct": 0.0,
     "registry_entry": {
       "experiment_id": "ridgeview_winback_14d_holdout",
       "flow": "ridgeview_winback_14d",
-      "unit": "user",
+      "unit": "account",
       "assignment": {
-        "hash_field": "user_id",
+        "hash_field": "account_id",
         "salt": "ridgeview_winback_14d",
-        "rule": "persistent, by user: bucket = first 7 hex digits of md5(user_id || ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout, computed in the daily queue query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population"
+        "rule": "persistent, by account: bucket = first 7 hex digits of md5(account_id || ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout, computed in the daily queue query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population"
       },
       "holdout_share": 0.15,
       "primary_metric": {
@@ -1118,17 +1209,19 @@
         "description": "created a report (feature_used where feature = reports) within 30 days of entry, treatment vs holdout, both arms counted from their entry date"
       },
       "plan": {
-        "baseline": 0.1746,
-        "mde_abs": 0.04365,
+        "baseline": 0.2919,
+        "mde_abs": 0.072975,
         "n_per_arm": {
-          "holdout": 781,
-          "treatment": 4426
+          "holdout": 475,
+          "treatment": 2687
         },
-        "design_effect": 1.0,
+        "design_effect": 1.2251849014084506,
         "alpha": 0.05,
         "power": 0.8,
         "read_on": null,
-        "expected_read": "directional only"
+        "expected_read": "causal, slow",
+        "icc": 0.0568,
+        "mean_cluster_size": 2.5498133642034864
       },
       "stopping_rule": {
         "design": "fixed_horizon",
@@ -1154,7 +1247,7 @@
       {
         "name": "audience after the gate",
         "status": "pass",
-        "detail": "1 of today's 3 would-be entrants pass the gate's filter (clicked or replied in 90 days)"
+        "detail": "94 of today's 196 would-be entrants pass the gate's filter (clicked or replied in 90 days)"
       },
       {
         "name": "data dependencies",
@@ -1289,7 +1382,7 @@
       {
         "name": "holdout read",
         "status": "warn",
-        "detail": "directional only: not inside 12 months at this volume (it would take about 187 months): keep the holdout, report against a pre/post baseline, and label every result directional"
+        "detail": "causal, slow: 475 holdout entrants have each completed 30 days (about 6.2 months after launch)"
       },
       {
         "name": "compliance: one-click unsubscribe and complaint rate",
@@ -1309,17 +1402,17 @@
       {
         "name": "compliance: CASL consent",
         "status": "warn",
-        "detail": "Canada: Commercial electronic messages need express or implied consent. Every email requires a consent record; 86% of records carry a consent timestamp. Implied consent expires: two years after a purchase, six months after an inquiry or application. Exclude Canadian records whose implied consent has lapsed, or confirm they gave express consent."
+        "detail": "Canada: Commercial electronic messages need express or implied consent. Every email requires a consent record; 85% of records carry a consent timestamp. Implied consent expires: two years after a purchase, six months after an inquiry or application. Exclude Canadian records whose implied consent has lapsed, or confirm they gave express consent."
       },
       {
         "name": "compliance: PECR consent or soft opt-in",
         "status": "warn",
-        "detail": "United Kingdom: Marketing email to individuals needs specific consent, or the soft opt-in for people who bought or negotiated to buy a similar product and were offered an opt-out at collection and in every message. The ICO is revising this guidance after the Data (Use and Access) Act. Every email requires a consent record; 86% of records carry a consent timestamp. Confirm each UK record has consent or qualifies for the soft opt-in."
+        "detail": "United Kingdom: Marketing email to individuals needs specific consent, or the soft opt-in for people who bought or negotiated to buy a similar product and were offered an opt-out at collection and in every message. The ICO is revising this guidance after the Data (Use and Access) Act. Every email requires a consent record; 85% of records carry a consent timestamp. Confirm each UK record has consent or qualifies for the soft opt-in."
       },
       {
         "name": "compliance: ePrivacy consent",
         "status": "warn",
-        "detail": "European Union: Marketing email needs prior consent, except to existing customers for similar products with an opt-out at collection and in every message (ePrivacy Directive, article 13). Every email requires a consent record; 86% of records carry a consent timestamp. Confirm the lawful basis for each EU record and that consent records can be produced."
+        "detail": "European Union: Marketing email needs prior consent, except to existing customers for similar products with an opt-out at collection and in every message (ePrivacy Directive, article 13). Every email requires a consent record; 85% of records carry a consent timestamp. Confirm the lawful basis for each EU record and that consent records can be produced."
       },
       {
         "name": "compliance: double opt-in evidence",
@@ -1463,7 +1556,7 @@
         "rule": "CASL consent",
         "jurisdiction": "Canada",
         "status": "warn",
-        "detail": "Commercial electronic messages need express or implied consent. Every email requires a consent record; 86% of records carry a consent timestamp. Implied consent expires: two years after a purchase, six months after an inquiry or application. Exclude Canadian records whose implied consent has lapsed, or confirm they gave express consent.",
+        "detail": "Commercial electronic messages need express or implied consent. Every email requires a consent record; 85% of records carry a consent timestamp. Implied consent expires: two years after a purchase, six months after an inquiry or application. Exclude Canadian records whose implied consent has lapsed, or confirm they gave express consent.",
         "source": "https://ised-isde.canada.ca/site/canada-anti-spam-legislation/en/node/7"
       },
       {
@@ -1484,14 +1577,14 @@
         "rule": "PECR consent or soft opt-in",
         "jurisdiction": "United Kingdom",
         "status": "warn",
-        "detail": "Marketing email to individuals needs specific consent, or the soft opt-in for people who bought or negotiated to buy a similar product and were offered an opt-out at collection and in every message. The ICO is revising this guidance after the Data (Use and Access) Act. Every email requires a consent record; 86% of records carry a consent timestamp. Confirm each UK record has consent or qualifies for the soft opt-in.",
+        "detail": "Marketing email to individuals needs specific consent, or the soft opt-in for people who bought or negotiated to buy a similar product and were offered an opt-out at collection and in every message. The ICO is revising this guidance after the Data (Use and Access) Act. Every email requires a consent record; 85% of records carry a consent timestamp. Confirm each UK record has consent or qualifies for the soft opt-in.",
         "source": "https://ico.org.uk/for-organisations/direct-marketing-and-privacy-and-electronic-communications/guide-to-pecr/electronic-and-telephone-marketing/electronic-mail-marketing/"
       },
       {
         "rule": "ePrivacy consent",
         "jurisdiction": "European Union",
         "status": "warn",
-        "detail": "Marketing email needs prior consent, except to existing customers for similar products with an opt-out at collection and in every message (ePrivacy Directive, article 13). Every email requires a consent record; 86% of records carry a consent timestamp. Confirm the lawful basis for each EU record and that consent records can be produced.",
+        "detail": "Marketing email needs prior consent, except to existing customers for similar products with an opt-out at collection and in every message (ePrivacy Directive, article 13). Every email requires a consent record; 85% of records carry a consent timestamp. Confirm the lawful basis for each EU record and that consent records can be produced.",
         "source": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32002L0058"
       },
       {
@@ -1548,8 +1641,8 @@
     },
     {
       "stage": "experiment",
-      "decision": "15% persistent holdout, read: directional only",
-      "why": "not inside 12 months at this volume (it would take about 187 months): keep the holdout, report against a pre/post baseline, and label every result directional"
+      "decision": "15% persistent holdout, read: causal, slow",
+      "why": "475 holdout entrants have each completed 30 days (about 6.2 months after launch)"
     },
     {
       "stage": "compliance",

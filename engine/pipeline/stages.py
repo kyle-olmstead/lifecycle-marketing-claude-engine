@@ -162,6 +162,8 @@ def qa_report(brief: Brief, pol: Dict[str, Any], cohort, flow, copy_plan, exp, d
     checks.append(Check(name="sending gate", status="fail" if not pol["sending_allowed"] else ("pass" if pol["effective_gate"] == "GREEN" else "warn"),
                         detail=pol["note"]))
     aud = getattr(cohort, "audience_after_gate", None)
+    for why in ((aud or {}).get("notes") or {}).values():
+        checks.append(Check(name="gate's audience", status="warn", detail=why))
     if aud and aud.get("entrants"):
         if aud.get("message_events") is False and brief.flow.gate_class == "lapsed":
             # no message events at all: the data cannot show who is engaged, which is not the same as nobody being engaged

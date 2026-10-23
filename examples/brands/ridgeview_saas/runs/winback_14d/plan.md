@@ -1,24 +1,24 @@
 # Win-back: Ridgeview, 14 days since the core action (created a report)
 
-**Status: READY WITH ASSUMPTIONS** | Customer.io | generated 2026-10-23T03:04:55+00:00 | run 6ed162279d2c | LMM Engine 3.0.0
+**Status: READY WITH ASSUMPTIONS** | Customer.io | generated 2026-10-23T05:39:12+00:00 | run dacab4fe3217 | LMM Engine 3.0.0
 
 ## In one paragraph
 
-People who completed onboarding and then went 14 days without the core action (created a report). They enter on day 14, once per lapse, and leave the moment they do the core action again. The flow sends up to 5 message(s) over 18 days (email, in-app), starts with a 15% holdout that receives nothing, and stops the moment they create a report again. About 28 people a month (DEMO DATA) would enter; 17.5% come back within 30 days on their own (DEMO DATA). Read: directional only. AMBER gate: engaged recipients only, no volume growth (AMBER gate as supplied).
+People who completed onboarding and then went 14 days without the core action (created a report). They enter on day 14, once per lapse, and leave the moment they do the core action again. The flow sends up to 5 message(s) over 18 days (email, in-app), starts with a 15% holdout that receives nothing, and stops the moment they create a report again. About 613 people a month (DEMO DATA) would enter (of 1,214 who qualify, the AMBER gate lets in those who clicked or replied in 90 days); 29.2% come back within 30 days on their own (DEMO DATA). Read: causal, slow. AMBER gate: engaged recipients only, no volume growth (AMBER gate as supplied).
 
 ## Confirm before you build
 
-- **monthly_entrants**: estimated from the data (DEMO DATA): 28 a month, mean threshold crossings over 3 complete month(s) to 2026-09
-- **baseline_conversion_rate**: estimated from the data (DEMO DATA): 17.5%, 22 of 126 matured threshold crossings came back within 30 days with no flow
+- **monthly_entrants**: estimated from the data (DEMO DATA): 613 a month, mean threshold crossings a month over 2026-07 to 2026-09 that pass the AMBER gate's entry filter (clicked or replied in 90 days): 613 of 1,214
+- **baseline_conversion_rate**: estimated from the data (DEMO DATA): 29.2%, 684 of 2,343 matured threshold crossings that pass the gate's filter came back within 30 days with no flow
 - **outcome_window_days**: not stated; set to 30 days so the whole flow (last touch on day 18) plus a week is inside it
 - **sending gate**: AMBER gate: engaged recipients only, no volume growth (AMBER gate as supplied)
-- **holdout read**: directional only: not inside 12 months at this volume (it would take about 187 months): keep the holdout, report against a pre/post baseline, and label every result directional
+- **holdout read**: causal, slow: 475 holdout entrants have each completed 30 days (about 6.2 months after launch)
 - **compliance: one-click unsubscribe and complaint rate**: mailbox providers: Gmail and Yahoo require bulk senders' marketing mail to carry one-click unsubscribe (RFC 8058) plus a visible unsubscribe link, honored within two days, and to keep user-reported spam under 0.3% (Gmail's target is under 0.1%). One-click unsubscribe is a header your platform adds: confirm it is on (engine/deliverability/analyze.py checks it in real headers).
 - **compliance: bulk-sender authentication**: mailbox providers: Gmail, Yahoo and Microsoft (Outlook.com, Hotmail.com and Live.com since 5 May 2025) require senders of more than 5,000 messages a day to pass SPF and DKIM and publish DMARC (p=none or stricter) aligned with one of them; Microsoft sends failing mail to junk, then rejects it with 550 5.7.515. Run lcm "check deliverability for <your sending domain>" (engine/deliverability/dns_collect.py) and resolve anything RED before launch.
 - **compliance: CAN-SPAM ad identification**: United States: A commercial message must be identified as an advertisement unless the recipient gave prior affirmative consent to receive it. Confirm every recipient opted in to marketing email, or add a clear advertisement disclosure.
-- **compliance: CASL consent**: Canada: Commercial electronic messages need express or implied consent. Every email requires a consent record; 86% of records carry a consent timestamp. Implied consent expires: two years after a purchase, six months after an inquiry or application. Exclude Canadian records whose implied consent has lapsed, or confirm they gave express consent.
-- **compliance: PECR consent or soft opt-in**: United Kingdom: Marketing email to individuals needs specific consent, or the soft opt-in for people who bought or negotiated to buy a similar product and were offered an opt-out at collection and in every message. The ICO is revising this guidance after the Data (Use and Access) Act. Every email requires a consent record; 86% of records carry a consent timestamp. Confirm each UK record has consent or qualifies for the soft opt-in.
-- **compliance: ePrivacy consent**: European Union: Marketing email needs prior consent, except to existing customers for similar products with an opt-out at collection and in every message (ePrivacy Directive, article 13). Every email requires a consent record; 86% of records carry a consent timestamp. Confirm the lawful basis for each EU record and that consent records can be produced.
+- **compliance: CASL consent**: Canada: Commercial electronic messages need express or implied consent. Every email requires a consent record; 85% of records carry a consent timestamp. Implied consent expires: two years after a purchase, six months after an inquiry or application. Exclude Canadian records whose implied consent has lapsed, or confirm they gave express consent.
+- **compliance: PECR consent or soft opt-in**: United Kingdom: Marketing email to individuals needs specific consent, or the soft opt-in for people who bought or negotiated to buy a similar product and were offered an opt-out at collection and in every message. The ICO is revising this guidance after the Data (Use and Access) Act. Every email requires a consent record; 85% of records carry a consent timestamp. Confirm each UK record has consent or qualifies for the soft opt-in.
+- **compliance: ePrivacy consent**: European Union: Marketing email needs prior consent, except to existing customers for similar products with an opt-out at collection and in every message (ePrivacy Directive, article 13). Every email requires a consent record; 85% of records carry a consent timestamp. Confirm the lawful basis for each EU record and that consent records can be produced.
 - **compliance: double opt-in evidence**: Germany: UWG section 7 requires prior express consent for marketing email; the Federal Court of Justice (I ZR 164/09) puts the burden of proof on the sender, which in practice means a stored double opt-in confirmation per person. Confirm German records were collected with double opt-in and that each confirmation is stored.
 - **compliance**: 16 rule(s) checked for Australia, Canada, Germany, European Union, United Kingdom, United States
 
@@ -30,7 +30,7 @@ People who completed onboarding and then went 14 days without the core action (c
 | analyst | entry rule | People who completed onboarding and then went 14 days without the core action (created a report). They enter on day 14, once per lapse, and leave the moment they do the core action again. |
 | strategist | end with re-permission and a sunset | people who ignore a whole win-back flow are the ones who complain; asking and then stopping protects the sender |
 | strategist | offer stance | no offer anywhere in the flow (offer policy) |
-| experiment | 15% persistent holdout, read: directional only | not inside 12 months at this volume (it would take about 187 months): keep the holdout, report against a pre/post baseline, and label every result directional |
+| experiment | 15% persistent holdout, read: causal, slow | 475 holdout entrants have each completed 30 days (about 6.2 months after launch) |
 | compliance | compliance warn | jurisdictions in the audience: Australia, Canada, Germany, European Union, United Kingdom, United States |
 
 ## Who enters
@@ -41,16 +41,17 @@ People who completed onboarding and then went 14 days without the core action (c
 | Never enters | no consent for any channel in the flow; on the platform's suppression list; internal or test account |
 | Exit | leaves the moment they create a report again (checked before every step) |
 | Trigger | core_action_lapsed_14d: Event-triggered campaign on core_action_lapsed_14d, re-entry allowed. Exit: performs feature_used where feature = reports (conversion goal with exit on conversion). Holdout: True/False branch on the event attribute in_holdout. |
-| Monthly entrants | 28 (DEMO DATA: mean threshold crossings over 3 complete month(s) to 2026-09) |
-| Come back with no flow | 17.5% (DEMO DATA: 22 of 126 matured threshold crossings came back within 30 days with no flow) |
-| Entering on 2026-10-18 | 3 |
+| Monthly entrants | 613 (DEMO DATA: mean threshold crossings a month over 2026-07 to 2026-09 that pass the AMBER gate's entry filter (clicked or replied in 90 days): 613 of 1,214) |
+| Come back with no flow | 29.2% (DEMO DATA: 684 of 2,343 matured threshold crossings that pass the gate's filter came back within 30 days with no flow) |
+| Entering on 2026-10-18 | 196 |
 
 | Data dependency | Kind | Status | Fill | Note |
 |---|---|---|---|---|
-| onboarding_step_completed (step_index=3) | event | verified | 100% | qualifies a person for the flow; 708 events from 324 people; property step_index filled on 100% of events, 158 match 3 |
-| feature_used (feature=reports) | event | verified | 100% | the core action: entry clock, exit and primary metric; 915 events from 209 people; property feature filled on 100% of events, 242 match reports |
+| onboarding_step_completed (step_index=3) | event | verified | 100% | qualifies a person for the flow; 42528 events from 21132 people; property step_index filled on 100% of events, 9499 match 3 |
+| feature_used (feature=reports) | event | verified | 100% | the core action: entry clock, exit and primary metric; 222764 events from 9428 people; property feature filled on 100% of events, 174188 match reports |
 | email | attribute | verified | 100% | address for every email touch; users.email filled 100% |
-| email_consent | attribute | verified | 86% | email marketing consent; users.email_consent_at filled 86% |
+| account_id | attribute | verified | 100% | the holdout hashes the account, so everyone in one account lands in the same arm; users.account_id filled 100% |
+| email_consent | attribute | verified | 85% | email marketing consent; users.email_consent_at filled 85% |
 | session_started | event | verified |  | in-app messages show at the next session |
 | in_holdout | attribute | unknown |  | set by the daily entry job on the pushed event; schedule the job before launch |
 | lcm_flow_entries | object | unknown |  | the ledger (outbox) of entries; create it once with cohort/job/ledger_<dialect>.sql |
@@ -162,21 +163,21 @@ Files: `copy/t5_email_A.html`, `copy/t5_email_A.mjml`, `copy/t5_email_A.subject.
 
 | | |
 |---|---|
-| Holdout | 15%, user level, persistent: persistent, by user: bucket = first 7 hex digits of md5(user_id \|\| ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout, computed in the daily queue query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population |
+| Holdout | 15%, account level: persistent, by account: bucket = first 7 hex digits of md5(account_id \|\| ':ridgeview_winback_14d') mod 100; bucket < 15 is the holdout, computed in the daily queue query and pushed on the trigger event as in_holdout; holdout members enter, then exit at holdout_split, so both arms are the same population |
 | Primary metric | created a report (feature_used where feature = reports) within 30 days of entry, treatment vs holdout, both arms counted from their entry date |
-| Sizing | about 28 entrants a month (DEMO DATA), 17.5% return within 30 days with no flow (DEMO DATA), 25% relative lift (4.4 pts) worth acting on: 781 holdout entrants at 15%, 186.0 months of entries plus the 30-day outcome window, so the read lands about 186.9 months after launch (engine/measurement/stats.py feasible --entries-per-month 28 --holdout 0.15 --baseline 0.1746 --mde-rel 0.25 --outcome-window-days 30) |
-| Read | directional only: not inside 12 months at this volume (it would take about 187 months): keep the holdout, report against a pre/post baseline, and label every result directional |
+| Sizing | about 613 entrants a month (DEMO DATA), 29.2% return within 30 days with no flow (DEMO DATA), 25% relative lift (7.3 pts) worth acting on: 475 holdout entrants at 15%, 5.2 months of entries plus the 30-day outcome window, so the read lands about 6.2 months after launch (engine/measurement/stats.py feasible --entries-per-month 612.7 --holdout 0.15 --baseline 0.2919 --mde-rel 0.25 --outcome-window-days 30 --design-effect 1.225); account-level: design effect 1.23 at the read, measured on the flow's own entrants (how much more the return rate varies across 1,095 accounts than across people drawn one by one; DEMO DATA). Over the last 4.63 months it was 1.17 (95% range 1.06 to 1.28); at 1.28 the read lands about 7.1 months after launch |
+| Read | causal, slow: 475 holdout entrants have each completed 30 days (about 6.2 months after launch) |
 | Decision rule | Keep the flow when the 95% interval for (treatment minus holdout) rate of feature_used where feature = reports lies above zero and the guardrails hold. If it spans zero at the planned read, report it as inconclusive: keep the holdout running or change the flow. Report attributed, incremental and the gap together (lcm readout). |
-| Sample ratio | At every look, test the split against 85/15 (lcm readout --expected-holdout 0.15). A chi-square p below 0.001 means assignment or logging is broken; read nothing until it is fixed. |
+| Sample ratio | At every look, test the split against 85/15 (lcm readout --expected-holdout 0.15), counting accounts, not people. A chi-square p below 0.001 means assignment or logging is broken; read nothing until it is fixed. |
 | Peeking | One planned read on the date above. Earlier looks check sample ratio and guardrails only; no early stop for a good-looking lift. |
 | Guardrails | spam complaint rate per send below 0.1% (Gmail's target; 0.3% is its hard limit); unsubscribe rate per send, against the 90-day median for your lifecycle sends; pause a touch running above twice it; hard bounce rate below 1% |
 | Copy tests | Copy variants rotate evenly inside the treatment arm. Read them on clicks or the core action, never opens, and only directionally below about 1,000 sends per variant (size exactly with engine/measurement/stats.py size --baseline <click rate> --mde-rel 0.2) |
 
 | Months of entries | Holdout n | Treatment n | Smallest detectable lift |
 |---:|---:|---:|---|
-| 3 | 12 | 71 | not reachable |
-| 6 | 25 | 142 | not reachable |
-| 12 | 50 | 285 | 19.35 pts (111% relative) |
+| 3 | 275 | 1,562 | 9.5 pts (33% relative) |
+| 6 | 551 | 3,124 | 6.85 pts (23% relative) |
+| 12 | 1,102 | 6,249 | 5.28 pts (18% relative) |
 
 ## Deliverability guardrails
 
@@ -208,11 +209,11 @@ Files: `copy/t5_email_A.html`, `copy/t5_email_A.mjml`, `copy/t5_email_A.subject.
 | CAN-SPAM opt-out | United States | PASS | Commercial email must offer a clear way to opt out that keeps working for at least 30 days after the send, honored within 10 business days. Every email carries the platform's unsubscribe link. Honoring requests within 10 business days is a process requirement on your platform: confirm it. | https://www.ftc.gov/business-guidance/resources/can-spam-act-compliance-guide-business |
 | CAN-SPAM honest subject and header | United States | PASS | Subject lines and header information must not mislead. No subject implies a prior conversation; the guardrails also block fake urgency and offers outside policy. | https://www.ftc.gov/business-guidance/resources/can-spam-act-compliance-guide-business |
 | CAN-SPAM ad identification | United States | WARN | A commercial message must be identified as an advertisement unless the recipient gave prior affirmative consent to receive it. Confirm every recipient opted in to marketing email, or add a clear advertisement disclosure. | https://www.ftc.gov/business-guidance/resources/can-spam-act-compliance-guide-business |
-| CASL consent | Canada | WARN | Commercial electronic messages need express or implied consent. Every email requires a consent record; 86% of records carry a consent timestamp. Implied consent expires: two years after a purchase, six months after an inquiry or application. Exclude Canadian records whose implied consent has lapsed, or confirm they gave express consent. | https://ised-isde.canada.ca/site/canada-anti-spam-legislation/en/node/7 |
+| CASL consent | Canada | WARN | Commercial electronic messages need express or implied consent. Every email requires a consent record; 85% of records carry a consent timestamp. Implied consent expires: two years after a purchase, six months after an inquiry or application. Exclude Canadian records whose implied consent has lapsed, or confirm they gave express consent. | https://ised-isde.canada.ca/site/canada-anti-spam-legislation/en/node/7 |
 | CASL identification and unsubscribe | Canada | PASS | Messages must identify the sender, give contact information and a no-cost unsubscribe mechanism, honored within 10 business days. Every email carries the platform's unsubscribe link. Honoring requests within 10 business days is a process requirement on your platform: confirm it. | https://ised-isde.canada.ca/site/canada-anti-spam-legislation/en/node/7 |
 | CASL sender identification | Canada | PASS | Every message identifies who sent it and on whose behalf, with a mailing address and a phone number, email or web address that stays valid for 60 days. Every email footer names the sender and every SMS starts with the brand name. | https://ised-isde.canada.ca/site/canada-anti-spam-legislation/en/node/7 |
-| PECR consent or soft opt-in | United Kingdom | WARN | Marketing email to individuals needs specific consent, or the soft opt-in for people who bought or negotiated to buy a similar product and were offered an opt-out at collection and in every message. The ICO is revising this guidance after the Data (Use and Access) Act. Every email requires a consent record; 86% of records carry a consent timestamp. Confirm each UK record has consent or qualifies for the soft opt-in. | https://ico.org.uk/for-organisations/direct-marketing-and-privacy-and-electronic-communications/guide-to-pecr/electronic-and-telephone-marketing/electronic-mail-marketing/ |
-| ePrivacy consent | European Union | WARN | Marketing email needs prior consent, except to existing customers for similar products with an opt-out at collection and in every message (ePrivacy Directive, article 13). Every email requires a consent record; 86% of records carry a consent timestamp. Confirm the lawful basis for each EU record and that consent records can be produced. | https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32002L0058 |
+| PECR consent or soft opt-in | United Kingdom | WARN | Marketing email to individuals needs specific consent, or the soft opt-in for people who bought or negotiated to buy a similar product and were offered an opt-out at collection and in every message. The ICO is revising this guidance after the Data (Use and Access) Act. Every email requires a consent record; 85% of records carry a consent timestamp. Confirm each UK record has consent or qualifies for the soft opt-in. | https://ico.org.uk/for-organisations/direct-marketing-and-privacy-and-electronic-communications/guide-to-pecr/electronic-and-telephone-marketing/electronic-mail-marketing/ |
+| ePrivacy consent | European Union | WARN | Marketing email needs prior consent, except to existing customers for similar products with an opt-out at collection and in every message (ePrivacy Directive, article 13). Every email requires a consent record; 85% of records carry a consent timestamp. Confirm the lawful basis for each EU record and that consent records can be produced. | https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32002L0058 |
 | EU unsubscribe in every message | European Union | PASS | Every marketing message offers a free, easy opt-out. Every email carries the platform's unsubscribe link. | https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32002L0058 |
 | double opt-in evidence | Germany | WARN | UWG section 7 requires prior express consent for marketing email; the Federal Court of Justice (I ZR 164/09) puts the burden of proof on the sender, which in practice means a stored double opt-in confirmation per person. Confirm German records were collected with double opt-in and that each confirmation is stored. | https://www.gesetze-im-internet.de/uwg_2004/__7.html |
 | Spam Act consent, identification and unsubscribe | Australia | PASS | Commercial messages need consent, must identify the sender and offer a functional unsubscribe that keeps working for 30 days after the send, honored within 5 working days. Every email carries the platform's unsubscribe link. Honoring requests within 5 working days is a process requirement on your platform: confirm it. | https://www.acma.gov.au/avoid-sending-spam |
@@ -223,7 +224,7 @@ Files: `copy/t5_email_A.html`, `copy/t5_email_A.mjml`, `copy/t5_email_A.subject.
 | Check | Result | Detail |
 |---|---|---|
 | sending gate | WARN | AMBER gate: engaged recipients only, no volume growth (AMBER gate as supplied) |
-| audience after the gate | PASS | 1 of today's 3 would-be entrants pass the gate's filter (clicked or replied in 90 days) |
+| audience after the gate | PASS | 94 of today's 196 would-be entrants pass the gate's filter (clicked or replied in 90 days) |
 | data dependencies | PASS | every event and attribute the flow needs is present |
 | cohort SQL | PASS | every generated query parses in postgres, snowflake and bigquery; entry query ran on the data |
 | simulation: flow spec matches schemas/flow_spec.schema.json | PASS | valid |
@@ -250,13 +251,13 @@ Files: `copy/t5_email_A.html`, `copy/t5_email_A.mjml`, `copy/t5_email_A.subject.
 | copy: t3_in_app | PASS | 2 variant(s) pass lint and guardrails (supplied) |
 | copy: t4_email | PASS | 2 variant(s) pass lint and guardrails (supplied) |
 | copy: t5_email | PASS | 2 variant(s) pass lint and guardrails (supplied) |
-| holdout read | WARN | directional only: not inside 12 months at this volume (it would take about 187 months): keep the holdout, report against a pre/post baseline, and label every result directional |
+| holdout read | WARN | causal, slow: 475 holdout entrants have each completed 30 days (about 6.2 months after launch) |
 | compliance: one-click unsubscribe and complaint rate | WARN | mailbox providers: Gmail and Yahoo require bulk senders' marketing mail to carry one-click unsubscribe (RFC 8058) plus a visible unsubscribe link, honored within two days, and to keep user-reported spam under 0.3% (Gmail's target is under 0.1%). One-click unsubscribe is a header your platform adds: confirm it is on (engine/deliverability/analyze.py checks it in real headers). |
 | compliance: bulk-sender authentication | WARN | mailbox providers: Gmail, Yahoo and Microsoft (Outlook.com, Hotmail.com and Live.com since 5 May 2025) require senders of more than 5,000 messages a day to pass SPF and DKIM and publish DMARC (p=none or stricter) aligned with one of them; Microsoft sends failing mail to junk, then rejects it with 550 5.7.515. Run lcm "check deliverability for <your sending domain>" (engine/deliverability/dns_collect.py) and resolve anything RED before launch. |
 | compliance: CAN-SPAM ad identification | WARN | United States: A commercial message must be identified as an advertisement unless the recipient gave prior affirmative consent to receive it. Confirm every recipient opted in to marketing email, or add a clear advertisement disclosure. |
-| compliance: CASL consent | WARN | Canada: Commercial electronic messages need express or implied consent. Every email requires a consent record; 86% of records carry a consent timestamp. Implied consent expires: two years after a purchase, six months after an inquiry or application. Exclude Canadian records whose implied consent has lapsed, or confirm they gave express consent. |
-| compliance: PECR consent or soft opt-in | WARN | United Kingdom: Marketing email to individuals needs specific consent, or the soft opt-in for people who bought or negotiated to buy a similar product and were offered an opt-out at collection and in every message. The ICO is revising this guidance after the Data (Use and Access) Act. Every email requires a consent record; 86% of records carry a consent timestamp. Confirm each UK record has consent or qualifies for the soft opt-in. |
-| compliance: ePrivacy consent | WARN | European Union: Marketing email needs prior consent, except to existing customers for similar products with an opt-out at collection and in every message (ePrivacy Directive, article 13). Every email requires a consent record; 86% of records carry a consent timestamp. Confirm the lawful basis for each EU record and that consent records can be produced. |
+| compliance: CASL consent | WARN | Canada: Commercial electronic messages need express or implied consent. Every email requires a consent record; 85% of records carry a consent timestamp. Implied consent expires: two years after a purchase, six months after an inquiry or application. Exclude Canadian records whose implied consent has lapsed, or confirm they gave express consent. |
+| compliance: PECR consent or soft opt-in | WARN | United Kingdom: Marketing email to individuals needs specific consent, or the soft opt-in for people who bought or negotiated to buy a similar product and were offered an opt-out at collection and in every message. The ICO is revising this guidance after the Data (Use and Access) Act. Every email requires a consent record; 85% of records carry a consent timestamp. Confirm each UK record has consent or qualifies for the soft opt-in. |
+| compliance: ePrivacy consent | WARN | European Union: Marketing email needs prior consent, except to existing customers for similar products with an opt-out at collection and in every message (ePrivacy Directive, article 13). Every email requires a consent record; 85% of records carry a consent timestamp. Confirm the lawful basis for each EU record and that consent records can be produced. |
 | compliance: double opt-in evidence | WARN | Germany: UWG section 7 requires prior express consent for marketing email; the Federal Court of Justice (I ZR 164/09) puts the burden of proof on the sender, which in practice means a stored double opt-in confirmation per person. Confirm German records were collected with double opt-in and that each confirmation is stored. |
 | compliance | WARN | 16 rule(s) checked for Australia, Canada, Germany, European Union, United Kingdom, United States |
 

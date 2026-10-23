@@ -85,7 +85,10 @@ def render_plan(p: ExecutionPlan) -> str:
           f"{c.plain_english} The flow sends up to {len(sends)} message(s) over {span} days "
           f"({', '.join(sorted({t.channel.replace('_', '-') for t in sends}))}), starts with a {e.holdout_pct:g}% holdout that receives nothing, "
           f"and stops the moment they {core.do}" + (" again. " if b.flow_type == "winback" else ". ")
-          + (f"About {c.monthly_entrants.value:,.0f} people a month ({c.monthly_entrants.label}) would enter; "
+          + (f"About {c.monthly_entrants.value:,.0f} people a month ({c.monthly_entrants.label}) would enter"
+             + (f" (of {gated['monthly_entrants_before']:,.0f} who qualify, the AMBER gate lets in those who {gated['rule']})"
+                if (gated := (c.audience_after_gate or {}).get("monthly")) and c.monthly_entrants.label != "SUPPLIED" else "")
+             + "; "
              f"{_pct(c.baseline_conversion_rate.value)} {'come back' if b.flow_type == 'winback' else 'get there'} within "
              f"{e.outcome_window_days} days on their own ({c.baseline_conversion_rate.label}). "
              if c.monthly_entrants.value else "Entry volume is not known yet, so the read date is not computed. ")
@@ -150,7 +153,7 @@ def render_plan(p: ExecutionPlan) -> str:
             L.append(f"| {_cell(label)} | {_cell(copy_txt)} | {_cell(v.framework)} | {_cell(v.hypothesis)} |")
         files = sorted({k for v in tc.variants for k in v.rendered})
         L += ["", "Files: " + ", ".join(f"`copy/{x}`" for x in files), ""]
-    L += ["## Measurement", "", "| | |", "|---|---|", f"| Holdout | {e.holdout_pct:g}%, {_cell(e.unit)} level, persistent: {_cell(e.assignment_rule)} |",
+    L += ["## Measurement", "", "| | |", "|---|---|", f"| Holdout | {e.holdout_pct:g}%, {_cell(e.unit)} level: {_cell(e.assignment_rule)} |",
           f"| Primary metric | {_cell(e.primary_metric)} |", f"| Sizing | {_cell(e.sizing)} |", f"| Read | {_cell(e.read)}: {_cell(e.read_after)} |",
           f"| Decision rule | {_cell(e.decision_rule)} |", f"| Sample ratio | {_cell(e.srm_rule)} |", f"| Peeking | {_cell(e.peeking_policy)} |",
           f"| Guardrails | {_cell('; '.join(e.guardrail_metrics))} |", f"| Copy tests | {_cell(' '.join(e.variant_tests))} |", ""]

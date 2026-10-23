@@ -104,10 +104,10 @@ def data_label(data: Optional[str]) -> str:
     if data is None:
         return "UNKNOWN"
     try:
-        from engine.paths import EXAMPLES
+        from engine.paths import EXAMPLES, SMALL
         here = Path(data).resolve()
-        if here == FIXTURES.resolve() or (EXAMPLES / "brands").resolve() in here.parents:   # the sample brands' data
-            return "DEMO DATA"
+        if here == FIXTURES.resolve() or (EXAMPLES / "brands").resolve() in here.parents or SMALL.resolve() in here.parents:
+            return "DEMO DATA"                                     # the sample brands' data, and the small Ridgeview world
     except OSError:
         pass
     return "LIVE PULL"
@@ -701,6 +701,15 @@ def flow_job_sql(brief: Brief, name: str, con=None) -> Dict[str, str]:
             "mark": mark_sql(brief, name)}
 
 
+def _unit(brief: Brief) -> Tuple[str, str]:
+    """What one entry is called, and what coming back is called, for the estimate notes."""
+    return {"winback": ("threshold crossings", "came back"), "cart_abandon": ("abandoned checkouts", "ordered anyway"),
+            "browse_abandon": ("abandoned product views", "ordered anyway"), "post_purchase": ("first orders", "ordered again"),
+            "replenishment": ("purchase cycles coming due", "reordered"), "dunning": ("failed payments", "paid anyway"),
+            "sunset": ("people crossing the no-click line", "clicked again")}.get(
+        brief.flow_type, ("new qualifiers", f"went on to {brief.core_conversion_event.do}"))
+
+
 def _estimates(brief: Brief, con, as_of: date, label: str) -> Tuple[Estimate, Estimate]:
     if con is None:
         return (Estimate(value=brief.monthly_entrants, label="SUPPLIED" if brief.monthly_entrants is not None else "UNKNOWN",
@@ -710,11 +719,7 @@ def _estimates(brief: Brief, con, as_of: date, label: str) -> Tuple[Estimate, Es
     rows = _rows(con, flow_sql(brief, "duckdb", as_of.isoformat(), con)[1])
     this_month = as_of.replace(day=1)
     complete = [r for r in rows if r["month"] < this_month][-3:]
-    unit, did = {"winback": ("threshold crossings", "came back"), "cart_abandon": ("abandoned checkouts", "ordered anyway"),
-                 "browse_abandon": ("abandoned product views", "ordered anyway"), "post_purchase": ("first orders", "ordered again"),
-                 "replenishment": ("purchase cycles coming due", "reordered"), "dunning": ("failed payments", "paid anyway"),
-                 "sunset": ("people crossing the no-click line", "clicked again")}.get(
-        brief.flow_type, ("new qualifiers", f"went on to {brief.core_conversion_event.do}"))
+    unit, did = _unit(brief)
     entrants = Estimate(value=None, label="UNKNOWN", basis=f"no complete month of {unit} in the data")
     if complete:
         avg = sum(r["entrants"] for r in complete) / len(complete)
@@ -731,6 +736,174 @@ def _estimates(brief: Brief, con, as_of: date, label: str) -> Tuple[Estimate, Es
     if brief.baseline_conversion_rate is not None:
         baseline = Estimate(value=brief.baseline_conversion_rate, label="SUPPLIED", basis=f"from the brief (data says {baseline.value})")
     return entrants, baseline
+
+
+def _entry_history(brief: Brief, con, as_of: date) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
+    """One row per would-be entry in the data, for the flows the warehouse history covers (win-back crossings and new
+    qualifiers): the person, their account, the entry date, whether the entry is old enough to have finished the outcome
+    window and came back inside it, and the two facts an AMBER gate's entry filter reads (an email click or reply in the 90
+    days before entry, a signup in the 30 days before). Returns (rows, None), (None, why) when the query fails, and (None,
+    None) for other flows."""
+    if con is None or (brief.flow_type != "winback" and brief.flow_type not in NEW_QUALIFIER_FLOWS):
+        return None, None
+    D = dialect("duckdb")
+    a = D.date_literal(as_of.isoformat())
+    w = _window(brief)
+    if brief.flow_type == "winback":
+        ctes, src = _lapses_ctes(D, brief, a), "SELECT user_id, crossed_on AS entered_on, next_d AS done_on FROM lapses"
+    else:
+        ctes, src = _new_qualifiers_ctes(D, brief, a), "SELECT user_id, entered_on, first_core_on AS done_on FROM newcomers"
+    sql = (f"WITH {ctes},\nentries AS ({src}),\n"
+           f"clicks AS (SELECT DISTINCT user_id, CAST(event_at AS DATE) AS d FROM message_events WHERE event_name IN ('clicked', 'replied'))\n"
+           f"SELECT e.user_id, NULLIF(u.account_id, '') AS account_id, e.entered_on,\n"
+           f"       CASE WHEN e.entered_on <= {D.add_days(a, -w)} THEN 1 ELSE 0 END AS matured,\n"
+           f"       CASE WHEN e.entered_on <= {D.add_days(a, -w)} AND e.done_on IS NOT NULL AND e.done_on <= {D.add_days('e.entered_on', w)}\n"
+           f"            THEN 1 ELSE 0 END AS returned,\n"
+           f"       EXISTS (SELECT 1 FROM clicks c WHERE c.user_id = e.user_id AND c.d > {D.add_days('e.entered_on', -90)} "
+           f"AND c.d <= e.entered_on) AS clicked_90,\n"
+           f"       COALESCE(CAST(u.created_at AS DATE) > {D.add_days('e.entered_on', -30)}, FALSE) AS new_30\n"
+           f"FROM entries e LEFT JOIN users u ON u.user_id = e.user_id")
+    try:
+        return _rows(con, sql), None
+    except Exception as e:  # noqa: BLE001  (an unusual schema loses the gate and account refinements, never the plan; define() records it)
+        return None, str(e).splitlines()[0][:200]
+
+
+def _gate_keeps(brief: Brief, con) -> Optional[Tuple[str, Any]]:
+    """The AMBER gate's entry filter for this flow as (rule, test on an _entry_history row), or None when no filter applies or
+    the data cannot evaluate it (no message events for a filter on clicks)."""
+    from engine.policy import guardrails
+    pol = guardrails.gate_policy(brief.sending_gate, brief.flow_type)
+    if con is None or pol["effective_gate"] != "AMBER" or not pol["entry_filters"]:
+        return None
+    has_messages = bool(con.execute("SELECT COUNT(*) FROM message_events").fetchone()[0])
+    klass = brief.flow.gate_class
+    if klass == "lapsed" and has_messages:
+        return "clicked or replied in 90 days", lambda r: bool(r["clicked_90"])
+    if klass == "new_entrant":
+        if has_messages:
+            return "signed up in 30 days, or clicked or replied in 90", lambda r: bool(r["new_30"]) or bool(r["clicked_90"])
+        return "signed up in 30 days", lambda r: bool(r["new_30"])
+    return None
+
+
+def _baseline_months(rows: List[Dict[str, Any]]) -> List[date]:
+    """The last six months with any entries: the months _estimates reads the baseline from (its history rows), so the gate's
+    estimates and the account design effect read exactly the same entries."""
+    return sorted({r["entered_on"].replace(day=1) for r in rows})[-6:]
+
+
+def _gated_estimates(brief: Brief, rows: List[Dict[str, Any]], keeps, as_of: date, label: str) -> Optional[Dict[str, Any]]:
+    """Monthly entrants and the unaided return rate among the entries the gate's filter keeps, on the windows _estimates uses
+    (the mean of the last three complete months; matured entries in the last six months with entries)."""
+    rule, test = keeps
+    by_month: Dict[date, List[int]] = {}
+    for r in rows:
+        m = r["entered_on"].replace(day=1)
+        cell = by_month.setdefault(m, [0, 0, 0, 0])      # entries, kept, matured kept, returned kept
+        cell[0] += 1
+        if test(r):
+            cell[1] += 1
+            cell[2] += int(r["matured"])
+            cell[3] += int(r["returned"])
+    months = sorted(by_month)
+    complete = [m for m in months if m < as_of.replace(day=1)][-3:]
+    if not complete:
+        return None
+    raw = sum(by_month[m][0] for m in complete) / len(complete)
+    kept = sum(by_month[m][1] for m in complete) / len(complete)
+    recent = _baseline_months(rows)
+    matured = sum(by_month[m][2] for m in recent)
+    returned = sum(by_month[m][3] for m in recent)
+    tag = label if label != "LIVE PULL" else "ESTIMATE"
+    return {"rule": rule, "monthly_entrants_before": round(raw, 1), "monthly_entrants": round(kept, 1),
+            "monthly_share": round(kept / raw, 4) if raw else None, "matured": matured, "returned": returned,
+            "baseline": round(returned / matured, 4) if matured >= 30 else None, "label": tag,
+            "months": f"{complete[0]:%Y-%m} to {complete[-1]:%Y-%m}"}
+
+
+MIN_REPEAT_ACCOUNTS = 30      # accounts that sent two or more entrants: fewer cannot show how alike an account's entrants are
+BOOTSTRAP_DRAWS = 200
+
+
+def robust_design_effect(cells: List[Tuple[int, int]]) -> Optional[float]:
+    """How much more the pooled return rate varies when accounts are randomized than when people are drawn one by one: the
+    ratio-estimator variance from account totals over the binomial variance, k/(k-1) x sum (y_i - p m_i)^2 / (N p (1 - p)).
+    It is the observed design effect lcm readout reports (engine/measurement/cluster.py), measured before launch. Unlike
+    1 + (m - 1) x ICC it needs no model of how entries relate: one person's repeat lapses, which pull against each other,
+    and a whole account going quiet together, which pulls the same way, are both in it."""
+    k, n, y = len(cells), sum(m for m, _ in cells), sum(v for _, v in cells)
+    if k < 2 or not n:
+        return None
+    p = y / n
+    if p <= 0 or p >= 1:
+        return None
+    return (k / (k - 1)) * sum((v - p * m) ** 2 for m, v in cells) / (n * p * (1 - p))
+
+
+def _flow_cluster(rows: List[Dict[str, Any]], keeps, as_of: date, label: str) -> Optional[Dict[str, Any]]:
+    """The account-level design effect, measured on the entries the flow would enroll (after the gate's filter) with the
+    outcome the readout uses (came back within the window), over the same six months as the baseline.
+
+    The design effect grows with how many entrants each account sends while the holdout fills, so it is measured at each
+    whole month of that history, counted back from the newest matured entry: by_entrants holds the curve that
+    experimentation_agent reads at the planned number of entrants (and extends in proportion past the window). A cluster
+    bootstrap over accounts gives the range of the full-window value."""
+    import random
+    test = keeps[1] if keeps else (lambda r: True)
+    months = _baseline_months(rows)
+    if not months:
+        return None
+    kept = [r for r in rows if test(r) and r["entered_on"] >= months[0]]
+    window = [r for r in kept if r["account_id"] and r["matured"]]
+    if not window:
+        return None
+    tag = label if label != "LIVE PULL" else "ESTIMATE"
+
+    def cells(sub: List[Dict[str, Any]]) -> List[Tuple[int, int]]:
+        by: Dict[str, List[int]] = {}
+        for r in sub:
+            c = by.setdefault(r["account_id"], [0, 0])
+            c[0] += 1
+            c[1] += int(r["returned"])
+        return [tuple(by[a]) for a in sorted(by)]          # by account id, so the bootstrap draws the same accounts every run
+
+    full = cells(window)
+    newest, oldest = max(r["entered_on"] for r in window), min(r["entered_on"] for r in window)
+    span = ((newest - oldest).days + 1) / 30.44
+    repeat = sum(1 for m, _ in full if m >= 2)
+    out: Dict[str, Any] = {"basis": "flow", "label": tag, "clusters": len(full), "entrants_in_window": len(window),
+                           "window_months": round(span, 2), "accounts_with_repeat_entrants": repeat,
+                           "unassigned_entrants": sum(1 for r in kept if not r["account_id"])}
+    if repeat < MIN_REPEAT_ACCOUNTS:
+        out["note"] = (f"only {repeat} account(s) sent more than one matured entrant in the last six months: too few to measure "
+                       f"how alike an account's entrants are")
+        return out
+    grid = []
+    for t in sorted({min(span, float(i)) for i in range(1, math.ceil(span) + 1)}):
+        cut = newest - timedelta(days=t * 30.44)
+        c = cells([r for r in window if r["entered_on"] > cut])
+        d = robust_design_effect(c)
+        if d is None:
+            continue
+        n = sum(m for m, _ in c)
+        grid.append({"months": round(t, 2), "entrants": n, "accounts": len(c), "design_effect": round(max(1.0, d), 4),
+                     "measured": round(d, 4), "size_weighted": round(sum(m * m for m, _ in c) / n, 3)})
+    if not grid:
+        out["note"] = "the outcome does not vary across accounts in the window: the design effect cannot be measured"
+        return out
+    rng = random.Random(len(full) * 7919 + repeat)            # deterministic, so a plan regenerates exactly
+    draws = sorted(d for d in (robust_design_effect([full[rng.randrange(len(full))] for _ in full]) for _ in range(BOOTSTRAP_DRAWS))
+                   if d is not None)
+    top = grid[-1]
+    implied = (top["design_effect"] - 1) / (top["size_weighted"] - 1) if top["size_weighted"] > 1 else 0.0
+    out.update({"design_effect": top["design_effect"], "by_entrants": grid, "mean_size": top["entrants"] / top["accounts"],
+                "size_weighted_mean": top["size_weighted"], "icc": round(implied, 4), "icc_for_design": round(implied, 4),
+                "icc_basis": "implied by the measured design effect: (DE - 1) / (size-weighted entrants per account - 1)"})
+    if len(draws) >= BOOTSTRAP_DRAWS // 2:
+        lo, hi = draws[int(0.025 * len(draws))], draws[min(len(draws) - 1, int(0.975 * len(draws)))]
+        out["design_effect_range"] = [round(max(1.0, lo), 4), round(max(1.0, hi), 4)]
+    return out
 
 
 TRIGGER_NAMES = {"winback": "core_action_lapsed_{n}d", "replenishment": "replenishment_due", "sunset": "engagement_lapsed_{n}d"}
@@ -861,6 +1034,30 @@ def define(brief: Brief, data: Optional[str] = None, as_of: Optional[str] = None
         except Exception as e:  # noqa: BLE001
             checks["entry duckdb"] = f"failed: {str(e).splitlines()[0]}"
     monthly, baseline = _estimates(brief, con, as_of_date or date.today(), label)
+    history, history_error = _entry_history(brief, con, as_of_date) if con is not None and as_of_date else (None, None)
+    gate_notes: Dict[str, str] = {}
+    if history_error:
+        gate_notes["history"] = f"the entry history query failed, so the gate's audience and the account design effect are not measured: {history_error}"
+    keeps = _gate_keeps(brief, con) if history else None
+    gated = _gated_estimates(brief, history, keeps, as_of_date, label) if history and keeps else None
+    if gated and gated["baseline"] is None:
+        # never a gated volume beside an ungated baseline: size both on everyone who qualifies, and say so
+        gate_notes["sizing"] = (f"only {gated['matured']} matured entries pass the gate's filter ({gated['rule']}), fewer than 30: "
+                                f"sized on everyone who qualifies instead")
+        gated = None
+    if not gated:
+        keeps = None
+    if gated:
+        # people the gate's filter turns away never enter, in either arm: size, value and read the flow on the ones it keeps
+        unit, did = _unit(brief)
+        if brief.monthly_entrants is None:
+            monthly = Estimate(value=gated["monthly_entrants"], label=gated["label"],
+                               basis=f"mean {unit} a month over {gated['months']} that pass the AMBER gate's entry filter ({gated['rule']}): "
+                                     f"{gated['monthly_entrants']:,.0f} of {gated['monthly_entrants_before']:,.0f}")
+        if brief.baseline_conversion_rate is None and gated["baseline"] is not None:
+            baseline = Estimate(value=gated["baseline"], label=gated["label"],
+                                basis=f"{gated['returned']:,} of {gated['matured']:,} matured {unit} that pass the gate's filter {did} within "
+                                      f"{_window(brief)} days with no flow")
     leak, countries = None, {}
     if con is not None:
         a = as_of_date.isoformat()
@@ -895,9 +1092,17 @@ def define(brief: Brief, data: Optional[str] = None, as_of: Optional[str] = None
         deps.append(DataDependency(name="replenish_after_days", kind="attribute", status="verified" if days_est.label != "ASSUMED" else "unknown",
                                    note=f"supply interval {days} days ({days_est.label}: {days_est.basis}); products.replenish_after_days overrides per product"))
     audience = _gate_audience(brief, con, as_of_date, entrants_today) if con is not None and as_of_date else None
+    if audience is not None and gated:
+        audience["monthly"] = gated
+    if audience is not None and gate_notes:
+        audience["notes"] = gate_notes
+    elif gate_notes:
+        audience = {"notes": gate_notes}
     cluster = None
     if con is not None and brief.randomization_unit == "account":
         from engine.measurement import cluster as cl
+        cluster = _flow_cluster(history, keeps, as_of_date, label) if history else None
+    if cluster is None and con is not None and brief.randomization_unit == "account":
         try:
             est = cl.icc_from_duckdb(con, cl.event_outcome_sql(c.event), "account_id")
             cluster = {k: est.get(k) for k in ("icc", "icc_for_design", "icc_ci", "mean_size", "cv", "design_effect", "clusters",

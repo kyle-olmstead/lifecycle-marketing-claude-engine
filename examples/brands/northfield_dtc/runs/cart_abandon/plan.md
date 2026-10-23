@@ -1,6 +1,6 @@
 # Abandoned cart: Northfield Coffee Roasters
 
-**Status: READY WITH ASSUMPTIONS** | Klaviyo | generated 2026-10-23T03:04:56+00:00 | run 37a6ea447874 | LMM Engine 3.0.0
+**Status: READY WITH ASSUMPTIONS** | Klaviyo | generated 2026-10-23T05:39:14+00:00 | run 94860bd93458 | LMM Engine 3.0.0
 
 ## In one paragraph
 
@@ -150,7 +150,7 @@ Files: `copy/t3_email_A.html`, `copy/t3_email_A.mjml`, `copy/t3_email_A.subject.
 
 | | |
 |---|---|
-| Holdout | 10%, user level, persistent: persistent, by user: bucket = first 7 hex digits of md5(user_id \|\| ':northfield_coffee_cart_abandon_1h') mod 100; bucket < 10 is the holdout, added as in_holdout to the live checkout_started event by the system that sends it; holdout members enter, then exit at holdout_split, so both arms are the same population |
+| Holdout | 10%, user level: persistent, by user: bucket = first 7 hex digits of md5(user_id \|\| ':northfield_coffee_cart_abandon_1h') mod 100; bucket < 10 is the holdout, added as in_holdout to the live checkout_started event by the system that sends it; holdout members enter, then exit at holdout_split, so both arms are the same population |
 | Primary metric | placed an order (order_completed) within 10 days of entry, treatment vs holdout, both arms counted from their entry date |
 | Sizing | about 351 entrants a month (DEMO DATA), 31.3% return within 10 days with no flow (DEMO DATA), 20% relative lift (6.3 pts) worth acting on: 508 holdout entrants at 10%, 14.5 months of entries plus the 10-day outcome window, so the read lands about 14.8 months after launch (engine/measurement/stats.py feasible --entries-per-month 350.7 --holdout 0.1 --baseline 0.3132 --mde-rel 0.2 --outcome-window-days 10) |
 | Read | directional only: not inside 12 months at this volume (it would take about 15 months): keep the holdout, report against a pre/post baseline, and label every result directional |

@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased
+
+**Ridgeview at full size.** In plain English: the sample software company was 400 people, so its win-back saw 28
+lapses a month and could never prove anything. It is now 5,000 accounts and about 28,000 people with seats, plans,
+monthly invoices, onboarding, rough patches and cancellations, and a year of newsletter sends. Its win-back holds
+out whole accounts and says when the test can be read: about six months after launch.
+
+**The demo data** (`examples/brands/ridgeview_saas/data/make_data.py`)
+- Accounts (free, starter, growth, scale) with one to forty seats, a health every person in the account shares, and
+  months when the account is at risk: its people go quiet more often and come back less, and some accounts cancel,
+  after which nobody in them returns. One invoice per renewal, seats times the plan's seat price.
+- `track_events` and `message_events` are Parquet (the loader reads either format); `users` and `orders` stay CSV.
+- The 400-person world moved to `tests/fixtures/ridgeview_small/`, unchanged byte for byte, for the tests that pin exact
+  numbers and the ten people in the sample vendor exports.
+- `lmm.yaml` randomizes by account, and the gate note says where AMBER comes from: about 44% of the list is unengaged.
+
+**Measurement that matches who actually enters**
+- On an AMBER gate the flow is sized, valued and read on the people the gate's entry filter lets in (for a win-back,
+  people who clicked or replied in 90 days), not on everyone who crosses the line. The plan says both numbers.
+- The account-level design effect is measured, not modeled: on the flow's own entrants (after the gate's filter), with
+  the readout's own estimator (the ratio-estimator variance from account totals over the binomial one), so one person's
+  repeat lapses and a whole account going quiet together are both in it. Before, it came from 1 + (m - 1) x ICC with an
+  ICC on whether a person ever did the core action and m the people per account; on Ridgeview that gives 2.63 and a read
+  in about 12 months, where the flow's entrants measure about 1.2 and a read in about 6.
+- The design effect grows with the entrants each account sends while the holdout fills, so it is measured month by month
+  over the history and read at the size the holdout will have when it reads (extended in proportion past the history).
+  The read date is the first month the holdout is big enough for its own design effect; when no month gets there, the
+  plan says accounts cap the test instead of giving a date. A cluster bootstrap gives the design effect's 95% range, and
+  the plan says when the read would land at the top of it. The smallest-detectable-lift table applies it too.
+- Too few accounts with more than one entrant to measure falls back to the assumed design effect, said so; a failed
+  history query is recorded in the plan's checks instead of passing silently.
+- In priorities a conversion is worth a seat when people belong to accounts (the account's bill spread over its people),
+  not the whole invoice, and the read estimate uses the same account-level solve as the plan.
+
 ## 3.0.0 (2026-10)
 
 **From one sentence to a program you can run.** In plain English: a folder per brand (`lcm init`) holds your platform,

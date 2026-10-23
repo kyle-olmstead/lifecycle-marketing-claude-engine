@@ -26,8 +26,8 @@ SELECT u.user_id, u.email, a.qualified_at, a.last_core_at, a.anchor_date,
        DATEDIFF(day, a.anchor_date, CURRENT_DATE()) AS days_inactive,
        u.email_consent_at IS NOT NULL AS email_consent,
        u.sms_consent_at IS NOT NULL AS sms_consent,
-       MOD(TO_NUMBER(SUBSTR(MD5(u.user_id || ':ridgeview_winback_14d'), 1, 7), 'XXXXXXX'), 100) AS holdout_bucket,
-       MOD(TO_NUMBER(SUBSTR(MD5(u.user_id || ':ridgeview_winback_14d'), 1, 7), 'XXXXXXX'), 100) < 15 AS in_holdout
+       MOD(TO_NUMBER(SUBSTR(MD5(COALESCE(u.account_id, u.user_id) || ':ridgeview_winback_14d'), 1, 7), 'XXXXXXX'), 100) AS holdout_bucket,
+       MOD(TO_NUMBER(SUBSTR(MD5(COALESCE(u.account_id, u.user_id) || ':ridgeview_winback_14d'), 1, 7), 'XXXXXXX'), 100) < 15 AS in_holdout
 FROM anchored a
 JOIN users u ON u.user_id = a.user_id
 LEFT JOIN lcm_flow_entries l ON l.flow = 'ridgeview_winback_14d' AND l.user_id = a.user_id AND l.anchor_date = a.anchor_date

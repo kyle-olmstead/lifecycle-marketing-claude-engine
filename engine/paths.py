@@ -23,6 +23,11 @@ DEMO_DATA = DEMO / "data"
 DEMO_BRIEF = DEMO / "briefs" / "winback_14d.yaml"
 DEMO_ACTIVE_BRIEFS = DEMO / "briefs" / "active"
 
+# The same company at 400 people with no accounts: the world the tests pin exact numbers to, and the source of the ten
+# people in the demo's sample vendor exports.
+SMALL = ROOT / "tests" / "fixtures" / "ridgeview_small"
+SMALL_DATA = SMALL / "data"
+
 # The second demo workspace: a fictional direct-to-consumer coffee brand, from vendor exports (Shopify, Klaviyo) to plans.
 NORTHFIELD = EXAMPLES / "brands" / "northfield_dtc"
 NORTHFIELD_DATA = NORTHFIELD / "data"

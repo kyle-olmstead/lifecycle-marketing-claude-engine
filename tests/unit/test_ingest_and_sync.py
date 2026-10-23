@@ -362,7 +362,7 @@ def test_parquet_exports_load_and_orders_are_optional(tmp_path):
     from engine.agents import cohort_analyst
     con = duckdb.connect()
     for t in ("users", "track_events"):
-        con.execute(f"COPY (SELECT * FROM read_csv('{ROOT / 'examples/brands/ridgeview_saas/data' / (t + '.csv')}', header=true, all_varchar=true)) "
+        con.execute(f"COPY (SELECT * FROM read_csv('{ROOT / 'tests/fixtures/ridgeview_small/data' / (t + '.csv')}', header=true, all_varchar=true)) "
                     f"TO '{tmp_path / (t + '.parquet')}' (FORMAT parquet)")
     (tmp_path / "users.csv").write_text("not,a,valid,users,file\n")   # parquet must win over a broken csv
     c = cohort_analyst.connect(str(tmp_path))

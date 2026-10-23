@@ -21,7 +21,7 @@ from engine.sql.dialects import dialect, holdout_bucket
 
 DSN = os.environ.get("LCM_PG")
 pytestmark = pytest.mark.skipif(not DSN or not shutil.which("psql"), reason="set LCM_PG and install psql to run on PostgreSQL")
-FIX = ROOT / "examples" / "brands" / "ridgeview_saas" / "data"
+FIX = ROOT / "tests" / "fixtures" / "ridgeview_small" / "data"     # the 400-person world: CSVs, no accounts
 
 
 @pytest.fixture(scope="module")

@@ -21,7 +21,7 @@ touches: 5
 channels: [email, in_app]
 holdout_pct: 15
 min_detectable_lift: 0.25
-sending_gate: AMBER                    # supplied: 400,000 of 600,000 contacts are unengaged, so the plan mails engaged people only
+sending_gate: AMBER                    # supplied: about 44% of the list is unengaged (lcm engagement), so the plan mails engaged people only
 offer_policy: no discounts or offers
 frequency_cap_per_week: 3
 send_hour_local: 10

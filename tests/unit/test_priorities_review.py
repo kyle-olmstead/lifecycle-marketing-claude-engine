@@ -16,7 +16,7 @@ from engine.brief import load_brief
 from engine.agents.campaign_architect import outcome_window
 from engine.models import Brief
 
-FIXTURES = ROOT / "examples" / "brands" / "ridgeview_saas" / "data"
+FIXTURES = ROOT / "tests" / "fixtures" / "ridgeview_small" / "data"   # the 400-person world the numbers below are pinned to
 EXAMPLE = ROOT / "examples" / "brands" / "ridgeview_saas" / "briefs" / "winback_14d.yaml"
 
 

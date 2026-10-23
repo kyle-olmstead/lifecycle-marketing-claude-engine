@@ -14,7 +14,7 @@ from engine.brief import load_brief, parse_text
 from engine.pipeline.core import STAGES, PipelineError, Run, approve, revise
 
 EXAMPLE = ROOT / "examples" / "brands" / "ridgeview_saas" / "briefs" / "winback_14d.yaml"
-FIXTURES = str(ROOT / "examples" / "brands" / "ridgeview_saas" / "data")
+FIXTURES = str(ROOT / "tests" / "fixtures" / "ridgeview_small" / "data")   # the 400-person world these numbers are pinned to
 
 
 @pytest.fixture()

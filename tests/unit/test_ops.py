@@ -16,7 +16,7 @@ from engine import contracts
 from engine.deliverability import analyze as deliverability, dns_collect
 from engine.sql import check as sql_check
 
-FIXTURES = str(ROOT / "examples" / "brands" / "ridgeview_saas" / "data")
+FIXTURES = str(ROOT / "tests" / "fixtures" / "ridgeview_small" / "data")   # the 400-person world these numbers are pinned to
 EXAMPLE = ROOT / "examples" / "brands" / "ridgeview_saas" / "briefs" / "winback_14d.yaml"
 
 
@@ -202,8 +202,8 @@ def test_daily_demo_run_logs_every_tab_and_keeps_going_past_a_failure(tmp_path):
             raise LookupError("broken.example does not resolve")
         return _fake_collect(domain)
 
-    st = daily.run("demo", briefs_dir=tmp_path / "none", domains=["example.org", "broken.example"], out=tmp_path / "out", dry_run=True,
-                   collect=collect)
+    st = daily.run("url", data=FIXTURES, briefs_dir=tmp_path / "none", domains=["example.org", "broken.example"], out=tmp_path / "out",
+                   dry_run=True, collect=collect)
     assert [f["status"] for f in st["flows"]] == ["ok"] and "no briefs" in st["notes"][0]
     assert st["engagement"]["status"] == "ok" and st["engagement"]["gate_band"] == "RED"
     assert [d["status"] for d in st["deliverability"]] == ["ok", "error"] and len(st["errors"]) == 1
@@ -325,3 +325,14 @@ def test_daily_skips_the_monitor_without_bounce_detail_and_never_fails_the_run_o
     assert st["deliverability_monitor"]["status"] == "error" and any(e.startswith("deliverability monitor:") for e in st["errors"])
     assert st["engagement"]["status"] in ("ok", "skipped") and st["priorities"] is not None
     assert "## Deliverability monitor: failed" in (tmp_path / "bad" / "summary.md").read_text()
+
+
+def test_the_demo_workspace_reads_amber_and_ranks_builds(tmp_path):
+    """The bundled demo (Ridgeview at full size): about 44% of its list is unengaged, which is AMBER, the gate its lmm.yaml
+    supplies; nothing has to be fixed first, so the morning check is the two builds, the win-back sized on the people the
+    AMBER gate lets in."""
+    st = daily.run("demo", briefs_dir=tmp_path / "none", out=tmp_path / "out", dry_run=True)
+    assert st["engagement"]["status"] == "ok" and st["engagement"]["gate_band"] == "AMBER"
+    assert st["tracking"]["status"] == "ok" and len(st["priorities"]["top"]) == 2
+    summary = (tmp_path / "out" / "summary.md").read_text()
+    assert "Fix first" not in summary and "pass the AMBER gate's filter" in summary

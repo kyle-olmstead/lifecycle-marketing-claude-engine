@@ -1,13 +1,13 @@
 # Worked example: activation flow for Ridgeview (fictional)
 
-A model answer for `prompts/jobs/flows/activation.md`, every section of its output format, on the fixture data in
-`examples/brands/ridgeview_saas/data`. Read it only when a model answer would help; the method and rules are in the
-job prompt.
+A model answer for `prompts/jobs/flows/activation.md`, every section of its output format, on the small Ridgeview world
+in `tests/fixtures/ridgeview_small/data` (400 people; the demo workspace's own data is the same company at full size).
+Read it only when a model answer would help; the method and rules are in the job prompt.
 
 **Inputs.** Ridgeview (fictional), a reporting product for operations teams. Persona: an
 operations analyst at a 50 to 500 person company who rebuilds the same Monday numbers by hand for a
 manager. Aha: `activation_reached` (first report shared). Events: the fixture tracking plan in
-`examples/brands/ridgeview_saas/data`. Stack: Customer.io (latest Liquid) for messaging, Mixpanel for analysis, a
+`tests/fixtures/ridgeview_small/data`. Stack: Customer.io (latest Liquid) for messaging, Mixpanel for analysis, a
 PostgreSQL warehouse behind the CDP. About 3,000 signups a month. Email consent on 86% of users;
 SMS consent on 22%; push permission unknown. No voice module supplied: the voice below is derived
 from the product's in-app copy and labeled as derived. Gate: GREEN (from the deliverability gate).

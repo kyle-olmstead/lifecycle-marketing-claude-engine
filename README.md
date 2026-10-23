@@ -15,16 +15,16 @@ You type:
 
 > *"a 5-touch win-back for users who completed onboarding but haven't created a report in 14 days"*
 
-It returns a plan like this one, made for Ridgeview, the sample B2B reporting tool in this repository, which emails from Customer.io ([the full plan](examples/brands/ridgeview_saas/runs/winback_14d/plan.md)):
+It returns a plan like this one, made for Ridgeview, the sample B2B reporting tool in this repository: 5,000 customer accounts, about 28,000 people, emailing from Customer.io ([the full plan](examples/brands/ridgeview_saas/runs/winback_14d/plan.md)):
 
 **Who gets it**
 
 | | |
 |---|---|
 | **Enters** | Finished onboarding, then went 14 days without creating a report. Once per lapse, so nobody enters twice for the same quiet stretch |
-| **Never enters** | No consent, on your suppression list, or an internal or test account |
+| **Never enters** | No consent, on your suppression list, or an internal or test account. While the sending gate is AMBER, also anyone who has not clicked or replied to an email in 90 days |
 | **Leaves** | The moment they create a report again, checked before every message |
-| **How many** | About 28 people a month. 17.5% come back on their own with no emails, so that is the number the flow has to beat |
+| **How many** | About 1,200 people a month go quiet, and the 613 who still engage with email enter. 29% of them come back within 30 days with no emails, so that is the number the flow has to beat |
 
 It also writes the query that finds these people every day, for PostgreSQL, Snowflake and BigQuery.
 
@@ -32,8 +32,8 @@ It also writes the query that finds these people every day, for PostgreSQL, Snow
 
 ```mermaid
 flowchart LR
-  A(["14 days without a report"]) --> H{"In the holdout?"}
-  H -- "15%: gets nothing" --> X(["Measured, not mailed"])
+  A(["14 days without a report"]) --> H{"Account in the holdout?"}
+  H -- "15% of accounts: nothing" --> X(["Measured, not mailed"])
   H -- "85%" --> E1["Day 0: email"]
   E1 --> E2["Day 3: email"]
   E2 --> I3["Day 7: in-app"]
@@ -59,7 +59,7 @@ That last email is deliberate: people who ignore a whole win-back are the ones w
 - everything it had to assume, for you to confirm;
 - a check against email and texting law in the six regions in Ridgeview's customer list, and the inbox rules;
 - step-by-step build instructions in Customer.io's own terms;
-- the truth about measurement. At 28 people a month, a holdout would need years to prove a lift, so it keeps one anyway and labels every result "directional" instead of promising a date it cannot keep.
+- the truth about measurement. Ridgeview sells to companies, so the holdout is drawn by account: teammates are never split between getting the emails and not. The engine measures from Ridgeview's own history how much holding out whole accounts widens the margin of error, sizes the holdout for it, and gives the read date: about six months after launch, once 475 held-out people have each had 30 days.
 
 **It works the same for an online store.** For the sample coffee store on Shopify and Klaviyo, *"a 3-touch abandoned cart flow with email and SMS"* returns a flow that shows each person's cart from Shopify's own event. Its buttons go back to that checkout, and the second touch is a text for people with consent, or an email for everyone else, answering the question that stops coffee buyers: which grind? ([the full plan](examples/brands/northfield_dtc/runs/cart_abandon/plan.md))
 
@@ -69,13 +69,13 @@ That last email is deliberate: people who ignore a whole win-back are the ones w
 
 It reads your data and tells you what matters today. Here is a morning check on Ridgeview, trimmed:
 
-> **Fix first: sunset the unengaged before scaling anything.** 62% of the people Ridgeview can email got 5 or more emails in six months and clicked none. That puts the sending gate at RED: mail more and the rest of the list starts landing in spam.
+> **1. Activation flow for new signups, aimed at inviting a teammate.** About 3,200 people sign up each month and 34.5% create a report within 14 days on their own. The biggest drop in onboarding is the invite-a-teammate step: 44% of the people who connect a data source stop there. **About $3,400 to $8,500 a month.** Effort: medium.
 >
-> **1. Win-back at 14 days without a report.** 28 people a month reach it, and no live flow catches them. The monthly newsletter does not do the job: 85% of its sends to these people landed more than a week after they went quiet. **About $41 to $103 a month.** Effort: medium.
+> **2. Win-back at 14 days without a report.** 613 people a month reach it and still engage with email, and no live flow catches them. The newsletter does not do the job: 45% of its sends to these people landed more than a week after they went quiet, and the ones it reached late came back a third as often. **About $550 to $1,370 a month.** Effort: medium.
 >
-> **2. Activation flow for new signups, aimed at inviting a teammate.** Only 5.3% of new signups create a report within 14 days on their own, and the biggest drop in onboarding is the invite-a-teammate step, where a third of people stop. **About $13 to $33 a month.** Effort: medium.
+> **Also today:** 44% of the people Ridgeview can email got 5 or more emails in six months and clicked none. That keeps the sending gate at AMBER: plan a re-permission send and a sunset within a month.
 
-The revenue ranges are small because the sample company is small (400 users); on your data they scale with your volume and your revenue per customer. The audience sizes and baselines are measured from your data; only the lift is an assumption, and it says so. Each idea comes with the one step that turns it into a full plan.
+Each conversion is valued at one month of a seat, $31, measured from Ridgeview's invoices (an account's bill spread over the people in it). The audience sizes and baselines are measured from the data; only the lift is an assumption, and it says so. Each idea comes with the one step that turns it into a full plan.
 
 It also checks that your email still reaches the inbox:
 - your domain's authentication records (SPF, DKIM, DMARC);

@@ -13,7 +13,7 @@ from engine.workflows import daily
 from adapters.destinations import sheets as sheets_sync
 from engine import questions as question_bank
 
-FIXTURES = str(ROOT / "examples" / "brands" / "ridgeview_saas" / "data")
+FIXTURES = str(ROOT / "tests" / "fixtures" / "ridgeview_small" / "data")   # the 400-person world these numbers are pinned to
 EXAMPLE = ROOT / "examples" / "brands" / "ridgeview_saas" / "briefs" / "winback_14d.yaml"
 
 
@@ -74,7 +74,7 @@ def test_a_red_domain_is_a_fix_that_outranks_everything():
 
 
 def test_priorities_reach_the_daily_summary_and_sheet(tmp_path):
-    st = daily.run("demo", briefs_dir=tmp_path / "none", out=tmp_path / "out", dry_run=True)
+    st = daily.run("url", data=FIXTURES, briefs_dir=tmp_path / "none", out=tmp_path / "out", dry_run=True)
     assert st["priorities"]["status"] == "ok" and len(st["priorities"]["top"]) == 3      # the fix, then two builds
     summary = (tmp_path / "out" / "summary.md").read_text()
     assert summary.index("Today's priorities") < summary.index("Engagement tiers")
