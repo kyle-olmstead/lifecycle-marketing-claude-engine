@@ -183,3 +183,33 @@ def test_three_flows_that_pass_in_pairs_still_break_the_cap_together(tmp_path):
     for b in briefs:
         (tmp_path / f"{b.slug}.yaml").write_text(to_yaml(b), encoding="utf-8")
     assert program._cli(["--briefs", str(tmp_path)]) == 1
+
+
+# ----------------------------------------------------------------------------------------------
+# Finding 6: a gate record can lower the gate, never raise it
+# ----------------------------------------------------------------------------------------------
+
+GREEN = {"verdict": "GREEN", "assessed_at": "2026-10-20T12:00:00Z", "auth_label": "LIVE PULL", "domain": "x.example",
+         "signals": {"complaint_rate": 0.0004, "hard_bounce_rate": 0.002, "authentication_state": "verified"}}
+
+
+@pytest.mark.parametrize("change,needle", [
+    ({"assessed_at": "2031-01-01T00:00:00Z"}, "in the future"),
+    ({"auth_label": "SUPPLIED"}, "not observed"),
+    ({"critical_findings": ["No DMARC record"]}, "critical findings"),
+    ({"signals": {"complaint_rate": 0.0004}}, "lacks the signals"),
+])
+def test_a_green_record_without_its_evidence_reads_amber(change, needle):
+    from datetime import date
+    from engine.policy.contracts import effective_gate
+    assert effective_gate(GREEN, today=date(2026, 10, 22))[0] == "GREEN"
+    verdict, why = effective_gate({**GREEN, **change}, today=date(2026, 10, 22))
+    assert verdict == "AMBER" and needle in why
+
+
+def test_a_supplied_green_plans_as_amber_instead_of_failing():
+    b = parse_text("a 3-touch win-back", "Acme", {"sending_gate": {**GREEN, "auth_label": "SUPPLIED"}}, defaults={})
+    assert (b.sending_gate.verdict, b.sending_gate.recorded_verdict) == ("AMBER", "GREEN")
+    p = orchestrator.run(b, str(DEMO / "data"), copy_mode="offline")
+    gate = next(c for c in p.qa.checks if c.name == "sending gate")
+    assert gate.status == "warn" and "reads AMBER" in gate.detail

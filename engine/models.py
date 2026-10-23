@@ -266,6 +266,13 @@ class Brief(BaseModel):
             data.setdefault("trial_days", 14)
         return data
 
+    @field_validator("sending_gate", mode="before")
+    @classmethod
+    def _gate_record(cls, v: Any) -> Any:
+        """A gate record claiming GREEN without the evidence reads AMBER instead of failing the brief (contracts.read_gate)."""
+        from engine.policy.contracts import read_gate
+        return read_gate(v)
+
     @field_validator("channels")
     @classmethod
     def _channels(cls, v: List[str]) -> List[str]:

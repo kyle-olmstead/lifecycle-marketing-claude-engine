@@ -151,7 +151,7 @@ def diagnose() -> List[Dict[str, str]]:
                     from engine.policy.contracts import effective_gate
                     eff, why = effective_gate(gate)
                     row("sending gate", "ok" if eff == gate.get("verdict") else "note",
-                        why if eff == gate.get("verdict") else f"{gate.get('verdict')} recorded, runs as {eff}: {why}")
+                        why if eff == gate.get("verdict") else f"runs as {eff}: {why}")
                 else:
                     row("sending gate", "note", f"{gate}: runs as AMBER at best. `lcm deliverability check <domain> --write-gate gate.json` "
                                                 f"records an observed one")

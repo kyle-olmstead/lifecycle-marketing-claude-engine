@@ -60,6 +60,23 @@
       "items": {
         "type": "string"
       }
+    },
+    "recorded_verdict": {
+      "description": "the verdict the file claimed, when the engine read it lower (a GREEN without observed evidence)",
+      "anyOf": [
+        {
+          "enum": [
+            "GREEN",
+            "AMBER",
+            "RED"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     }
   },
   "allOf": [

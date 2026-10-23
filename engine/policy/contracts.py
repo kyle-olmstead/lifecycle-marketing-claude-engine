@@ -16,7 +16,7 @@ import re
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 Channel = Literal["email", "sms", "push", "in_app"]
 DURATION = re.compile(r"^P(?!$)(?:(\d+)D)?(?:T(?=\d)(?:(\d+)H)?(?:(\d+)M)?)?$")
@@ -71,6 +71,8 @@ class SendingGateRecord(BaseModel):
     source: Optional[str] = Field(None, description="what produced it, e.g. 'lcm deliverability example.com'")
     signals: Dict[str, Any] = Field(default_factory=dict)
     critical_findings: List[str] = Field(default_factory=list)
+    recorded_verdict: Optional[Literal["GREEN", "AMBER", "RED"]] = Field(
+        None, description="the verdict the file claimed, when the engine read it lower (a GREEN without observed evidence)")
 
     @model_validator(mode="after")
     def _green_needs_evidence(self) -> "SendingGateRecord":
@@ -81,19 +83,57 @@ class SendingGateRecord(BaseModel):
         return self
 
 
+GREEN_SIGNALS = ("complaint_rate", "hard_bounce_rate")
+
+
+def read_gate(doc: Any) -> Any:
+    """A sending gate as the engine reads it. A word stays a word. A record is validated; one that claims GREEN without the
+    evidence a GREEN needs (observed authentication, no critical finding) is read as AMBER, keeping the claim in
+    recorded_verdict, rather than failing the plan: an unobserved claim can lower the gate, never raise it."""
+    if not isinstance(doc, dict):
+        return doc
+    try:
+        return SendingGateRecord.model_validate(doc)
+    except ValidationError as e:
+        if doc.get("verdict") == "GREEN":
+            try:
+                return SendingGateRecord.model_validate({**doc, "verdict": "AMBER", "recorded_verdict": "GREEN"})
+            except ValidationError:
+                pass
+        problems = "; ".join(f"{'.'.join(str(x) for x in err['loc']) or 'record'}: {err['msg']}" for err in e.errors())
+        raise ValueError(f"the sending gate record is not valid ({problems}). Re-run lcm deliverability check DOMAIN "
+                         f"--write-gate gate.json") from None
+
+
 def effective_gate(gate: Any, today: Optional[date] = None) -> Tuple[str, str]:
     """(GREEN | AMBER | RED, the reason). A bare word is a claim: RED and AMBER stand, GREEN reads AMBER. A record older
-    than 30 days reads AMBER too: reputation moves in weeks, and a stale GREEN is how a program mails into a problem."""
+    than 30 days reads AMBER too: reputation moves in weeks, and a stale GREEN is how a program mails into a problem. So
+    does a GREEN dated in the future, one recorded without observed evidence, and one missing the signals a GREEN is
+    issued on (observed authentication, complaint and hard bounce rates)."""
     today = today or datetime.now(timezone.utc).date()
-    if isinstance(gate, dict):
-        gate = SendingGateRecord.model_validate(gate)
+    gate = read_gate(gate)
     if isinstance(gate, SendingGateRecord):
         age = (today - gate.assessed_at.date()).days
-        if gate.verdict == "GREEN" and age > GATE_MAX_AGE_DAYS:
-            return "AMBER", (f"the GREEN gate on record is {age} days old (from {gate.assessed_at.date()}); re-run the deliverability check: "
-                             f"a gate older than {GATE_MAX_AGE_DAYS} days reads AMBER")
+        when = gate.assessed_at.date()
+        rerun = "re-run lcm deliverability check DOMAIN --write-gate gate.json"
+        if gate.recorded_verdict == "GREEN" and gate.verdict != "GREEN":
+            why = (f"it lists critical findings ({'; '.join(gate.critical_findings[:2])})" if gate.critical_findings else
+                   f"its authentication was {gate.auth_label}, not observed (LIVE PULL)")
+            return gate.verdict, f"the gate on record says GREEN, but {why}, so it reads {gate.verdict}; {rerun}"
+        if gate.verdict == "GREEN":
+            if age < -1:
+                return "AMBER", f"the GREEN gate on record is dated {when}, in the future, so no check observed it; {rerun}"
+            if age > GATE_MAX_AGE_DAYS:
+                return "AMBER", (f"the GREEN gate on record is {age} days old (from {when}); {rerun}: a gate older than "
+                                 f"{GATE_MAX_AGE_DAYS} days reads AMBER")
+            missing = [k for k in GREEN_SIGNALS if gate.signals.get(k) is None]
+            if str(gate.signals.get("authentication_state", "")).lower() != "verified":
+                missing.insert(0, "authentication_state verified")
+            if missing:
+                return "AMBER", (f"the GREEN gate on record lacks the signals a GREEN is issued on ({', '.join(missing)}), so it "
+                                 f"reads AMBER; {rerun}")
         where = f" for {gate.domain}" if gate.domain else ""
-        return gate.verdict, f"{gate.verdict} gate{where} assessed {gate.assessed_at.date()} ({gate.auth_label})"
+        return gate.verdict, f"{gate.verdict} gate{where} assessed {when} ({gate.auth_label})"
     word = (gate or "UNKNOWN").upper()
     if word == "GREEN":
         return "AMBER", ("GREEN was supplied as a word, with no record of what was observed or when, so the plan runs as AMBER. "
