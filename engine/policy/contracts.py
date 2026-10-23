@@ -84,6 +84,9 @@ class SendingGateRecord(BaseModel):
 
 
 GREEN_SIGNALS = ("complaint_rate", "hard_bounce_rate")
+# the GREEN and AMBER ceilings engine/deliverability/analyze.py sending_gate issues a gate on, as shares
+GREEN_BANDS = {"complaint_rate": (0.001, 0.003), "hard_bounce_rate": (0.01, 0.02)}
+GATE_WRITER = "lcm deliverability"      # the source every record engine/deliverability/analyze.py gate_record writes begins with
 
 
 def read_gate(doc: Any) -> Any:
@@ -108,8 +111,10 @@ def read_gate(doc: Any) -> Any:
 def effective_gate(gate: Any, today: Optional[date] = None) -> Tuple[str, str]:
     """(GREEN | AMBER | RED, the reason). A bare word is a claim: RED and AMBER stand, GREEN reads AMBER. A record older
     than 30 days reads AMBER too: reputation moves in weeks, and a stale GREEN is how a program mails into a problem. So
-    does a GREEN dated in the future, one recorded without observed evidence, and one missing the signals a GREEN is
-    issued on (observed authentication, complaint and hard bounce rates)."""
+    does a GREEN dated in the future, one recorded without observed evidence, one not written by lcm deliverability check,
+    one missing the signals a GREEN is issued on (observed authentication, complaint and hard bounce rates), and one whose
+    own signals are above a GREEN's ceilings (it reads AMBER or RED, by its worst signal). The engine cannot prove a file
+    was not edited by hand; these rules make a hand-typed GREEN fail loudly instead of passing quietly."""
     today = today or datetime.now(timezone.utc).date()
     gate = read_gate(gate)
     if isinstance(gate, SendingGateRecord):
@@ -126,12 +131,27 @@ def effective_gate(gate: Any, today: Optional[date] = None) -> Tuple[str, str]:
             if age > GATE_MAX_AGE_DAYS:
                 return "AMBER", (f"the GREEN gate on record is {age} days old (from {when}); {rerun}: a gate older than "
                                  f"{GATE_MAX_AGE_DAYS} days reads AMBER")
+            if not str(gate.source or "").startswith(GATE_WRITER):
+                return "AMBER", (f"the gate on record says GREEN, but it was not written by {GATE_WRITER} (its source is "
+                                 f"{gate.source or 'not given'!r}), so it reads AMBER; {rerun}")
             missing = [k for k in GREEN_SIGNALS if gate.signals.get(k) is None]
             if str(gate.signals.get("authentication_state", "")).lower() != "verified":
                 missing.insert(0, "authentication_state verified")
             if missing:
                 return "AMBER", (f"the GREEN gate on record lacks the signals a GREEN is issued on ({', '.join(missing)}), so it "
                                  f"reads AMBER; {rerun}")
+            worst, why = "GREEN", []
+            for name, (green, amber) in GREEN_BANDS.items():
+                try:
+                    v = float(gate.signals[name])
+                except (TypeError, ValueError):
+                    return "AMBER", f"the GREEN gate on record has a {name} that is not a number ({gate.signals[name]!r}); {rerun}"
+                band = "GREEN" if v < green else ("AMBER" if v <= amber else "RED")
+                if band != "GREEN":
+                    why.append(f"{name} {v:.2%} (a GREEN needs under {green:.1%})")
+                    worst = "RED" if "RED" in (band, worst) else "AMBER"
+            if why:
+                return worst, f"the gate on record says GREEN, but its own signals do not: {'; '.join(why)}, so it reads {worst}; {rerun}"
         where = f" for {gate.domain}" if gate.domain else ""
         return gate.verdict, f"{gate.verdict} gate{where} assessed {when} ({gate.auth_label})"
     word = (gate or "UNKNOWN").upper()
@@ -302,7 +322,8 @@ WINDOW_FOR = {"day": "P1D", "24 hours": "P1D", "week": "P7D", "7 days": "P7D", "
               "month": "P30D", "30 days": "P30D", "daily": "P1D", "weekly": "P7D", "monthly": "P30D"}
 # the period a cap is counted over: "a week", "per day", "each month", "daily", "every 3 days", "every other day"
 CAP_PERIOD = re.compile(r"\b(?:(?:per|a|an|each|every)\s+(day|24 hours|week|7 days|month|30 days|fortnight|two weeks)|"
-                        rf"every\s+({_N}|other)\s+(days?|weeks?)|(daily|weekly|monthly))\b")
+                        rf"(?:every|per|in any)\s+({_N}|other)\s+(days?|weeks?|hours?)|(daily|weekly|monthly))\b")
+# "in 60 days" alone is a lapse ("have not ordered in 60 days"), never a cap; "in any 7 days" is a cap
 CAP_CHANNEL = (r"e-?mails?|sms(?:es)?|texts?|text messages?|push(?:es)?(?: notifications?)?|notifications?|messages?|touch(?:es)?|"
                r"sends?|times")
 # one "N things" item before a period: "2 emails", "1 lifecycle email", "twice"; the list "2 emails and 1 text" is two items
@@ -328,10 +349,14 @@ def cap_phrases(text: str) -> List[Tuple[int, int, List[Tuple[int, Optional[str]
             window = WINDOW_FOR[m.group(1) or m.group(4)]
         else:
             k = 2 if m.group(2) == "other" else _qty(m.group(2))
-            window = f"P{k * (7 if m.group(3).startswith('week') else 1)}D"
+            unit = m.group(3)
+            window = (hours_to_duration(k) if unit.startswith("hour") else f"P{k * (7 if unit.startswith('week') else 1)}D")
         seg_start = prev
         for lead in CAP_LEAD.finditer(low, prev, m.start()):
-            seg_start = lead.end() if lead.group(0) in ",;:.(" else lead.start()
+            if lead.group(0) in ",;:.(":
+                seg_start = lead.end()
+            elif re.search(rf"\b({_N})\b", low[lead.end():m.start()]):
+                seg_start = lead.start()       # "max 2 emails": the cap starts here; "2 emails max" leaves the start alone
         segment = low[seg_start:m.start()]
         items = []
         for it in CAP_ITEM.finditer(segment):

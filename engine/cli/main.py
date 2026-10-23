@@ -172,7 +172,7 @@ def route(text: str, opts: Dict[str, Any]) -> Job:
         job.args = {"domain": a.get("domain") or (domains[0] if domains else None), "selectors": a.get("selectors") or (sel.group(1).replace(" ", "") if sel else None),
                     "signals": a.get("signals"), "envelope": a.get("envelope")}
     elif kind in ("audit", "blast"):
-        job.args = {"brief": brief, "data": a.get("data") or _ws_data(), "out": a.get("out", "out")}
+        job.args = {"brief": brief, "data": a.get("data") or _ws_data(), "out": a.get("out") or _ws_out()}
         if kind == "blast":
             job.args["dates"] = a.get("dates") or ",".join(re.findall(r"\b20\d\d-\d\d-\d\d\b", text)) or None
         if not brief:
@@ -190,13 +190,13 @@ def route(text: str, opts: Dict[str, Any]) -> Job:
             else:
                 job.missing.append("--brief (which flow's cohort)" + (f"; active briefs: {', '.join(Path(p).name for p in active)}" if active else ""))
     elif kind == "daily":
-        job.args = {"data": a.get("data") or _ws_data(), "domains": a.get("domain") or os.environ.get("LCM_DOMAINS") or None, "out": a.get("out", "out")}
+        job.args = {"data": a.get("data") or _ws_data(), "domains": a.get("domain") or os.environ.get("LCM_DOMAINS") or None, "out": a.get("out") or _ws_out()}
     elif kind == "tracking":
-        job.args = {"data": a.get("data") or _ws_data(), "events_dir": a.get("events_dir") or os.environ.get("LCM_EVENTS_DIR"), "out": a.get("out", "out")}
+        job.args = {"data": a.get("data") or _ws_data(), "events_dir": a.get("events_dir") or os.environ.get("LCM_EVENTS_DIR"), "out": a.get("out") or _ws_out()}
     elif kind == "retention":
         by = a.get("by") or next((c for c, pat in (("country", r"countr|region|\bgeo"), ("lifecycle_stage", r"lifecycle stage"),
                                                     ("plan", r"\bplans?\b|tier|enterprise|segment")) if re.search(pat, low)), None)
-        job.args = {"data": a.get("data") or _ws_data(), "brief": brief, "by": by, "out": a.get("out", "out")}
+        job.args = {"data": a.get("data") or _ws_data(), "brief": brief, "by": by, "out": a.get("out") or _ws_out()}
     elif kind == "roi":
         job.args = {}
     elif kind == "check_data":
@@ -208,10 +208,10 @@ def route(text: str, opts: Dict[str, Any]) -> Job:
     elif kind == "priorities":
         n = re.search(r"\btop\s+(\d+)", low)
         job.args = {"data": a.get("data") or _ws_data(), "brief": a.get("brief"), "top": int(n.group(1)) if n else 3, "value": a.get("value"),
-                    "domain": a.get("domain"), "out": a.get("out", "out")}
+                    "domain": a.get("domain"), "out": a.get("out") or _ws_out()}
     elif kind == "engagement":
         plat = next((p for p in ("klaviyo", "hubspot", "braze", "customerio", "customer.io") if p in low), None)
-        job.args = {"data": a.get("data") or _ws_data(), "platform": a.get("platform") or (plat.replace(".", "") if plat else None), "out": a.get("out", "out")}
+        job.args = {"data": a.get("data") or _ws_data(), "platform": a.get("platform") or (plat.replace(".", "") if plat else None), "out": a.get("out") or _ws_out()}
     elif kind == "readout":
         path = a.get("input") or next(iter(JSON_PATH.findall(text)), None)
         job.args = {"input": path}
@@ -224,6 +224,12 @@ def route(text: str, opts: Dict[str, Any]) -> Job:
         job.args = {"baseline": base, "mde_rel": lift, "holdout": hold or 0.15,
                     "entries_per_month": int(entrants.group(1).replace(",", "")) if entrants else None}
     return check(job)
+
+
+def _ws_out() -> str:
+    """Where a sentence job writes: the workspace's runs/ inside a workspace, else ./out."""
+    from engine.pipeline.orchestrator import default_out
+    return default_out()
 
 
 def _ws_data() -> Optional[str]:
@@ -287,7 +293,8 @@ def check(job: Job) -> Job:
     for k, v in DEFAULTS.get(job.kind, {}).items():
         if job.args.get(k) in (None, ""):
             job.args[k] = v
-    job.args.setdefault("out", "out")
+    if not job.args.get("out"):
+        job.args["out"] = _ws_out()
     for key, ask in NEEDS.get(job.kind, []):
         if job.args.get(key) in (None, "", []) and not any(m.startswith(ask.split(" (")[0]) for m in job.missing):
             job.missing.append(ask)
@@ -303,7 +310,7 @@ def from_yaml(path: Path, opts: Dict[str, Any]) -> Job:
     given = {k: v for k, v in opts.items() if v not in (None, False, [])}
     if kind is None and "product_name" in raw:   # a campaign brief is a plan job
         return check(Job("plan", {"brief": str(path), "data": given.get("data"), "copy_mode": given.get("copy_mode", "auto"),
-                                  "out": given.get("out", "out")}, why="a campaign brief"))
+                                  "out": given.get("out") or _ws_out()}, why="a campaign brief"))
     if kind == "plan" and "brief" not in raw:
         return Job("help", why=f"{path}: a plan job names its brief (brief: briefs/my_flow.yaml)")
     if kind == "revise":

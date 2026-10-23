@@ -182,7 +182,8 @@ def _cli(argv: Optional[List[str]] = None, env: Optional[Mapping[str, str]] = No
          sleep: Callable[[float], None] = time.sleep) -> int:
     import os
     ap = argparse.ArgumentParser(prog="lcm build", description="Write the plan's ESP build pack (BUILD.md, artifacts, capability report); "
-                                                               "with --create --approve, create the artifacts as drafts through the API")
+                                                               "with --create --approve, create them through the API: the flow switched off, its "
+                                                               "templates and segments beside it (they send nothing on their own)")
     ap.add_argument("--run", required=True, help="the plan folder (it holds plan.json), a plan.json, or a run folder under it")
     ap.add_argument("--platform", choices=PLATFORMS, help="build for this platform (default: the plan's; the copy must be in its dialect)")
     ap.add_argument("--warehouse-job", action="store_true",

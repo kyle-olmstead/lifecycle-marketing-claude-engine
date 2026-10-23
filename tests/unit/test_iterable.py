@@ -54,7 +54,7 @@ def test_an_iterable_email_carries_unsubscribe_and_address_and_lints_clean():
     r = template_lint.lint(html, "handlebars", email=True)
     assert r["ok"], r["errors"]
     assert '<a href="{{unsubscribeUrl}}">Unsubscribe</a>' in html and "{{#each items}}" in html and "{{/each}}" in html
-    assert '{{defaultIfEmpty firstName "there"}}' in html and '{{defaultIfEmpty items.[0].name "your cart"}}' in html
+    assert '{{defaultIfEmpty firstName "there"}}' in html and '{{defaultIfEmpty items.[0].name "your items"}}' in html
     assert "{{defaultIfEmpty checkout_url " in html                  # the button goes back to that checkout
     assert "Unsubscribe: {{unsubscribeUrl}}" in text
     assert copywriter.address_html("handlebars", b.model_copy(update={"postal_address": None})) == "{{physicalAddress}}"

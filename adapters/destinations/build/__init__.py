@@ -200,6 +200,9 @@ def build(plan: Union[ExecutionPlan, Dict[str, Any], str, Path], platform: Optio
     facts = [f for f in facts if not (f.fact in seen or seen.add(f.fact))]
     inputs = {ph: A.describe(ph) for a in arts for ph in a.placeholders}
     blocked = [f"{c.id}: {c.detail}" for c in checks if c.status == "fail"] + [f"{a.name}: {e}" for a in arts if a.valid is False for e in a.errors[:3]]
+    if ctx.plan.qa.status == "BLOCKED":       # a plan that is not ready to build is not ready to create, whatever the platform allows
+        failed = [f"{k.name}: {k.detail}" for k in ctx.plan.qa.checks if k.status == "fail"]
+        blocked.insert(0, "the plan is BLOCKED; fix it and re-plan before building: " + ("; ".join(failed[:3]) or "see plan.md, QA"))
     status = "BLOCKED" if blocked else ("READY WITH WARNINGS" if any(c.status == "warn" for c in checks) or facts else "READY")
     return BuildPack(platform=ctx.platform, platform_label=ctx.label, flow_type=ctx.flow_type, flow=ctx.spec["flow"], slug=ctx.slug,
                      run_id=ctx.plan.run_id, status=status, blocked_reasons=blocked, mode=mode, trigger=trig, steps=steps, settings=sett,

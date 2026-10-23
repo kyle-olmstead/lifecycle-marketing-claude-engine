@@ -380,7 +380,7 @@ def test_zero_holdout_validates_and_is_directional(brief):
 def test_gate_policy():
     from datetime import datetime, timezone
     record = {"verdict": "GREEN", "assessed_at": datetime.now(timezone.utc).isoformat(), "auth_label": "LIVE PULL", "domain": "example.com",
-              "signals": {"complaint_rate": 0.0004, "hard_bounce_rate": 0.002, "authentication_state": "verified"}}
+              "source": "lcm deliverability check example.com", "signals": {"complaint_rate": 0.0004, "hard_bounce_rate": 0.002, "authentication_state": "verified"}}
     assert guardrails.gate_policy(record)["entry_filters"] == []
     # a GREEN record without the signals it is issued on reads AMBER
     assert guardrails.gate_policy({**record, "signals": {}})["effective_gate"] == "AMBER"

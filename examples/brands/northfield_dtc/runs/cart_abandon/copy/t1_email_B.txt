@@ -1,6 +1,6 @@
 Your cart is saved
 
-Hi {{ first_name|default:'there' }}, your cart at Northfield Coffee Roasters is still here, with {{ event.extra.line_items.0.product.title|default:'your cart' }} in it.
+Hi {{ first_name|default:'there' }}, your cart at Northfield Coffee Roasters is still here, with {{ event.extra.line_items.0.product.title|default:'your items' }} in it.
 
 If something stopped you at checkout, reply to this email and a person on our team will help.
 

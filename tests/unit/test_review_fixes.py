@@ -190,7 +190,7 @@ def test_three_flows_that_pass_in_pairs_still_break_the_cap_together(tmp_path):
 # ----------------------------------------------------------------------------------------------
 
 GREEN = {"verdict": "GREEN", "assessed_at": "2026-10-20T12:00:00Z", "auth_label": "LIVE PULL", "domain": "x.example",
-         "signals": {"complaint_rate": 0.0004, "hard_bounce_rate": 0.002, "authentication_state": "verified"}}
+         "source": "lcm deliverability check x.example", "signals": {"complaint_rate": 0.0004, "hard_bounce_rate": 0.002, "authentication_state": "verified"}}
 
 
 @pytest.mark.parametrize("change,needle", [
@@ -198,6 +198,8 @@ GREEN = {"verdict": "GREEN", "assessed_at": "2026-10-20T12:00:00Z", "auth_label"
     ({"auth_label": "SUPPLIED"}, "not observed"),
     ({"critical_findings": ["No DMARC record"]}, "critical findings"),
     ({"signals": {"complaint_rate": 0.0004}}, "lacks the signals"),
+    ({"source": "typed by hand"}, "not written by lcm deliverability"),
+    ({"signals": {"complaint_rate": 0.002, "hard_bounce_rate": 0.002, "authentication_state": "verified"}}, "do not: complaint_rate"),
 ])
 def test_a_green_record_without_its_evidence_reads_amber(change, needle):
     from datetime import date
@@ -244,6 +246,9 @@ def test_flow_names_are_refused_or_mapped(sentence, flow):
     ("a win-back flow, no more than 2 emails a week", "winback", 5, (["email"], 2, "P7D")),
     ("a cart flow with sms, max 1 text per day", "cart_abandon", 3, (["sms"], 1, "P1D")),
     ("a 3-touch win-back, one email every 3 days", "winback", 3, (["email"], 1, "P3D")),
+    ("an abandoned cart flow, no more than 2 emails in any 7 days", "cart_abandon", 3, (["email"], 2, "P7D")),
+    ("a win-back flow, no more than 2 emails per 48 hours", "winback", 5, (["email"], 2, "P2D")),
+    ("a win-back, 3 emails max per week", "winback", 5, (["email"], 3, "P7D")),
 ])
 def test_a_cap_in_the_sentence_is_read_as_a_cap(sentence, flow, touches, cap):
     b = parse_text(sentence, "Acme", defaults={})
@@ -366,3 +371,119 @@ def test_doctor_counts_the_tables_files_were_found_for(monkeypatch):
     row = next(r for r in diagnose() if r["name"] == "data")
     files = [p for p in (NORTHFIELD / "data").glob("*.csv")]
     assert row["detail"].startswith(f"{len(files)} table(s) from files")
+
+
+def test_four_flows_that_break_the_cap_only_together_are_found():
+    """Re-check N1: four flows on the 0/24/72 grid break a 4-a-week cap that no pair or triple breaks."""
+    from engine.policy import program
+    from engine.policy.contracts import FrequencyPolicy
+    d = workspace.brief_defaults(workspace.Workspace(NORTHFIELD))
+    briefs = [parse_text(s, defaults=d) for s in ("a 2-touch sunset flow", "a 2-touch browse abandonment flow",
+                                                  "a 2-touch post-purchase flow", "a 1-touch welcome flow")]
+    r = program.simulate(briefs, FrequencyPolicy.model_validate(d["frequency"]))
+    cross = next(c for c in r["checks"] if c["name"].startswith("caps hold across flows"))
+    assert cross["status"] == "warn" and "5 in P7D" in cross["detail"]
+    assert all(len(s["flows"]) == 4 for s in r["scenarios"] if s["with_rule"])
+
+
+def test_a_twelve_flow_program_checks_in_seconds():
+    import time
+    from engine.policy import program
+    d = workspace.brief_defaults(workspace.Workspace(NORTHFIELD))
+    flows = ["abandoned cart", "browse abandonment", "post-purchase", "replenishment", "welcome series", "win-back", "sunset"]
+    briefs = [parse_text(f"a 2-touch {flows[i % len(flows)]} flow", f"Acme{i}", defaults=d) for i in range(12)]
+    t0 = time.time()
+    r = program.simulate(briefs, program.FrequencyPolicy.model_validate(d["frequency"]))
+    assert time.time() - t0 < 15 and r["larger_groups"]["walks"] <= program.SEARCH_BUDGET
+
+
+def test_a_blocked_plan_gives_a_blocked_build_pack():
+    from adapters.destinations.build import build
+    d = workspace.brief_defaults(workspace.Workspace(NORTHFIELD))
+    p = orchestrator.run(parse_text("a 3-touch failed payment flow", defaults=d), str(NORTHFIELD / "data"), copy_mode="offline")
+    assert p.qa.status == "BLOCKED"
+    pack = build(p)
+    assert pack.status == "BLOCKED" and pack.blocked_reasons[0].startswith("the plan is BLOCKED")
+
+
+def test_a_green_record_with_red_signals_reads_red():
+    from datetime import date
+    from engine.policy.contracts import effective_gate
+    bad = {**GREEN, "signals": {"complaint_rate": 0.05, "hard_bounce_rate": 0.2, "authentication_state": "verified"}}
+    assert effective_gate(bad, today=date(2026, 10, 22))[0] == "RED"
+
+
+@pytest.mark.parametrize("sentence,needle", [
+    ("an order confirmation", "transactional"), ("a shipping notification", "transactional"), ("a newsletter", "not a flow"),
+    ("a black friday campaign", "not a flow"), ("a VIP flow", "loyalty"), ("a 3-touch flow", "could not tell which flow"),
+])
+def test_sentences_that_name_no_buildable_flow_are_refused(sentence, needle):
+    """Re-check of finding 7: a sentence the parser cannot place is refused by name, never planned as a win-back."""
+    with pytest.raises(ValueError, match=needle):
+        parse_text(sentence, "Acme", defaults={})
+
+
+@pytest.mark.parametrize("sentence,flow,model", [
+    ("an onboarding sequence", "activation", "saas"), ("remind people their card expires", "dunning", None),
+    ("a win-back for people who bought on black friday", "winback", "ecommerce"),
+    ("a win-back for a B2B software product", "winback", "saas"), ("a welcome series for our app", "welcome", "saas"),
+])
+def test_flow_and_business_words_are_read(sentence, flow, model):
+    b = parse_text(sentence, "Acme", defaults={})
+    assert b.flow_type == flow and (model is None or b.business_model == model)
+
+
+def test_a_store_onboarding_sequence_is_a_welcome_series():
+    b = parse_text("an onboarding sequence", defaults=workspace.brief_defaults(workspace.Workspace(NORTHFIELD)))
+    assert b.flow_type == "welcome"
+
+
+# ----------------------------------------------------------------------------------------------
+# Re-check: copy, workspace defaults and priority briefs
+# ----------------------------------------------------------------------------------------------
+
+STORE_WORDS = ("first order", "first-time buyers", "ships", "shop the", "safe first choice")
+
+
+def test_software_welcome_copy_says_nothing_about_ordering():
+    _, p = _plan(DEMO, "a 5-touch welcome series for new signups")
+    words = json.dumps([tc.model_dump() for tc in p.copy_plan]).lower()
+    assert not [w for w in STORE_WORDS + ("reach activation", "same day each week") if w in words]
+
+
+def test_trial_copy_does_not_call_paying_the_way_to_see_the_value():
+    _, p = _plan(DEMO, "a 5-touch trial conversion flow")
+    words = json.dumps([tc.model_dump() for tc in p.copy_plan]).lower()
+    assert "is to start a paid subscription" not in words and "have done by now is started" not in words
+
+
+def test_a_missing_item_name_reads_as_your_items():
+    from engine.render.product_blocks import item_name
+    b = parse_text("a 2-touch abandoned cart flow on hubspot", "Acme", defaults={})
+    assert "your items" in item_name(b, b.template_dialect)
+
+
+def test_analysis_commands_use_the_workspace_data_and_runs(tmp_path, monkeypatch, capsys):
+    import shutil
+    from engine.cli.commands import COMMANDS
+    ws = tmp_path / "nf"
+    shutil.copytree(NORTHFIELD, ws, ignore=shutil.ignore_patterns("runs", "out"))
+    monkeypatch.chdir(ws)
+    monkeypatch.delenv("LCM_WORKSPACE", raising=False)
+    assert COMMANDS["retention"].run([]) == 0
+    assert "monthly retention" in capsys.readouterr().out
+    COMMANDS["priorities"].run([])
+    assert (ws / "runs" / "priorities" / "priorities.md").exists() and not (ws / "out").exists()
+    brief = next((ws / "runs" / "priorities").glob("*.yaml")).read_text()
+    assert "sending_gate" not in brief and "frequency_cap_per_week" not in brief and "brand_kit" not in brief
+
+
+def test_a_brief_file_given_to_lcm_plans_into_runs(tmp_path, monkeypatch):
+    import shutil
+    from engine.cli import main as cli
+    ws = tmp_path / "nf"
+    shutil.copytree(NORTHFIELD, ws, ignore=shutil.ignore_patterns("runs", "out"))
+    monkeypatch.chdir(ws)
+    monkeypatch.delenv("LCM_WORKSPACE", raising=False)
+    job = cli.from_yaml(ws / "briefs" / "active" / "welcome.yaml", {})
+    assert job.args["out"] == str(ws / "runs")

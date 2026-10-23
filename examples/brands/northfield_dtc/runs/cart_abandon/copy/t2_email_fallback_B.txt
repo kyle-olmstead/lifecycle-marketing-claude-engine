@@ -2,7 +2,7 @@ See the full price before you pay
 
 Hi {{ first_name|default:'there' }}, if you stopped because you were not sure what shipping would cost, the checkout page shows it before you enter any payment details.
 
-Your cart is saved with {{ event.extra.line_items.0.product.title|default:'your cart' }} in it, and questions about an order go straight to a person on our team if you reply to this email.
+Your cart is saved with {{ event.extra.line_items.0.product.title|default:'your items' }} in it, and questions about an order go straight to a person on our team if you reply to this email.
 
 See my total: {{ event.extra.checkout_url|default:organization.url }}
 

@@ -33,6 +33,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from pydantic import BaseModel, ConfigDict
 
 from engine.policy import guardrails
+from engine.agents import copy_saas  # noqa: E402
 from engine.models import Brief, CopyVariant, FlowPlan, Touch, TouchCopy, base_form
 from engine.render import template_lint
 from engine.render.sms import has_opt_out
@@ -396,9 +397,9 @@ def copy_brief(t: Touch, brief: Brief, plan: FlowPlan) -> str:
     lines = [
         f"Product: {brief.product_name}. Flow: {brief.flow_type}, touch {t.index} of {brief.touches}, day {t.day}, channel {t.channel}.",
         f"Who: {_who(brief, core)}.",
-        f"This message's job ({t.role.replace('_', ' ')}): {t.job}",
+        f"This message's job ({copy_saas.role_label(t.role, brief)}): {t.job}",
         f"Framework: {t.framework}. The single goal: {t.goal}.",
-        f"Before this: " + ("; ".join(f"day {x.day} {x.channel} ({x.role.replace('_', ' ')})" for x in prior) if prior else "nothing; this is the first message") + ".",
+        f"Before this: " + ("; ".join(f"day {x.day} {x.channel} ({copy_saas.role_label(x.role, brief)})" for x in prior) if prior else "nothing; this is the first message") + ".",
         f"Sender: {brief.sender_name or brief.product_name}. Voice: {brief.brand_voice or brand_for(brief).voice_brief() or 'plain, specific, second person'}.",
         f"Offer policy (binding): {brief.offer.describe()}"
         + ("" if _offer_allowed(brief, t.role, t.index) or not brief.offer.allows_offers else "; no offer in this touch") +
@@ -526,7 +527,8 @@ def _lib(brief: Brief) -> Dict[str, List[Dict[str, Any]]]:
     p = "{product_name}"
     core = brief.core_conversion_event
     act = core.label or core.event.replace("_", " ")
-    do = base_form(act)
+    from engine.agents.copy_saas import first_step
+    do = first_step(brief)          # "get set up", not "reach activation", when the core action is the generic one
     sender = (brief.sender_name or brief.product_name).split(" at ")[0]
     n = brief.churn_threshold_days
     lapsed = ("you have not opened or clicked our emails in a while" if brief.flow_type == "sunset" else
@@ -709,7 +711,8 @@ def _short_lib(brief: Brief) -> Dict[str, Dict[str, List[Any]]]:
     p = "{product_name}"
     core = brief.core_conversion_event
     act = core.label or core.event.replace("_", " ")
-    do = base_form(act)
+    from engine.agents.copy_saas import first_step
+    do = first_step(brief)          # "get set up", not "reach activation", when the core action is the generic one
     Do = do[:1].upper() + do[1:]
     n = brief.churn_threshold_days
     sender = (brief.sender_name or brief.product_name).split(" at ")[0]
@@ -781,14 +784,15 @@ def _short_lib(brief: Brief) -> Dict[str, Dict[str, List[Any]]]:
 
 
 def offline_drafts(t: Touch, brief: Brief) -> List[Dict[str, Any]]:
-    from engine.agents import copy_library, copy_store
-    store = copy_store.is_store(brief)
-    lib = {**_lib(brief), **copy_library.email_library(brief), **(copy_store.email_library(brief) if store else {})}
+    from engine.agents import copy_library, copy_saas, copy_store
+    store, saas = copy_store.is_store(brief), copy_saas.applies(brief)
+    lib = {**_lib(brief), **copy_library.email_library(brief), **(copy_store.email_library(brief) if store else {}),
+           **(copy_saas.email_library(brief) if saas else {})}
     emails = lib[t.role][: brief.copy_variants]
     if t.channel == "email":
         return [dict(e) for e in emails]
     short = {**_short_lib(brief), **copy_library.short_library(brief),
-             **(copy_store.short_library(brief) if store else {})}[t.role][t.channel]
+             **(copy_store.short_library(brief) if store else {}), **(copy_saas.short_library(brief) if saas else {})}[t.role][t.channel]
     out = []
     for e, s in zip(emails, short):
         meta = {"framework": e["framework"], "hypothesis": e["hypothesis"]}

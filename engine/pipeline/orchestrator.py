@@ -61,6 +61,11 @@ def _pct(v: Optional[float]) -> str:
     return "unknown" if v is None else f"{v:.1%}"
 
 
+def _role(role: str, brief: Any) -> str:
+    from engine.agents.copy_saas import role_label
+    return role_label(role, brief)
+
+
 def _cell(x: Any) -> str:
     """A Markdown table cell: a pipe in the text (SQL's || concatenation) is escaped so it cannot end the cell."""
     return str(x).replace("|", "\\|")
@@ -119,7 +124,7 @@ def render_plan(p: ExecutionPlan) -> str:
               f"Permitted send windows, recipient local: {windows}.", ""]
     if p.strategy:
         L += ["| Touch | Why this job and channel |", "|---|---|"]
-        L += [f"| {_cell(t.index)}. day {_cell(t.day)}, {_cell(t.role.replace('_', ' '))}, {_cell(t.channel.replace('_', '-'))} | {_cell(t.why)} |" for t in p.strategy.touches] + [""]
+        L += [f"| {_cell(t.index)}. day {_cell(t.day)}, {_cell(_role(t.role, b))}, {_cell(t.channel.replace('_', '-'))} | {_cell(t.why)} |" for t in p.strategy.touches] + [""]
     L += [f"## Build it in {PLATFORM_LABEL[b.platform]}", ""] + [f"{i}. {s}" for i, s in enumerate(f.build_steps, 1)] + [""]
     L += ["## The copy", ""]
     for tc in p.copy_plan:

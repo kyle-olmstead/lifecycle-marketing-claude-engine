@@ -4,7 +4,7 @@
 <!-- northfield_coffee_cart_abandon_1h / t3_email. Rendered by engine/agents/copywriter.py through MJML (engine/render/mjml_render.py); lint: python3 engine/render/template_lint.py --dialect klaviyo --email <this file> -->
 </mj-raw>
   <mj-head>
-    <mj-title>Still want {{ event.extra.line_items.0.product.title|default:'your cart' }}?</mj-title>
+    <mj-title>Still want {{ event.extra.line_items.0.product.title|default:'your items' }}?</mj-title>
     <mj-font name="Lora" href="https://fonts.googleapis.com/css2?family=Lora:wght@400;700&amp;display=swap" />
     <mj-attributes>
       <mj-all font-family="Lora, Georgia, 'Times New Roman', serif" />

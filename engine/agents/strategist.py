@@ -23,6 +23,11 @@ from engine.models import Brief, CohortDefinition, Decision, PlannedTouch, Strat
 
 MIN_SMS_CONSENT = 0.05
 
+SAAS_WELCOME_WHY: Dict[str, str] = {
+    "best_sellers": "a new user does not know where to begin; naming the first step removes the hardest decision",
+    "how_it_works": "not knowing what to do first, or where to get help, is the usual reason a new user stalls",
+    "first_order_nudge": "a plain reminder moves the undecided; an offer only where the policy allows one",
+}
 ROLE_WHY: Dict[str, str] = {
     "value_reminder": "opens on what they already got from the product: the cheapest reason to come back",
     "friction_removal": "the most common reason people stop is a specific obstacle; naming and removing it beats a generic nudge",
@@ -111,8 +116,10 @@ def decide(brief: Brief, cohort: CohortDefinition) -> Strategy:
         decisions.append(Decision(stage="strategist", decision=f"touches at {', '.join(unit(h) for h in hours)}",
                                   why=f"spread from {', '.join(unit(h) for h in nominal)} so no cap is broken ({brief.freq.describe()})"))
     picked = arch._channels_for(roles, brief.model_copy(update={"channels": channels}))
+    from engine.agents.copy_saas import applies as saas_copy
+    saas_welcome = saas_copy(brief)
     touches = [PlannedTouch(index=i, day=int(h // 24), hours=h if fd.hour_level else None, role=r, channel=c,
-                            why=f"{ROLE_WHY[r]}; {CHANNEL_WHY[c]}")
+                            why=f"{SAAS_WELCOME_WHY.get(r, ROLE_WHY[r]) if saas_welcome else ROLE_WHY[r]}; {CHANNEL_WHY[c]}")
                for i, (r, h, c) in enumerate(zip(roles, hours, picked), 1)]
     if brief.flow_type == "winback" and brief.touches >= 2:
         decisions.append(Decision(stage="strategist", decision="end with re-permission and a sunset",

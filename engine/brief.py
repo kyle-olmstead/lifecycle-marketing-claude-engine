@@ -29,7 +29,7 @@ PLATFORMS = (("customer.io", "customerio"), ("customerio", "customerio"), ("klav
              ("braze", "braze"), ("marketing cloud", "sfmc"), ("sfmc", "sfmc"), ("iterable", "iterable"))
 WINBACK_WORDS = ("win-back", "winback", "win back", "win them back", "bring back", "bring them back", "come back", "re-engage",
                  "reengage", "re-engagement", "reactivat", "lapsed", "lapse", "inactive", "stopped", "dormant", "churn", "gone quiet")
-ACTIVATION_WORDS = ("onboarding flow", "onboarding series", "activation", "welcome", "new users", "new signups", "new sign-ups",
+ACTIVATION_WORDS = ("onboarding", "activation", "welcome", "new users", "new signups", "new sign-ups",
                     "new customers", "new accounts", "new members", "just signed up", "first week", "trial users", "free trial users")
 SIGNUP = r"sign(ed|ing)? ?up|signups|sign-ups|new users|new customers|new accounts|new members|registered"
 NEGATION = r"haven't|have not|hasn't|has not|without|\bbut\b"
@@ -67,7 +67,7 @@ CORE_PHRASES: List[Tuple[str, EventMatch, str]] = [
 # Flow types beyond win-back and activation, recognized by name. Order matters: the first match wins.
 FLOW_PATTERNS: List[Tuple[str, str]] = [
     ("dunning", r"dunning|failed (payment|charge|renewal)|payment (failure|failed|declined)|card (declined|expired|failed)|"
-                r"involuntary churn|past[- ]due|update (their|your) (card|payment)"),
+                r"involuntary churn|past[- ]due|update (their|your) (card|payment)|cards? (is |are )?expir\w*|expir\w* cards?"),
     ("cart_abandon", r"abandon\w* (carts?|checkouts?|baskets?)|(cart|checkout|basket) abandon\w*|"
                      r"left (items |something |it )?in (their|the|a) (cart|basket)|(cart|basket|checkout) recovery|"
                      r"recover\w* (abandoned |their |lost )?(carts?|baskets?|checkouts?)|started (a )?checkout but|"
@@ -105,7 +105,11 @@ def flow_type_of(text: str) -> Tuple[Optional[str], Optional[str]]:
             if ft == "welcome" and re.search(r"connect\w* (a |your |their )?data|invit\w* (a )?(teammate|colleague)|report|log(ged)? ?in", low):
                 return "activation", None     # a SaaS onboarding sentence that happens to say "welcome"
             return ft, None
+    from engine.flows.library import UNSUPPORTED_SOFT
+    names_a_flow = any(w in low for w in WINBACK_WORDS + ACTIVATION_WORDS) or re.search(r"(haven't|have not|hasn't|has not)", low)
     for key, (pattern, why) in UNSUPPORTED.items():
+        if key in UNSUPPORTED_SOFT and names_a_flow:
+            continue
         if re.search(pattern, low):
             return None, why
     return "", None
@@ -156,7 +160,10 @@ def parse_text(text: str, product_name: Optional[str] = None, overrides: Optiona
     elif re.search(neg + r"|in \d+ (day|week|month)", low):
         data["flow_type"] = "winback"
     else:
-        assume("flow_type", "winback", "the brief does not say whether this is a win-back or an activation flow")
+        # nothing in the sentence says which flow: refuse by name rather than plan a win-back nobody asked for
+        raise ValueError("could not tell which flow this is. Name one: a welcome series, an activation flow, a win-back, an abandoned "
+                         "cart or browse abandonment flow, a post-purchase, replenishment, failed payment (dunning), trial conversion "
+                         "or sunset flow; or describe who it is for (\"users who haven't logged in for 14 days\")")
 
     # touches
     from engine.flows.library import FLOWS
@@ -263,11 +270,16 @@ def parse_text(text: str, product_name: Optional[str] = None, overrides: Optiona
     if m:
         data["holdout_pct"] = float(m.group(1))
 
-    saas_words = r"\b(data sources?|teammates?|reports?|dashboards?|workspaces?|log(ged)? ?in|the app|trials?|seats?|plans?)\b"
+    saas_words = (r"\b(data sources?|teammates?|reports?|dashboards?|workspaces?|log(ged)? ?in|apps?|trials?|seats?|plans?|users?|saas|"
+                  r"software|b2b)\b")
     events = [x.event for x in (data.get("qualifying_event"), data.get("core_conversion_event")) if isinstance(x, EventMatch)]
+    software = r"\b(saas|software|b2b|apps?|platform|subscriptions?|users?|log(ged)? ?in)\b"
     if re.search(r"\b(shop|store|ecommerce|e-commerce|dtc|d2c|shopify)\b", low):
         data["business_model"] = "ecommerce"          # stated: the sentence says it is a store
-    elif re.search(r"\b(cart|checkout|orders?|ordered|purchases?|products?|buyers?)\b", low) or \
+    elif re.search(r"\b(saas|software|b2b)\b", low) and FLOWS[data.get("flow_type", "winback")].fits("saas"):
+        data["business_model"] = "saas"               # stated: the sentence says it is software
+    elif (re.search(r"\b(cart|checkout|orders?|ordered|purchases?|buyers?)\b", low)
+          or (re.search(r"\bproducts?\b", low) and not re.search(software, low))) or \
             FLOWS[data.get("flow_type", "winback")].models == ("ecommerce",) or "order_completed" in events:
         # implied by the flow or its words: the workspace's stated business model wins over this reading
         assume("business_model", "ecommerce", "business model not stated; read as a store's because the flow is about carts, "
@@ -302,7 +314,7 @@ def parse_text(text: str, product_name: Optional[str] = None, overrides: Optiona
     assumptions = fit_to_business_model(data, assumptions)
     from engine.flows.library import _family
     if (data.get("flow_type") == "activation" and _family(data.get("business_model") or "saas") == "ecommerce"
-            and not re.search(r"\bactivat|onboarding", low)):
+            and not re.search(r"\bactivat", low)):
         # a store's "new customers who have not ordered yet" is a welcome series aimed at the first order
         data["flow_type"] = "welcome"
         assumptions = [a for a in assumptions if a.field != "flow_type"] + [Assumption(

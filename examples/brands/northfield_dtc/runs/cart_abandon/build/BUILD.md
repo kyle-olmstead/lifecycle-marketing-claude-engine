@@ -1,6 +1,6 @@
 # Build pack: Abandoned cart: Northfield Coffee Roasters on Klaviyo
 
-**Status: READY WITH WARNINGS** | mode: native event | run 07cb66780d74 | slug `northfield_coffee_cart_abandon_1h`
+**Status: READY WITH WARNINGS** | mode: native event | run 37a6ea447874 | slug `northfield_coffee_cart_abandon_1h`
 
 ## What is automatic
 

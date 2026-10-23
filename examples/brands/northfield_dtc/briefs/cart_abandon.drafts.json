@@ -13,7 +13,7 @@
       "hypothesis": "Showing the saved cart with one button recovers more checkouts than a generic reminder; falsified if B recovers as many or more within 72 hours."
     },
     {
-      "subject": "{item_name} is waiting for you",
+      "subject": "Still in your cart: {item_name}",
       "preheader": "Pick up right where you stopped",
       "headline": "Your cart is saved",
       "paragraphs": [

@@ -4,7 +4,7 @@
 <!-- northfield_coffee_cart_abandon_1h / t1_email. Rendered by engine/agents/copywriter.py through MJML (engine/render/mjml_render.py); lint: python3 engine/render/template_lint.py --dialect klaviyo --email <this file> -->
 </mj-raw>
   <mj-head>
-    <mj-title>{{ event.extra.line_items.0.product.title|default:'your cart' }} is waiting for you</mj-title>
+    <mj-title>Still in your cart: {{ event.extra.line_items.0.product.title|default:'your items' }}</mj-title>
     <mj-font name="Lora" href="https://fonts.googleapis.com/css2?family=Lora:wght@400;700&amp;display=swap" />
     <mj-attributes>
       <mj-all font-family="Lora, Georgia, 'Times New Roman', serif" />
@@ -55,7 +55,7 @@
         <mj-text css-class="lcm-text">
           <h1 style="margin:0;font-family:Lora, Georgia, 'Times New Roman', serif;font-size:22px;line-height:1.3;font-weight:bold;">Your cart is saved</h1>
         </mj-text>
-        <mj-text css-class="lcm-text">Hi {{ first_name|default:'there' }}, your cart at Northfield Coffee Roasters is still here, with {{ event.extra.line_items.0.product.title|default:'your cart' }} in it.</mj-text>
+        <mj-text css-class="lcm-text">Hi {{ first_name|default:'there' }}, your cart at Northfield Coffee Roasters is still here, with {{ event.extra.line_items.0.product.title|default:'your items' }} in it.</mj-text>
         <mj-text css-class="lcm-text">If something stopped you at checkout, reply to this email and a person on our team will help.</mj-text>
       </mj-column>
     </mj-section>

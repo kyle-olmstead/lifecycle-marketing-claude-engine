@@ -1,6 +1,6 @@
 # Abandoned cart: Northfield Coffee Roasters
 
-**Status: READY WITH ASSUMPTIONS** | Klaviyo | generated 2026-10-23T02:04:16+00:00 | run 07cb66780d74 | LMM Engine 3.0.0
+**Status: READY WITH ASSUMPTIONS** | Klaviyo | generated 2026-10-23T03:04:56+00:00 | run 37a6ea447874 | LMM Engine 3.0.0
 
 ## In one paragraph
 
@@ -115,7 +115,7 @@ Every step: has not done order_completed since entering; can receive email marke
 | Variant | Copy | Framework | Hypothesis |
 |---|---|---|---|
 | A | **Your coffee is still in your cart** / We kept it exactly as you left it | Plain reminder | Showing the saved cart with one button recovers more checkouts than a generic reminder; falsified if B recovers as many or more within 72 hours. |
-| B | **{item_name} is waiting for you** / Pick up right where you stopped | Plain reminder | Naming the item in the subject line lifts opens and recovery; falsified if A recovers as many or more within 72 hours. |
+| B | **Still in your cart: {item_name}** / Pick up right where you stopped | Plain reminder | Naming the item in the subject line lifts opens and recovery; falsified if A recovers as many or more within 72 hours. |
 
 Files: `copy/t1_email_A.html`, `copy/t1_email_A.mjml`, `copy/t1_email_A.subject.txt`, `copy/t1_email_A.txt`, `copy/t1_email_B.html`, `copy/t1_email_B.mjml`, `copy/t1_email_B.subject.txt`, `copy/t1_email_B.txt`
 

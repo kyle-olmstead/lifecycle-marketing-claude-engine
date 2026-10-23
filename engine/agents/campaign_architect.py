@@ -179,9 +179,32 @@ def _channels_for(roles: List[str], brief: Brief) -> List[str]:
     return out
 
 
+# a software welcome series: the welcome roles' jobs, written about the first step in the product, not a first order
+SAAS_WELCOME_JOBS: Dict[str, str] = {
+    "best_sellers": "The one step most new users take first ({core_do}), why it comes first, and how long it takes.",
+    "how_it_works": "How {product} works in three plain steps: what to do first ({core_do}), that their work is saved, and where to get help.",
+    "first_order_nudge": "A low-pressure reminder of the first step ({core_do}) and where to get help; the offer only if the offer policy "
+                         "allows one.",
+    "social_proof": "What people who stay with {product} do in their first week ({core_do}): one specific, true example.",
+}
+
+
+def role_label(role: str, brief: Brief) -> str:
+    from engine.agents.copy_saas import role_label as _label
+    return _label(role, brief)
+
+
+def role_job(role: str, brief: Brief) -> str:
+    """A role's job for this brief: the software wording for a software welcome series, else the library's."""
+    from engine.agents.copy_saas import applies
+    job = SAAS_WELCOME_JOBS.get(role) if applies(brief) else None
+    return _fmt(job or ROLES[role]["job"], brief)
+
+
 def _fmt(s: str, brief: Brief) -> str:
+    from engine.agents.copy_saas import first_step
     c = brief.core_conversion_event
-    return s.format(product=brief.product_name, core_label=c.label or c.event, core_do=c.do, core=c.event)
+    return s.format(product=brief.product_name, core_label=c.label or c.event, core_do=first_step(brief), core=c.event)
 
 
 def roles_for(brief: Brief) -> List[str]:
@@ -346,11 +369,11 @@ def design(brief: Brief, cohort: CohortDefinition, strategy: Optional[Strategy] 
                 wait["after"] = hours_to_duration(math.floor(h / 24) * 24)
         else:
             wait = {"type": "fixed", "duration": hours_to_duration(round(gap / 24) * 24)}
-        job, goal = _fmt(r["job"], brief), _fmt(r["goal"], brief)
+        job, goal = role_job(role, brief), _fmt(r["goal"], brief)
         if role == "unblock" and leak:
             job = job.replace("the step where most new users stall (the leak map)", f"{leak}, where most new users stall")
         step_id = f"t{i}_{ch}"
-        msg = f"{role.replace('_', ' ')}: {job}"
+        msg = f"{role_label(role, brief)}: {job}"
         if ch == "in_app":
             msg += f" Queued for the next session; expires after {IN_APP_DISPLAY_DAYS} days."
         step: Dict[str, Any] = {"id": step_id, "wait": wait, "channel": ch, "message": msg, "goal": goal}
@@ -372,12 +395,12 @@ def design(brief: Brief, cohort: CohortDefinition, strategy: Optional[Strategy] 
         touches.append(Touch(step_id=step_id, index=i, day=day, hours=h if fd.hour_level else None, channel=ch, role=role, job=job,
                              framework=r["framework"], goal=goal, requires=req or [], condition=cond_text))
         when = _when(h, fd.hour_level).capitalize()
-        node = f'{step_id}["{when}: {ch.replace("_", "-")} ({role.replace("_", " ")})"]'
+        node = f'{step_id}["{when}: {ch.replace("_", "-")} ({role_label(role, brief)})"]'
         if ch in ("sms", "push"):
             fb = f"t{i}_email_fallback"
             fb_step = {"id": fb, "wait": {"type": "none"}, "channel": "email", "requires": [consent_req],
                        "condition": f"no {'SMS consent' if ch == 'sms' else 'push permission'} (fallback for {step_id})",
-                       "message": f"{role.replace('_', ' ')} (email version): {job}", "goal": goal}
+                       "message": f"{role_label(role, brief)} (email version): {job}", "goal": goal}
             if fd.hour_level:
                 fb_step["respect_send_window"] = True
             steps.append(fb_step)
@@ -496,7 +519,7 @@ def build_steps(brief: Brief, cohort: CohortDefinition, touches: List[Touch], sp
         else:
             when = f"day {t.day} at {brief.send_hour_local:02d}:00 recipient local"
         cond = f" only if {t.condition}" if t.condition else ""
-        out.append(f"{v['delay']} to {when}, then {t.channel.replace('_', '-')} message {t.step_id}{cond}: {t.role.replace('_', ' ')}.")
+        out.append(f"{v['delay']} to {when}, then {t.channel.replace('_', '-')} message {t.step_id}{cond}: {role_label(t.role, brief)}.")
     if any(s["id"] == "sunset" for s in spec["steps"]):
         out.append(f"{v['delay']} 14 days, then: if no click on the re-permission email, update the person: lcm_sunset = true. "
                    f"Make lcm_sunset a suppression in every marketing send.")

@@ -1,6 +1,6 @@
 Still thinking it over?
 
-Hi {{ first_name|default:'there' }}, you left {{ event.extra.line_items.0.product.title|default:'your cart' }} in your cart. We saved it, so you can finish checking out whenever you are ready.
+Hi {{ first_name|default:'there' }}, you left {{ event.extra.line_items.0.product.title|default:'your items' }} in your cart. We saved it, so you can finish checking out whenever you are ready.
 
 Every bag ships with its roast date on the label, so you will know exactly how fresh it is when it arrives.
 

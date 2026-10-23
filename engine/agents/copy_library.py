@@ -38,7 +38,7 @@ def email_library(brief: Brief) -> Dict[str, List[Dict[str, Any]]]:
             {"subject": "{first_name}, here is where most people start", "preheader": "One step, about two minutes",
              "headline": "Start with one thing",
              "paragraphs": [f"Hi {{first_name}}, there is a lot in {P}. You do not need all of it.",
-                            "Start with the one thing most first-time buyers choose first. If it is not right for you, reply and tell us."],
+                            "Start with the one thing most people start with. If it is not right for you, reply and tell us."],
              "cta_label": "See where to start", "framework": "Curated first step",
              "hypothesis": "Naming a single first step raises the goal rate within 14 days more than a brand welcome because it removes the "
                            "choice; falsified if A converts as well or better."},
@@ -121,7 +121,7 @@ def email_library(brief: Brief) -> Dict[str, List[Dict[str, Any]]]:
              "hypothesis": "Answering checkout objections recovers more carts than a second reminder; falsified if B recovers as many or more."},
             {"subject": "Not sure it is the right one?", "preheader": "Ask us before you decide",
              "headline": "Still deciding?",
-             "paragraphs": ["Hi {first_name}, if you are not sure whether {item_name} is right for you, reply with your question. A person "
+             "paragraphs": ["Hi {first_name}, if you are not sure about {item_name}, reply with your question. A person "
                             "who knows the products will answer.", "If you are already sure, your cart is saved below.", "{product_block}"],
              "cta_label": "Return to my cart", "framework": "Objection discovery by reply",
              "hypothesis": "Inviting the specific question recovers more hesitant shoppers than a general answer; falsified if A recovers "
@@ -346,13 +346,15 @@ def email_library(brief: Brief) -> Dict[str, List[Dict[str, Any]]]:
         "trial_welcome": [
             {"subject": f"Your {trial}-day trial has started", "preheader": f"The fastest way to see what {P} does",
              "headline": "Welcome to your trial",
-             "paragraphs": [f"Hi {{first_name}}, your trial runs for {trial} days. The fastest way to see what " + P + f" can do is to {do}.",
+             "paragraphs": [f"Hi {{first_name}}, your trial runs for {trial} days. The fastest way to see what " + P + " can do is to try it "
+                            "on real work of your own today.",
                             "It takes a few minutes, and everything you set up stays if you choose a plan."],
              "cta_label": "Take the first step", "framework": "BAB: before, after, bridge",
              "hypothesis": "One first step in the welcome raises the goal rate within the trial; falsified if B converts as well or better."},
             {"subject": "Start here, {first_name}", "preheader": "One step that shows the value",
              "headline": "Start with one thing",
-             "paragraphs": ["Hi {first_name}, most people who end up loving " + P + f" start by doing one thing: they {do}.",
+             "paragraphs": ["Hi {first_name}, most people who end up loving " + P + " start the same way: they try it on one real piece of "
+                            "their own work in the first day or two.",
                             "The button below takes you straight there."],
              "cta_label": "Start now", "framework": "Social proof through common behavior",
              "hypothesis": "Framing the first step as what successful users do raises it more than a trial welcome; falsified if A "
@@ -362,7 +364,7 @@ def email_library(brief: Brief) -> Dict[str, List[Dict[str, Any]]]:
             {"subject": "Halfway through your trial", "preheader": "What you have done, and what is next",
              "headline": "Halfway there",
              "paragraphs": ["Hi {first_name}, you are halfway through your trial. The one thing most people who choose a plan have done by "
-                            f"now is {act}.", "If you have not yet, now is a good time."],
+                            "now is use it on their own work, not sample data.", "If you have not yet, now is a good time."],
              "cta_label": "Do it now", "framework": "Progress plus next best action",
              "hypothesis": "A midpoint nudge toward the key action raises paid conversion; falsified if B converts as well or better."},
             {"subject": "Is " + P + " working for you?", "preheader": "Tell us in one line",
@@ -487,10 +489,11 @@ def short_library(brief: Brief) -> Dict[str, Dict[str, List[Any]]]:
                                      ("Action needed", "Your card needs updating.", "Update card")]},
         "payment_final": generic("Final notice", "Update your payment details before access pauses", "Update"),
         "access_paused": generic("Access paused", "Restore your account in one step; your data is kept", "Restore"),
-        "trial_welcome": generic("Your trial has started", f"{Do} first; it shows the value fastest", "Start"),
-        "trial_value": {"sms": [f"Halfway through your trial. Most people who stay have done this: {do}.", "How is your trial going? Reply with one line."],
-                        "push": [("Halfway through your trial", f"{Do} if you have not yet."), ("How is it going?", "Tell us in one line.")],
-                        "in_app": [("Halfway through your trial", f"{Do} if you have not yet.", Do[:24]),
+        "trial_welcome": generic("Your trial has started", "Try it on your own work first; it shows the value fastest", "Start"),
+        "trial_value": {"sms": ["Halfway through your trial. Most people who stay have tried it on their own work by now.",
+                                "How is your trial going? Reply with one line."],
+                        "push": [("Halfway through your trial", "Try it on your own work if you have not yet."), ("How is it going?", "Tell us in one line.")],
+                        "in_app": [("Halfway through your trial", "Try it on your own work if you have not yet.", "Try it now"),
                                    ("How is it going?", "Tell us what is missing.", "Answer")]},
         "trial_ending": generic("Trial ends in 3 days", "Choose a plan to keep everything you set up", "See plans"),
         "trial_last_day": {"sms": ["Your trial ends tomorrow. Choose a plan to keep going.", "One day left in your trial. Questions? Reply here."],

@@ -219,7 +219,15 @@ UNSUPPORTED: Dict[str, Tuple[str, str]] = {
     "referral": (r"referral|refer[- ]a[- ]friend", "referral programs need a referral-tracking source"),
     "lead_nurture": (r"lead nurture|nurture leads|mql|sales[- ]qualified", "B2B lead nurture belongs in the CRM's sequences; the engine "
                                                                            "plans customer lifecycle flows"),
-    "loyalty": (r"loyalty|vip tier|points balance", "loyalty and VIP tier flows need a loyalty program source"),
+    "loyalty": (r"loyalty|\bvip\b|points balance", "loyalty and VIP flows need a loyalty program source"),
+    "transactional": (r"order confirmation|shipping (notification|confirmation|update)|delivery (notification|update)|"
+                      r"\breceipts?\b|password reset|order status|tracking (email|notification)",
+                      "order confirmations, shipping updates, receipts and password resets are transactional messages your store or "
+                      "platform sends itself; the engine plans lifecycle flows"),
+    "campaign": (r"\bnewsletters?\b|black friday|cyber monday|holiday (campaign|sale|promo)|flash sale|\bpromo(tion)?s? (email|blast|campaign)|"
+                 r"\bbroadcast\b|one-off (send|email|campaign)|launch announcement|\bcampaign\b",
+                 "a newsletter or a one-off campaign is a send, not a flow; lcm blast compares a send with your flows "
+                 "(lcm \"compare our monthly newsletter with the win-back trigger\")"),
     "survey": (r"\bnps\b|survey", "survey flows are not built yet; send them from your survey tool"),
     "wishlist": (r"wish ?lists?|saved for later|saved items|favou?rites list",
                  "wishlist reminders need a wishlist event (added_to_wishlist) from the store, which the tracking plan does not carry yet"),
@@ -232,6 +240,8 @@ UNSUPPORTED: Dict[str, Tuple[str, str]] = {
 }
 # checked before the library's own flow names, which would otherwise read these as a post-purchase or trial flow
 UNSUPPORTED_FIRST = ("wishlist", "cross_sell", "upsell")
+# refused only when the sentence names no flow of its own: "a win-back for people who bought on Black Friday" is a win-back
+UNSUPPORTED_SOFT = ("campaign",)
 
 
 def get(flow_type: str) -> FlowDef:

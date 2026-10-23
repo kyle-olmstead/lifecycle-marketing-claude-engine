@@ -8,7 +8,7 @@ kinds of flow instead of two and refuses the rest by name; it reads your vendors
 checked together, not one at a time; emails are laid out from your brand kit; measurement handles accounts, peeking
 and a program-wide holdout; deliverability gets the daily operations (bounces, complaints, trends against abort rules);
 and `lcm` became a real command line with help on every flag. The audit behind this release is the LMM Engine Product
-Audit (v2.3); every quick win and systemic enhancement in its roadmap is in here.
+Audit (v2.3), which is not in this repository; every quick win and systemic enhancement in its roadmap is in here.
 
 **Closed the false greens**
 - A bare `GREEN` typed into a brief runs as AMBER: an unobserved claim can lower the gate, never raise it. A gate
@@ -48,7 +48,8 @@ Audit (v2.3); every quick win and systemic enhancement in its roadmap is in here
   deal hunters) and consent records are typed contracts with JSON Schemas, and tests hold each schema and its model to
   the same answers.
 - `lcm simulate --program` walks people who enter several live flows close together (every pair and triple at every
-  spacing, larger groups at the worst ones), applies the collision rule, and checks every cap across flows; when a cap
+  spacing; larger groups that could break a cap are searched for a timing that does, within a fixed budget, so twelve
+  live flows check in about two seconds), applies the collision rule, and checks every cap across flows; when a cap
   breaks it prints WARN, names the rule that would hold it or the platform's own limit, and exits 1.
 
 **The flow library** (`engine/flows/`, `docs/FLOW_LIBRARY.md`)
@@ -133,13 +134,20 @@ Audit (v2.3); every quick win and systemic enhancement in its roadmap is in here
   imply one, and a flow the library does not build for the business (the Models column) is refused by name.
 - Welcome and trial conversion use the new-qualifier SQL (signed up or started a trial, then the goal), not the
   win-back lapse query, so their volumes, baselines and read dates are right.
-- Wishlist, cross-sell and upsell requests are refused by name; "a cart flow", "abandoned baskets" and "viewed a
-  product and left" reach their flows. A cap in the sentence ("no more than 2 emails a week") is a cap, never a touch
+- Wishlist, cross-sell, upsell, VIP, transactional (order confirmations, shipping updates) and one-off campaign or
+  newsletter requests are refused by name, and a sentence that names no flow at all is refused instead of planned as a
+  win-back; "a cart flow", "abandoned baskets", "viewed a product and left" and "an onboarding sequence" reach their
+  flows, and "software" or "app" in a sentence keeps it a software plan. A cap in the sentence ("no more than 2 emails a week") is a cap, never a touch
   count, and the cap parser reads daily, every N days, twice a week, per-channel lists and push-only caps.
-- A GREEN gate record dated in the future, recorded without observed authentication, carrying a critical finding, or
-  missing the signals a GREEN is issued on reads AMBER with the reason, instead of passing or failing the plan.
-- Sentence commands and `lcm plan` use the workspace: they read `lmm.yaml`'s `data:` and write to `runs/`, so "make it
-  3 touches" revises the plan just made.
+- A GREEN gate record dated in the future, recorded without observed authentication, carrying a critical finding, not
+  written by `lcm deliverability check`, or missing the signals a GREEN is issued on reads AMBER with the reason, and one
+  whose own complaint or bounce rate is above a GREEN's ceiling reads AMBER or RED by its worst signal.
+- Sentence commands, `lcm <brief.yaml>`, `lcm plan` and `lcm retention`, `priorities`, `engagement`, `audit` and
+  `tracking` use the workspace: they read `lmm.yaml`'s `data:` and write to `runs/`, so "make it 3 touches" revises the
+  plan just made. The briefs `lcm priorities` writes are thin, so they inherit the workspace's gate and policies.
+- Building a BLOCKED plan gives a BLOCKED pack, so `lcm build --create --approve` refuses it.
+- A software welcome series gets software copy and role jobs (the first step in the product, not a first order); trial
+  copy no longer calls paying the way to see the value; a missing item name reads "your items".
 - With no message events in the data, the AMBER audience is reported as not countable (with the import that would
   count it) instead of blocking the plan; buttons with no deep link go to the brand kit's website.
 - `lcm send` keeps the items a batch rejects inside a 2xx unaccepted so a rerun resends them; `lcm check-data` finds

@@ -32,7 +32,7 @@ from typing import Dict, Optional, Tuple
 
 from engine.models import Brief
 
-FALLBACK = {"cart_abandon": "your cart", "browse_abandon": "this item", "post_purchase": "your order", "replenishment": "your usual",
+FALLBACK = {"cart_abandon": "your items", "browse_abandon": "this item", "post_purchase": "your order", "replenishment": "your usual",
             "welcome": "our favorites"}
 EVENT_FLOWS = ("cart_abandon", "browse_abandon", "post_purchase", "replenishment")
 

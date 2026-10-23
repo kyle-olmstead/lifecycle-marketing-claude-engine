@@ -246,7 +246,17 @@ def _build_candidates(briefs: List[Brief], live: List[Brief], data: str, as_of: 
             if out is not None:
                 (out / "priorities").mkdir(parents=True, exist_ok=True)
                 path = out / "priorities" / f"{o.key}.yaml"
-                path.write_text(to_yaml(b), encoding="utf-8")
+                # a thin brief: it inherits the workspace's gate, policies and brand instead of freezing today's copies of them
+                from engine import workspace
+                ws_defaults = workspace.brief_defaults(workspace.for_data(data))
+                # today's gate stays on the brief only when it is lower than the workspace's (the list is RED today): a word
+                # that only repeats the default would read as "supplied"
+                from engine.policy.contracts import effective_gate
+                rank = {"RED": 0, "AMBER": 1, "GREEN": 2}
+                ws_gate = ws_defaults.get("sending_gate", "UNKNOWN")
+                today = effective_gate(b.sending_gate)[0]
+                own = b if rank[today] < rank[effective_gate(ws_gate)[0]] else b.model_copy(update={"sending_gate": ws_gate})
+                path.write_text(to_yaml(own, thin=True, defaults=ws_defaults), encoding="utf-8")
                 o.brief_path = str(path)
                 o.next_step = f'lcm {path} --data {data}'
             found.append(o)

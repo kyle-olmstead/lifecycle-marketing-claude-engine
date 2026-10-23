@@ -4,7 +4,7 @@
 <html lang="en-US" dir="auto" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
   <head>
     <title>
-      {{ event.extra.line_items.0.product.title|default:'your cart' }} is waiting for you
+      Still in your cart: {{ event.extra.line_items.0.product.title|default:'your items' }}
     </title>
     <!--[if !mso]><!-->
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -87,7 +87,7 @@
   </head>
   <body style="word-spacing:normal;background-color:#F6F1EA;">
     
-    <div aria-roledescription="email" class="lcm-body" style="background-color:#F6F1EA" role="article" lang="en-US" dir="auto" aria-label="{{ event.extra.line_items.0.product.title|default:'your cart' }} is waiting for you"><div class="preheader" style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Pick up right where you stopped&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;</div>
+    <div aria-roledescription="email" class="lcm-body" style="background-color:#F6F1EA" role="article" lang="en-US" dir="auto" aria-label="Still in your cart: {{ event.extra.line_items.0.product.title|default:'your items' }}"><div class="preheader" style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Pick up right where you stopped&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;&#8204;&#160;</div>
             <!--[if mso | IE]>
             <table
               align="center" border="0" cellpadding="0" cellspacing="0" class="lcm-card-outlook" role="presentation" style="width:600px" width="600" bgcolor="#FFFFFF"
@@ -186,7 +186,7 @@
               </td>
             </tr><tr>
               <td align="left" class="lcm-text" style="font-size:0px;padding:0 24px 16px 24px;word-break:break-word">
-                <div style="font-family:Lora, Georgia, 'Times New Roman', serif;font-size:16px;line-height:1.5;text-align:left;color:#2B2118">Hi {{ first_name|default:'there' }}, your cart at Northfield Coffee Roasters is still here, with {{ event.extra.line_items.0.product.title|default:'your cart' }} in it.</div>
+                <div style="font-family:Lora, Georgia, 'Times New Roman', serif;font-size:16px;line-height:1.5;text-align:left;color:#2B2118">Hi {{ first_name|default:'there' }}, your cart at Northfield Coffee Roasters is still here, with {{ event.extra.line_items.0.product.title|default:'your items' }} in it.</div>
               </td>
             </tr><tr>
               <td align="left" class="lcm-text" style="font-size:0px;padding:0 24px 16px 24px;word-break:break-word">

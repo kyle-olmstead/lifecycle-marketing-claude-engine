@@ -15,15 +15,35 @@ from typing import Any, Callable, Dict, List, Optional
 Handler = Callable[[List[str]], int]
 
 
-def _call(module: str, func: str = "_cli", prefix: Optional[List[str]] = None, needs: str = "") -> Handler:
-    """A handler that imports `module` only when run, so a missing optional package fails one command, not lcm."""
+def _workspace_args(argv: List[str], data: bool, out: Optional[str]) -> List[str]:
+    """Inside a workspace, the --data and --out a command would otherwise demand: lmm.yaml's data: and runs/<out>/."""
+    if any(a in ("-h", "--help") for a in argv):
+        return argv
+    from engine import workspace
+    ws = workspace.find()
+    if ws.fallback:
+        return argv
+    extra: List[str] = []
+    if data and "--data" not in argv and ws.data():
+        extra += ["--data", ws.data()]
+        print(f"data: {ws.data()} (lmm.yaml)", file=sys.stderr)
+    if out and "--out" not in argv:
+        extra += ["--out", str(ws.runs_dir / out)]
+    return list(argv) + extra
+
+
+def _call(module: str, func: str = "_cli", prefix: Optional[List[str]] = None, needs: str = "", data: bool = False,
+          out: Optional[str] = None) -> Handler:
+    """A handler that imports `module` only when run, so a missing optional package fails one command, not lcm. With data
+    (and out), a command run inside a workspace reads lmm.yaml's data: (and writes to runs/<out>/) unless told otherwise."""
     def run(argv: List[str]) -> int:
         try:
             mod = importlib.import_module(module)
         except ImportError as e:
             print(f"error: this command needs {needs or e.name} ({e}). Run `lcm doctor` to see what is missing.", file=sys.stderr)
             return 2
-        rc = getattr(mod, func)((prefix or []) + list(argv))
+        args = _workspace_args(list(argv), data, out) if (data or out) else list(argv)
+        rc = getattr(mod, func)((prefix or []) + args)
         return int(rc or 0)
     return run
 
@@ -371,7 +391,7 @@ COMMANDS: Dict[str, Command] = {
     # deliverability
     "deliverability": Command("deliverability", "check, analyze, gate, monitor, bounces, complaints, providers", deliverability),
     "warmup": Command("deliverability", "a warm-up schedule for a new domain or IP, with abort rules", _call("engine.deliverability.warmup")),
-    "engagement": Command("deliverability", "engagement tiers and the sunset list, by clicks not opens", _call("engine.agents.engagement")),
+    "engagement": Command("deliverability", "engagement tiers and the sunset list, by clicks not opens", _call("engine.agents.engagement", data=True, out="engagement")),
     # measure
     "size": Command("measure", "people and months a holdout needs", size),
     "readout": Command("measure", "read a holdout: incremental, not attributed", readout),
@@ -382,11 +402,11 @@ COMMANDS: Dict[str, Command] = {
     "discounts": Command("measure", "discount dependency by customer and flow", _call("engine.measurement.discounts")),
     "roi": Command("measure", "what the program is worth next year", _call("engine.measurement.roi")),
     # analyze
-    "audit": Command("analyze", "audit a flow's cohort against the data", _call("engine.agents.cohort_analyst", prefix=["audit"])),
+    "audit": Command("analyze", "audit a flow's cohort against the data", _call("engine.agents.cohort_analyst", prefix=["audit"], data=True, out="audit")),
     "blast": Command("analyze", "compare a newsletter or blast with a triggered flow", _call("engine.agents.cohort_analyst", prefix=["blast-vs-trigger"])),
-    "priorities": Command("analyze", "the next flows worth building, ranked by money", _call("engine.agents.priorities")),
-    "tracking": Command("analyze", "are the events firing: schema drift, nulls, late arrivals", _call("engine.agents.tracking")),
-    "retention": Command("analyze", "retention curves and the churn cliff", _call("engine.agents.retention")),
+    "priorities": Command("analyze", "the next flows worth building, ranked by money", _call("engine.agents.priorities", data=True, out=".")),
+    "tracking": Command("analyze", "are the events firing: schema drift, nulls, late arrivals", _call("engine.agents.tracking", data=True)),
+    "retention": Command("analyze", "retention curves and the churn cliff", _call("engine.agents.retention", data=True)),
     "daily": Command("analyze", "the morning check: what broke overnight", _call("engine.workflows.daily", "main")),
     "workflow": Command("analyze", "run a named graph of commands: morning_check, new_flow, quarterly_review, or your own",
                         _call("engine.workflows.runner")),

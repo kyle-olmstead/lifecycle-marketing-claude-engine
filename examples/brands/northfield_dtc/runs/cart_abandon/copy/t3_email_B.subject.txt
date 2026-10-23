@@ -1,2 +1,2 @@
-Subject: Still want {{ event.extra.line_items.0.product.title|default:'your cart' }}?
+Subject: Still want {{ event.extra.line_items.0.product.title|default:'your items' }}?
 Preview text: Your cart is saved for you

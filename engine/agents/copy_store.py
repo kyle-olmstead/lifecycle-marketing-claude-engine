@@ -200,7 +200,7 @@ def email_library(brief: Brief) -> Dict[str, List[Dict[str, Any]]]:
              "hypothesis": "Pointing to what repeat customers buy raises orders because it lowers the risk of a wrong pick; falsified "
                            "if B converts as well or better."},
             {"subject": "Reviews from people who ordered", "preheader": "The quickest way to choose",
-             "headline": "Let other customers help you choose", "paragraphs": [
+             "headline": "Let other buyers help you choose", "paragraphs": [
                  "Hi {first_name}, if you are deciding what to order, the reviews from people who bought each product are the "
                  "quickest way to choose.",
                  "Pick the one with the verdicts that sound most like you."],
@@ -233,7 +233,7 @@ def short_library(brief: Brief) -> Dict[str, Dict[str, List[Any]]]:
             "in_app": [("What is new", "See what has changed since your last order.", "See what is new"),
                        ("Worth another look", "A lot may be different since your last order.", "Have a look")]},
         "social_proof": {
-            "sms": [f"Still deciding? See what other buyers said. {{link}}", f"Other {P} customers left their verdicts. {{link}}"],
+            "sms": [f"Still deciding? See what other buyers said. {{link}}", f"Other {P} buyers left their verdicts. {{link}}"],
             "push": [("Hear it from other buyers", "See what people who bought it said."), ("Still deciding?", "Other buyers left their verdicts.")],
             "in_app": [("Hear it from other buyers", "See what people who bought it said.", "See reviews"),
                        ("Still deciding?", "Other buyers left their verdicts on each product.", "See reviews")]},
