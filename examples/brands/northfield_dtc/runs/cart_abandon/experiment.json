@@ -11,7 +11,7 @@
   "primary_metric": "placed an order (order_completed) within 10 days of entry, treatment vs holdout, both arms counted from their entry date",
   "outcome_window_days": 10,
   "read": "directional only",
-  "sizing": "about 351 entrants a month (ESTIMATE), 31.3% return within 10 days with no flow (ESTIMATE), 20% relative lift (6.3 pts) worth acting on: 508 holdout entrants at 10%, 14.5 months of entries plus the 10-day outcome window, so the read lands about 14.8 months after launch (engine/measurement/stats.py feasible --entries-per-month 350.7 --holdout 0.1 --baseline 0.3132 --mde-rel 0.2 --outcome-window-days 10)",
+  "sizing": "about 351 entrants a month (DEMO DATA), 31.3% return within 10 days with no flow (DEMO DATA), 20% relative lift (6.3 pts) worth acting on: 508 holdout entrants at 10%, 14.5 months of entries plus the 10-day outcome window, so the read lands about 14.8 months after launch (engine/measurement/stats.py feasible --entries-per-month 350.7 --holdout 0.1 --baseline 0.3132 --mde-rel 0.2 --outcome-window-days 10)",
   "read_after": "not inside 12 months at this volume (it would take about 15 months): keep the holdout, report against a pre/post baseline, and label every result directional",
   "feasibility": {
     "entries_per_month": 350.7,

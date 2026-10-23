@@ -75,7 +75,7 @@
     "persistent": true,
     "unit": "user",
     "assignment": "persistent, by user: bucket = first 7 hex digits of md5(user_id || ':northfield_coffee_cart_abandon_1h') mod 100; bucket < 10 is the holdout, added as in_holdout to the live checkout_started event by the system that sends it; holdout members enter, then exit at holdout_split, so both arms are the same population",
-    "sizing": "about 351 entrants a month (ESTIMATE), 31.3% return within 10 days with no flow (ESTIMATE), 20% relative lift (6.3 pts) worth acting on: 508 holdout entrants at 10%, 14.5 months of entries plus the 10-day outcome window, so the read lands about 14.8 months after launch (engine/measurement/stats.py feasible --entries-per-month 350.7 --holdout 0.1 --baseline 0.3132 --mde-rel 0.2 --outcome-window-days 10)",
+    "sizing": "about 351 entrants a month (DEMO DATA), 31.3% return within 10 days with no flow (DEMO DATA), 20% relative lift (6.3 pts) worth acting on: 508 holdout entrants at 10%, 14.5 months of entries plus the 10-day outcome window, so the read lands about 14.8 months after launch (engine/measurement/stats.py feasible --entries-per-month 350.7 --holdout 0.1 --baseline 0.3132 --mde-rel 0.2 --outcome-window-days 10)",
     "read": "directional only"
   },
   "frequency": {

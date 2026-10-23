@@ -323,7 +323,7 @@ def test_mcp_server_tools(tmp_path, monkeypatch):
     tiers = asyncio.run(mcp_server.server.call_tool("engagement_tiers", {"data_dir": str(ROOT / "examples/brands/ridgeview_saas/data")}))
     assert "Unengaged share" in tiers.content[0].text
     top = asyncio.run(mcp_server.server.call_tool("priorities", {"data_dir": str(ROOT / "examples/brands/ridgeview_saas/data")}))
-    assert "Today's priorities" in top.content[0].text and "### 3. " in top.content[0].text
+    assert "Today's priorities" in top.content[0].text and "### 2. " in top.content[0].text
 
 
 def test_mcp_config():

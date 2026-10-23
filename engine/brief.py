@@ -247,9 +247,13 @@ def parse_text(text: str, product_name: Optional[str] = None, overrides: Optiona
 
     saas_words = r"\b(data sources?|teammates?|reports?|dashboards?|workspaces?|log(ged)? ?in|the app|trials?|seats?|plans?)\b"
     events = [x.event for x in (data.get("qualifying_event"), data.get("core_conversion_event")) if isinstance(x, EventMatch)]
-    if re.search(r"\b(shop|store|ecommerce|e-commerce|dtc|d2c|cart|checkout|orders?|purchases?|products?|buyers?)\b", low) or \
+    if re.search(r"\b(shop|store|ecommerce|e-commerce|dtc|d2c|shopify)\b", low):
+        data["business_model"] = "ecommerce"          # stated: the sentence says it is a store
+    elif re.search(r"\b(cart|checkout|orders?|ordered|purchases?|products?|buyers?)\b", low) or \
             FLOWS[data.get("flow_type", "winback")].models == ("ecommerce",) or "order_completed" in events:
-        data["business_model"] = "ecommerce"
+        # implied by the flow or its words: the workspace's stated business model wins over this reading
+        assume("business_model", "ecommerce", "business model not stated; read as a store's because the flow is about carts, "
+                                              "products or orders. Set brand.business_model in lmm.yaml to say otherwise")
     elif data.get("flow_type") == "welcome" and not re.search(saas_words, low):
         assume("business_model", "ecommerce", "business model not stated; a welcome series is read as a store's, aiming at the first order. "
                                               "Set business_model: saas to aim it at activation instead")
@@ -275,9 +279,76 @@ def parse_text(text: str, product_name: Optional[str] = None, overrides: Optiona
     for k, v in (overrides or {}).items():
         data[k] = v
         assumptions = [a for a in assumptions if a.field != k]
+    assumptions = fit_to_business_model(data, assumptions)
+    from engine.flows.library import _family
+    if (data.get("flow_type") == "activation" and _family(data.get("business_model") or "saas") == "ecommerce"
+            and not re.search(r"\bactivat|onboarding", low)):
+        # a store's "new customers who have not ordered yet" is a welcome series aimed at the first order
+        data["flow_type"] = "welcome"
+        assumptions = [a for a in assumptions if a.field != "flow_type"] + [Assumption(
+            field="flow_type", value="welcome", why="new people who have not done the goal yet, for a store: planned as a welcome series "
+                                                    "aimed at the first order (an activation flow is for software)")]
+        wmax = FLOWS["welcome"].max_touches
+        if data.get("touches", 0) > wmax:
+            data["touches"] = wmax
+            assumptions.append(Assumption(field="touches", value=wmax, why=f"a welcome series has at most {wmax} touches in the library"))
+    check_business_model(data)
     _standard_assumptions(data, assumptions)
     data["assumptions"] = assumptions
     return Brief(**data)
+
+
+STORE_LAPSE_DAYS = 60
+
+
+def fit_to_business_model(data: Dict[str, Any], assumptions: List[Assumption]) -> List[Assumption]:
+    """A store's win-back is about orders: when who qualifies, the core action or the lapse were defaulted (not stated) and
+    the business model is a store's, use the flow library's store events and a store-length lapse instead of software's."""
+    from engine.flows.library import FLOWS, _family
+    bm = data.get("business_model")
+    if data.get("flow_type", "winback") != "winback" or not bm or _family(bm) != "ecommerce":
+        return assumptions
+    fd = FLOWS["winback"]
+    assumed = {a.field for a in assumptions}
+    out = list(assumptions)
+    swaps = (("qualifying_event", EventMatch(event=fd.trigger_for(bm), label=fd.trigger_label["ecommerce"]),
+              "who qualifies was not stated; for a store, defaulted to people who placed an order"),
+             ("core_conversion_event", EventMatch(event=fd.goal_for(bm), label=fd.goal_label["ecommerce"]),
+              "the core action was not named; for a store, a win-back's goal is another order (order_completed)"))
+    for fieldname, match, why in swaps:
+        if fieldname in assumed or fieldname not in data:
+            data[fieldname] = match
+            out = [a for a in out if a.field != fieldname] + [Assumption(field=fieldname, value=match.model_dump(), why=why)]
+    if "churn_threshold_days" in assumed:
+        data["churn_threshold_days"] = STORE_LAPSE_DAYS
+        out = [a for a in out if a.field != "churn_threshold_days"] + [Assumption(
+            field="churn_threshold_days", value=STORE_LAPSE_DAYS,
+            why=f"inactivity threshold not stated; for a store, {STORE_LAPSE_DAYS} days since the last order. Set it to about one and "
+                f"a half times your usual gap between orders")]
+    return out
+
+
+def _a(word: str) -> str:
+    return "an" if word[:1] in "aeiou" else "a"
+
+
+def check_business_model(data: Dict[str, Any]) -> None:
+    """Refuse, by name, a flow the library does not build for this business model (the Models column of FLOW_LIBRARY.md)."""
+    from engine.flows.library import FLOWS
+    ft = data.get("flow_type", "winback")
+    fd = FLOWS.get(ft)
+    bm = data.get("business_model")
+    if fd is None or not bm or fd.fits(bm):
+        return
+    label = fd.label.lower()
+    if fd.models == ("saas",):
+        instead = {"activation": 'for a store, a welcome series aims new subscribers at a first order ("a 4-touch welcome series")',
+                   "trial_convert": "for a store, a welcome series or a post-purchase flow fits instead"}.get(ft, "")
+        raise ValueError(f"not built for this business: {_a(label)} {label} flow is for software (business model saas or subscription), and "
+                         f"this brief's business model is {bm}" + (f"; {instead}" if instead else ""))
+    raise ValueError(f"not built for this business: {_a(label)} {label} flow is for stores (business model ecommerce or marketplace), and this "
+                     f"brief's business model is {bm}. If you sell products with a cart and checkout, set brand.business_model: "
+                     f"ecommerce in lmm.yaml")
 
 
 def _standard_assumptions(data: Dict[str, Any], assumptions: List[Assumption]) -> None:
@@ -322,6 +393,7 @@ def load_brief(path: Path, defaults: Optional[Dict[str, Any]] = None) -> Brief:
         raw["sending_gate"] = json.loads(gp.read_text(encoding="utf-8"))
     from engine import workspace
     workspace.apply_defaults(raw, set(), defaults)
+    check_business_model(raw)
     ft = raw.get("flow_type", "winback")
     needed = {"winback": REQUIRED_YAML, "activation": ("product_name", "core_conversion_event")}.get(ft, ("product_name",))
     missing = [k for k in needed if k not in raw]
@@ -332,8 +404,11 @@ def load_brief(path: Path, defaults: Optional[Dict[str, Any]] = None) -> Brief:
             raw[k] = _event(raw[k])
     assumptions: List[Assumption] = []
     if "qualifying_event" not in raw and ft == "winback":
-        assumptions.append(Assumption(field="qualifying_event", value={"event": "activation_reached"},
-                                      why="who qualifies was not stated; defaulted to users who reached activation"))
+        from engine.flows.library import _family
+        store = _family(raw.get("business_model") or "saas") == "ecommerce"
+        assumptions.append(Assumption(field="qualifying_event", value={"event": "order_completed" if store else "activation_reached"},
+                                      why="who qualifies was not stated; " + ("for a store, defaulted to people who placed an order"
+                                                                              if store else "defaulted to users who reached activation")))
     if "platform" not in raw:
         assumptions.append(Assumption(field="platform", value="customerio", why="messaging platform not stated"))
     _standard_assumptions(raw, assumptions)

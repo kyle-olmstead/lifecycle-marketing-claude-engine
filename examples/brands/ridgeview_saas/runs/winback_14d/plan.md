@@ -1,6 +1,6 @@
 # Win-back: Ridgeview, 14 days since the core action (created a report)
 
-**Status: READY WITH ASSUMPTIONS** | Customer.io | generated 2026-10-22T23:46:38+00:00 | run 11f5fd8ab2ee | LMM Engine 3.0.0
+**Status: READY WITH ASSUMPTIONS** | Customer.io | generated 2026-10-23T00:51:40+00:00 | run 3856530dd693 | LMM Engine 3.0.0
 
 ## In one paragraph
 

@@ -104,7 +104,9 @@ def data_label(data: Optional[str]) -> str:
     if data is None:
         return "UNKNOWN"
     try:
-        if Path(data).resolve() == FIXTURES.resolve():
+        from engine.paths import EXAMPLES
+        here = Path(data).resolve()
+        if here == FIXTURES.resolve() or (EXAMPLES / "brands").resolve() in here.parents:   # the sample brands' data
             return "DEMO DATA"
     except OSError:
         pass

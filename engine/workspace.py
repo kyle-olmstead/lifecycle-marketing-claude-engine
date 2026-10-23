@@ -72,6 +72,15 @@ def find(start: Optional[Path] = None, env: Optional[Dict[str, str]] = None) -> 
     return Workspace(DEMO, demo=True, fallback=True)
 
 
+def for_data(data: Optional[str] = None) -> Workspace:
+    """The workspace a data folder belongs to: the nearest lmm.yaml at or above it, else the current folder's workspace."""
+    if data:
+        ws = find(Path(data))
+        if not ws.fallback:
+            return ws
+    return find()
+
+
 # ----------------------------------------------------------------------------------------------
 # what a brief inherits from the workspace
 # ----------------------------------------------------------------------------------------------

@@ -3,8 +3,8 @@
 #
 # Assumed, not stated. Confirm or change each one:
 #   sending_gate: no sending gate on record; treated as AMBER (engaged recipients only) until the deliverability-gate skill or engine/deliverability/analyze.py issues one
-#   monthly_entrants: estimated from the data (ESTIMATE): 351 a month, mean abandoned checkouts over 3 complete month(s) to 2026-09
-#   baseline_conversion_rate: estimated from the data (ESTIMATE): 31.3%, 551 of 1759 matured abandoned checkouts ordered anyway within 10 days with no flow
+#   monthly_entrants: estimated from the data (DEMO DATA): 351 a month, mean abandoned checkouts over 3 complete month(s) to 2026-09
+#   baseline_conversion_rate: estimated from the data (DEMO DATA): 31.3%, 551 of 1759 matured abandoned checkouts ordered anyway within 10 days with no flow
 #   outcome_window_days: not stated; set to 10 days so the whole flow (last touch on day 3) plus a week is inside it
 product_name: Northfield Coffee Roasters
 flow_type: cart_abandon

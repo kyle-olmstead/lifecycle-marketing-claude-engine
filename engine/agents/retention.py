@@ -47,17 +47,46 @@ MIN_PAIR = 10          # people observed in both weeks before a step is judged
 MIN_DISCORDANT = 10    # people who changed between the two weeks before the paired test is used
 
 
-def curve(data: str, brief=None, weeks: int = 12, by: Optional[str] = None, as_of: Optional[str] = None) -> Dict[str, Any]:
-    from engine.agents import cohort_analyst
+def default_core(data: Optional[str] = None):
+    """(core action, days per period, business model) for the workspace the data belongs to. A store retains on orders,
+    month by month (people do not order every week); software on the workspace's own core action, week by week. The demo
+    workspace, or no workspace, uses the example brief."""
+    from engine import workspace
     from engine.brief import load_brief
+    from engine.flows.library import _family
+    from engine.models import EventMatch
+    from engine.paths import DEMO_BRIEF
+    ws = workspace.for_data(data)
+    if ws.demo or ws.fallback:
+        return load_brief(DEMO_BRIEF).core_conversion_event, 7, "saas"
+    bm = workspace.brief_defaults(ws).get("business_model") or "saas"
+    if _family(bm) == "ecommerce":
+        return EventMatch(event="order_completed", label="placed an order"), 30, bm
+    from engine.policy.program import active_briefs
+    try:
+        cores = [b.core_conversion_event for b in active_briefs(ws.active_briefs) if b.flow_type in ("winback", "activation")]
+    except (ValueError, FileNotFoundError):
+        cores = []
+    return (cores[0] if cores else EventMatch(event="feature_used", label="used the product")), 7, bm
+
+
+def curve(data: str, brief=None, weeks: Optional[int] = None, by: Optional[str] = None, as_of: Optional[str] = None,
+          period_days: Optional[int] = None) -> Dict[str, Any]:
+    """weeks is the number of periods to follow; a period is 7 days for software and 30 for a store unless period_days says."""
+    from engine.agents import cohort_analyst
     from engine.sql.dialects import dialect
     if by is not None and by not in BY_COLUMNS:
         raise ValueError(f"--by must be one of {', '.join(BY_COLUMNS)}")
+    if brief is not None:
+        from engine.flows.library import _family
+        core, days = brief.core_conversion_event, (30 if _family(brief.business_model) == "ecommerce" else 7)
+    else:
+        core, days, _ = default_core(data)
+    days = period_days or days
+    unit = "month" if days == 30 else ("week" if days == 7 else f"{days}-day period")
+    weeks = weeks or (12 if days == 7 else 6)
     if not 2 <= weeks <= 52:
         raise ValueError("weeks must be between 2 and 52")
-    from engine.paths import DEMO_BRIEF
-    brief = brief or load_brief(DEMO_BRIEF)
-    core = brief.core_conversion_event
     con = cohort_analyst.connect(data)
     end = date.fromisoformat(as_of) if as_of else cohort_analyst.latest_complete_day(con)[0]
     seg = f"COALESCE(CAST(u.{by} AS VARCHAR), '(none)')" if by else "'all'"
@@ -68,13 +97,13 @@ def curve(data: str, brief=None, weeks: int = 12, by: Optional[str] = None, as_o
                    WHERE CAST(created_at AS DATE) <= DATE '{end}'),
              wk AS (SELECT range AS k FROM range(0, {weeks + 1})),
              eligible AS (SELECT u.user_id, u.segment, u.signup, wk.k FROM u CROSS JOIN wk
-                          WHERE u.signup + INTERVAL (7 * (wk.k + 1)) DAY <= DATE '{end}' + INTERVAL 1 DAY
-                            AND u.signup + INTERVAL (7 * wk.k) DAY >= {covered_from}),
+                          WHERE u.signup + INTERVAL ({days} * (wk.k + 1)) DAY <= DATE '{end}' + INTERVAL 1 DAY
+                            AND u.signup + INTERVAL ({days} * wk.k) DAY >= {covered_from}),
              acts AS (SELECT DISTINCT s.user_id, CAST(s.event_at AS DATE) AS d FROM ({cohort_analyst._source(dialect('duckdb'), core, 'e')}) s),
              flags AS (SELECT el.user_id, el.segment, el.k,
                               CASE WHEN EXISTS (SELECT 1 FROM acts a WHERE a.user_id = el.user_id
-                                                AND a.d >= el.signup + INTERVAL (7 * el.k) DAY
-                                                AND a.d < el.signup + INTERVAL (7 * (el.k + 1)) DAY) THEN 1 ELSE 0 END AS a
+                                                AND a.d >= el.signup + INTERVAL ({days} * el.k) DAY
+                                                AND a.d < el.signup + INTERVAL ({days} * (el.k + 1)) DAY) THEN 1 ELSE 0 END AS a
                        FROM eligible el)"""
     rows = cohort_analyst._rows(con, base + """
         SELECT segment, k, COUNT(*) AS observed, SUM(a) AS active FROM flags GROUP BY segment, k ORDER BY segment, k""")
@@ -104,7 +133,7 @@ def curve(data: str, brief=None, weeks: int = 12, by: Optional[str] = None, as_o
         raise ValueError("not enough people observed for a curve" +
                          (f" in any {by} segment (need {MIN_SEGMENT} through week {gate_week})" if by else ""))
     return {"as_of": end.isoformat(), "data_label": cohort_analyst.data_label(data), "core_action": core.describe(),
-            "by": by, "weeks": weeks, "segments": out}
+            "by": by, "weeks": weeks, "period_days": days, "unit": unit, "segments": out}
 
 
 def _shape(steps: List[Dict[str, Any]], pts: Optional[List[Dict[str, Any]]] = None, alpha: float = 0.05) -> Dict[str, Any]:
@@ -139,28 +168,31 @@ def _shape(steps: List[Dict[str, Any]], pts: Optional[List[Dict[str, Any]]] = No
 
 
 def render(r: Dict[str, Any]) -> str:
-    L = [f"## When people stop: weekly retention on {r['core_action']} ({r['data_label']}, to {r['as_of']})", ""]
+    unit, days = r.get("unit", "week"), r.get("period_days", 7)
+    adverb = {"week": "weekly", "month": "monthly"}.get(unit, f"per {unit}")
+    L = [f"## When people stop: {adverb} retention on {r['core_action']} ({r['data_label']}, to {r['as_of']})", ""]
     for name, s in r["segments"].items():
         head = f"**{name}**: " if r["by"] else ""
         bits = []
         if s["cliff_week"] is not None:
-            bits.append(f"the biggest drop is into week {s['cliff_week']} ({s['cliff_drop'] * 100:.1f} points), so a flow has to land before day {7 * s['cliff_week']}")
+            bits.append(f"the biggest drop is into {unit} {s['cliff_week']} ({s['cliff_drop'] * 100:.1f} points), so a flow has to land "
+                        f"before day {days * s['cliff_week']}")
         else:
-            bits.append("no clear cliff: no week-to-week drop is bigger than chance at this sample size")
+            bits.append(f"no clear cliff: no {unit}-to-{unit} drop is bigger than chance at this sample size")
         if s["floor_week"] is not None:
-            bits.append(f"the curve levels off from week {s['floor_week']}" + (f" at about {s['floor_rate']:.0%}" if s["floor_rate"] is not None else ""))
+            bits.append(f"the curve levels off from {unit} {s['floor_week']}" + (f" at about {s['floor_rate']:.0%}" if s["floor_rate"] is not None else ""))
         else:
-            bits.append(f"it has not levelled off by week {r['weeks']}")
+            bits.append(f"it has not levelled off by {unit} {r['weeks']}")
         L.append(f"- {head}" + "; ".join(bits) + ".")
-    L += ["", "| Week | " + " | ".join(r["segments"]) + " |", "|---:|" + "---:|" * len(r["segments"])]
+    L += ["", f"| {unit.capitalize()} | " + " | ".join(r["segments"]) + " |", "|---:|" + "---:|" * len(r["segments"])]
     for k in range(r["weeks"] + 1):
         cells = []
         for s in r["segments"].values():
             p = next((p for p in s["points"] if p["week"] == k), None)
             cells.append("" if not p or p["rate"] is None else f"{p['rate']:.0%} (n={p['observed']:,})")
         L.append(f"| {k} | " + " | ".join(cells) + " |")
-    L += ["", "*Week k counts people whose week k is complete. The cliff and the floor compare the same people from one week to "
-              "the next, so a change in who signed up when does not read as churn. What predicts the drop (the behavior the week "
+    L += ["", f"*{unit.capitalize()} k counts people whose {unit} k ({days} days) is complete. The cliff and the floor compare the same "
+              f"people from one {unit} to the next, so a change in who signed up when does not read as churn. What predicts the drop (the behavior just "
               "before) is a modeling question; compare the people who stayed past the cliff with those who did not before "
               "building on it.*"]
     return "\n".join(L) + "\n"
@@ -169,15 +201,17 @@ def render(r: Dict[str, Any]) -> str:
 def _cli(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(prog="lcm retention", description="Weekly retention on the core action, with the cliff and the floor")
     ap.add_argument("--data", required=True, help="folder of exports with users, orders and track_events")
-    ap.add_argument("--brief", help="the brief whose core action counts as retained (default: the example)")
+    ap.add_argument("--brief", help="the brief whose core action counts as retained (default: the workspace's: orders for a "
+                                    "store, its win-back or activation core action for software)")
     ap.add_argument("--by", choices=BY_COLUMNS, help="also split the curve by this users column (segments of 30+ people)")
-    ap.add_argument("--weeks", type=int, default=12, help="weeks after signup to follow (default 12)")
+    ap.add_argument("--weeks", type=int, help="periods after signup to follow (default 12 weeks for software, 6 months for a store)")
+    ap.add_argument("--period-days", type=int, help="days per period (default 7 for software, 30 for a store)")
     ap.add_argument("--as-of", help="the date the data runs to, YYYY-MM-DD (default: the latest complete day in the data)")
     ap.add_argument("--json", action="store_true", help="print the curve as JSON instead of a table")
     a = ap.parse_args(argv)
     from engine.brief import load_brief
     try:
-        r = curve(a.data, load_brief(Path(a.brief)) if a.brief else None, a.weeks, a.by, a.as_of)
+        r = curve(a.data, load_brief(Path(a.brief)) if a.brief else None, a.weeks, a.by, a.as_of, a.period_days)
     except (ValueError, FileNotFoundError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2

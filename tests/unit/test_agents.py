@@ -51,7 +51,7 @@ def test_the_spec_sentence_parses_and_records_every_assumption():
     ("nudge new users who haven't invited a teammate yet", {"flow_type": "activation"}),
     ("Bring back users who haven't created a report in 14 days, new dashboard feature launched", {"flow_type": "winback"}),
     ("Users who haven't logged in since their trial ended 2 weeks ago", {"flow_type": "winback", "churn_threshold_days": 14}),
-    ("Customers who have not ordered yet after signing up: 3 emails", {"flow_type": "activation", "touches": 3}),
+    ("Customers who have not ordered yet after signing up: 3 emails", {"flow_type": "welcome", "touches": 3}),   # a store's
     ("Send new customers who haven't placed a second order in 30 days a 3-email series, Klaviyo",
      {"flow_type": "winback", "churn_threshold_days": 30, "platform": "klaviyo"}),
     ("win back customers who haven't purchased in 2 months via Braze push", {"churn_threshold_days": 60, "platform": "braze", "push": True}),

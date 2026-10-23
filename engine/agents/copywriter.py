@@ -515,6 +515,8 @@ def _lib(brief: Brief) -> Dict[str, List[Dict[str, Any]]]:
     do = base_form(act)
     sender = (brief.sender_name or brief.product_name).split(" at ")[0]
     n = brief.churn_threshold_days
+    lapsed = ("you have not opened or clicked our emails in a while" if brief.flow_type == "sunset" else
+              f"you have not used {p} in a while")
     return {
         "value_reminder": [
             {"subject": f"Your {p} workspace is where you left it", "preheader": f"Pick up from your last session in {p}",
@@ -617,13 +619,13 @@ def _lib(brief: Brief) -> Dict[str, List[Dict[str, Any]]]:
         "repermission": [
             {"subject": "Should we keep sending these?", "preheader": "One click to stay; nothing to do to stop",
              "headline": "Do you still want these emails?", "paragraphs": [
-                 "Hi {first_name}, you have not opened " + p + " in a while, so we want to check before we send more.",
+                 f"Hi {{first_name}}, {lapsed}, so we want to check before we send more.",
                  "If you want to keep hearing from us, click below. If not, do nothing: in two weeks we will stop these emails. Your account and data stay as they are."],
              "cta_label": "Yes, keep me subscribed", "framework": "Plain re-permission; no guilt, no countdown",
              "hypothesis": "An honest ask keeps the people who still care and lowers complaints from those who do not; expect 1 to 5% to click. Falsified if complaints on this send exceed the flow average."},
             {"subject": f"We will pause emails from {p}", "preheader": "Unless you tell us otherwise",
              "headline": "Pausing your emails", "paragraphs": [
-                 "Hi {first_name}, since you have not used " + p + " lately, we plan to stop sending you these emails in two weeks.",
+                 f"Hi {{first_name}}, {lapsed}, so we plan to stop sending you these emails in two weeks.",
                  "Want to keep them? One click does it. Either way, your account stays open."],
              "cta_label": "Keep my emails", "framework": "Default-effect framing",
              "hypothesis": "Stating the default (a pause) raises stay clicks over asking a question because it makes the consequence concrete; falsified if A's stay rate is equal or higher."},
@@ -765,12 +767,14 @@ def _short_lib(brief: Brief) -> Dict[str, Dict[str, List[Any]]]:
 
 
 def offline_drafts(t: Touch, brief: Brief) -> List[Dict[str, Any]]:
-    from engine.agents import copy_library
-    lib = {**_lib(brief), **copy_library.email_library(brief)}
+    from engine.agents import copy_library, copy_store
+    store = copy_store.is_store(brief)
+    lib = {**_lib(brief), **copy_library.email_library(brief), **(copy_store.email_library(brief) if store else {})}
     emails = lib[t.role][: brief.copy_variants]
     if t.channel == "email":
         return [dict(e) for e in emails]
-    short = {**_short_lib(brief), **copy_library.short_library(brief)}[t.role][t.channel]
+    short = {**_short_lib(brief), **copy_library.short_library(brief),
+             **(copy_store.short_library(brief) if store else {})}[t.role][t.channel]
     out = []
     for e, s in zip(emails, short):
         meta = {"framework": e["framework"], "hypothesis": e["hypothesis"]}

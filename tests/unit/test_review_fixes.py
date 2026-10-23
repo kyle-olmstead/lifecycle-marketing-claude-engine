@@ -1,6 +1,8 @@
 """Regression tests for the defects the independent v3 review found, one test per finding."""
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from engine import workspace
@@ -69,3 +71,67 @@ def test_welcome_baseline_counts_new_signups(root, low, high):
     _, p = _plan(root, "a 4-touch welcome series for new signups")
     rate = p.cohort.baseline_conversion_rate.value
     assert rate is not None and low < rate < high, rate
+
+
+# ----------------------------------------------------------------------------------------------
+# Finding 3: a store gets a store's plans and copy
+# ----------------------------------------------------------------------------------------------
+
+SAAS_WORDS = ("workspace", "data source", "setup", "set up", "whoever needs it", "on the same day each week", "your account and data")
+
+
+def test_store_winback_plans_on_orders():
+    b, p = _plan(NORTHFIELD, "a 3-touch win-back")
+    assert (b.qualifying_event.event, b.core_conversion_event.event) == ("order_completed", "order_completed")
+    assert b.churn_threshold_days == 60
+    assert p.qa.status != "BLOCKED"
+
+
+@pytest.mark.parametrize("platform", ["klaviyo", "braze", "iterable"])
+@pytest.mark.parametrize("sentence", ["a 5-touch win-back with sms", "a 4-touch welcome series", "a 4-touch abandoned cart flow",
+                                      "a 3-touch browse abandonment flow", "a 2-touch sunset flow"])
+def test_store_copy_says_nothing_about_software(sentence, platform):
+    _, p = _plan(NORTHFIELD, sentence, platform=platform)
+    words = json.dumps([tc.model_dump() for tc in p.copy_plan]).lower()
+    assert not [w for w in SAAS_WORDS if w in words]
+
+
+def test_item_flows_show_the_items_in_every_email():
+    for sentence in ("a 4-touch abandoned cart flow", "a 3-touch browse abandonment flow"):
+        _, p = _plan(NORTHFIELD, sentence)
+        for tc in p.copy_plan:
+            if tc.channel == "email":
+                for v in tc.variants:
+                    f = v.fields if hasattr(v, "fields") else v
+                    assert "{product_block}" in json.dumps(f), (sentence, tc.touch_id if hasattr(tc, "touch_id") else tc)
+
+
+@pytest.mark.parametrize("root,sentence,needle", [
+    (NORTHFIELD, "a 3-touch activation flow", "welcome series"),
+    (NORTHFIELD, "a trial conversion flow", "for software"),
+    (DEMO, "an abandoned cart flow", "for stores"),
+    (DEMO, "a 3-touch post-purchase flow", "for stores"),
+])
+def test_flows_that_do_not_fit_the_business_are_refused(root, sentence, needle):
+    with pytest.raises(ValueError, match=needle):
+        _plan(root, sentence)
+
+
+def test_a_store_new_customer_sentence_is_a_welcome_series():
+    b = parse_text("Customers who have not ordered yet after signing up: 3 emails",
+                   defaults=workspace.brief_defaults(workspace.Workspace(NORTHFIELD)))
+    assert (b.flow_type, b.core_conversion_event.event) == ("welcome", "order_completed")
+
+
+def test_store_retention_is_monthly_on_orders():
+    from engine.agents import retention
+    r = retention.curve(str(NORTHFIELD / "data"))
+    assert (r["unit"], r["core_action"]) == ("month", "placed an order")
+    assert r["segments"]["all"]["points"][0]["rate"] > 0.1
+
+
+def test_store_priorities_never_propose_software_flows(tmp_path):
+    from engine.agents import priorities
+    r = priorities.run(str(NORTHFIELD / "data"), out=tmp_path)
+    text = json.dumps(r, default=str)
+    assert "Win-back" in text and "Activation" not in text and "created a report" not in text

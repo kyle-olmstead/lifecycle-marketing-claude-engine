@@ -1,16 +1,16 @@
 # Abandoned cart: Northfield Coffee Roasters
 
-**Status: READY WITH ASSUMPTIONS** | Klaviyo | generated 2026-10-22T23:46:39+00:00 | run d38d3952993b | LMM Engine 3.0.0
+**Status: READY WITH ASSUMPTIONS** | Klaviyo | generated 2026-10-23T00:51:41+00:00 | run cae8d56179e8 | LMM Engine 3.0.0
 
 ## In one paragraph
 
-People who started checkout and did not place an order within 1 hour(s). They enter then, at most once every P7D, and leave the moment they place an order. The flow sends up to 3 message(s) over 3 days (email, sms), starts with a 10% holdout that receives nothing, and stops the moment they place an order. About 351 people a month (ESTIMATE) would enter; 31.3% get there within 10 days on their own (ESTIMATE). Read: directional only. AMBER gate: people active in the last day, no volume growth (no sending gate on record, so the plan runs as AMBER. Run the deliverability check (lcm "check deliverability for <your domain>") to lift this).
+People who started checkout and did not place an order within 1 hour(s). They enter then, at most once every P7D, and leave the moment they place an order. The flow sends up to 3 message(s) over 3 days (email, sms), starts with a 10% holdout that receives nothing, and stops the moment they place an order. About 351 people a month (DEMO DATA) would enter; 31.3% get there within 10 days on their own (DEMO DATA). Read: directional only. AMBER gate: people active in the last day, no volume growth (no sending gate on record, so the plan runs as AMBER. Run the deliverability check (lcm "check deliverability for <your domain>") to lift this).
 
 ## Confirm before you build
 
 - **sending_gate**: no sending gate on record; treated as AMBER (engaged recipients only) until the deliverability-gate skill or engine/deliverability/analyze.py issues one
-- **monthly_entrants**: estimated from the data (ESTIMATE): 351 a month, mean abandoned checkouts over 3 complete month(s) to 2026-09
-- **baseline_conversion_rate**: estimated from the data (ESTIMATE): 31.3%, 551 of 1759 matured abandoned checkouts ordered anyway within 10 days with no flow
+- **monthly_entrants**: estimated from the data (DEMO DATA): 351 a month, mean abandoned checkouts over 3 complete month(s) to 2026-09
+- **baseline_conversion_rate**: estimated from the data (DEMO DATA): 31.3%, 551 of 1759 matured abandoned checkouts ordered anyway within 10 days with no flow
 - **outcome_window_days**: not stated; set to 10 days so the whole flow (last touch on day 3) plus a week is inside it
 - **sending gate**: AMBER gate: people active in the last day, no volume growth (no sending gate on record, so the plan runs as AMBER. Run the deliverability check (lcm "check deliverability for <your domain>") to lift this)
 - **holdout read**: directional only: not inside 12 months at this volume (it would take about 15 months): keep the holdout, report against a pre/post baseline, and label every result directional
@@ -43,8 +43,8 @@ People who started checkout and did not place an order within 1 hour(s). They en
 | Never enters | no consent for any channel in the flow; on the platform's suppression list; internal or test account |
 | Exit | leaves the moment they place an order |
 | Trigger | checkout_started: Metric-triggered flow on Started Checkout (Shopify's own event, or checkout_started sent by the engine). First step: a time delay of 1 hour(s). Flow filter: Placed Order zero times since starting this flow. Re-entry: once per 7 days (flow settings, or a filter 'has not been in this flow in the last 7 days'). |
-| Monthly entrants | 351 (ESTIMATE: mean abandoned checkouts over 3 complete month(s) to 2026-09) |
-| Reach the core action with no flow | 31.3% (ESTIMATE: 551 of 1759 matured abandoned checkouts ordered anyway within 10 days with no flow) |
+| Monthly entrants | 351 (DEMO DATA: mean abandoned checkouts over 3 complete month(s) to 2026-09) |
+| Reach the core action with no flow | 31.3% (DEMO DATA: 551 of 1759 matured abandoned checkouts ordered anyway within 10 days with no flow) |
 | Entering on 2026-10-18 | 14 |
 
 | Data dependency | Kind | Status | Fill | Note |
@@ -152,7 +152,7 @@ Files: `copy/t3_email_A.html`, `copy/t3_email_A.mjml`, `copy/t3_email_A.subject.
 |---|---|
 | Holdout | 10%, user level, persistent: persistent, by user: bucket = first 7 hex digits of md5(user_id || ':northfield_coffee_cart_abandon_1h') mod 100; bucket < 10 is the holdout, added as in_holdout to the live checkout_started event by the system that sends it; holdout members enter, then exit at holdout_split, so both arms are the same population |
 | Primary metric | placed an order (order_completed) within 10 days of entry, treatment vs holdout, both arms counted from their entry date |
-| Sizing | about 351 entrants a month (ESTIMATE), 31.3% return within 10 days with no flow (ESTIMATE), 20% relative lift (6.3 pts) worth acting on: 508 holdout entrants at 10%, 14.5 months of entries plus the 10-day outcome window, so the read lands about 14.8 months after launch (engine/measurement/stats.py feasible --entries-per-month 350.7 --holdout 0.1 --baseline 0.3132 --mde-rel 0.2 --outcome-window-days 10) |
+| Sizing | about 351 entrants a month (DEMO DATA), 31.3% return within 10 days with no flow (DEMO DATA), 20% relative lift (6.3 pts) worth acting on: 508 holdout entrants at 10%, 14.5 months of entries plus the 10-day outcome window, so the read lands about 14.8 months after launch (engine/measurement/stats.py feasible --entries-per-month 350.7 --holdout 0.1 --baseline 0.3132 --mde-rel 0.2 --outcome-window-days 10) |
 | Read | directional only: not inside 12 months at this volume (it would take about 15 months): keep the holdout, report against a pre/post baseline, and label every result directional |
 | Decision rule | Keep the flow when the 95% interval for (treatment minus holdout) rate of order_completed lies above zero and the guardrails hold. If it spans zero at the planned read, report it as inconclusive: keep the holdout running or change the flow. Report attributed, incremental and the gap together (lcm readout). |
 | Sample ratio | At every look, test the split against 90/10 (lcm readout --expected-holdout 0.1). A chi-square p below 0.001 means assignment or logging is broken; read nothing until it is fixed. |

@@ -23,7 +23,7 @@ The starter texts the offline library writes, rendered and counted the way QA co
 | Flow | Touch | Text as sent (preview, with a shortened link) | Encoding | Segments |
 |---|---|---|---|---:|
 | cart_abandon | t2_sms A | Acme: Questions about shipping or returns? Reply here and we will answer. https://ex.co/a1B2c3d Reply STOP to opt out. | GSM-7 | 1 |
-| cart_abandon | t2_sms B | Acme: Your cart is saved. Shipping and returns answers are on our site. https://ex.co/a1B2c3d Reply STOP to opt out. | GSM-7 | 1 |
+| cart_abandon | t2_sms B | Acme: Not sure it is the right one? Reply with your question and a person will answer. https://ex.co/a1B2c3d Reply STOP to opt out. | GSM-7 | 1 |
 | winback | t4_sms A | Acme: People who stay with Acme use the core feature on the same day each week. Start yours. https://ex.co/a1B2c3d Reply STOP to opt out. | GSM-7 | 1 |
 | winback | t4_sms B | Acme: Ten minutes a week keeps Acme working for you. https://ex.co/a1B2c3d Reply STOP to opt out. | GSM-7 | 1 |
 | activation | t5_sms A | Acme: Still want to try Acme? Your first step: use reports. https://ex.co/a1B2c3d Reply STOP to opt out. | GSM-7 | 1 |

@@ -1,6 +1,6 @@
 {
-  "run_id": "d38d3952993b",
-  "generated_at": "2026-10-22T23:46:39+00:00",
+  "run_id": "cae8d56179e8",
+  "generated_at": "2026-10-23T00:51:41+00:00",
   "engine_version": "3.0.0",
   "brief": {
     "product_name": "Northfield Coffee Roasters",
@@ -130,12 +130,12 @@
       {
         "field": "monthly_entrants",
         "value": 350.7,
-        "why": "estimated from the data (ESTIMATE): 351 a month, mean abandoned checkouts over 3 complete month(s) to 2026-09"
+        "why": "estimated from the data (DEMO DATA): 351 a month, mean abandoned checkouts over 3 complete month(s) to 2026-09"
       },
       {
         "field": "baseline_conversion_rate",
         "value": 0.3132,
-        "why": "estimated from the data (ESTIMATE): 31.3%, 551 of 1759 matured abandoned checkouts ordered anyway within 10 days with no flow"
+        "why": "estimated from the data (DEMO DATA): 31.3%, 551 of 1759 matured abandoned checkouts ordered anyway within 10 days with no flow"
       },
       {
         "field": "outcome_window_days",
@@ -189,7 +189,7 @@
       "history postgres": "parses",
       "history snowflake": "parses",
       "history bigquery": "parses",
-      "entry duckdb": "ran on live pull: 14 entrant(s) on 2026-10-18"
+      "entry duckdb": "ran on demo data: 14 entrant(s) on 2026-10-18"
     },
     "data_dependencies": [
       {
@@ -244,12 +244,12 @@
     ],
     "monthly_entrants": {
       "value": 350.7,
-      "label": "ESTIMATE",
+      "label": "DEMO DATA",
       "basis": "mean abandoned checkouts over 3 complete month(s) to 2026-09"
     },
     "baseline_conversion_rate": {
       "value": 0.3132,
-      "label": "ESTIMATE",
+      "label": "DEMO DATA",
       "basis": "551 of 1759 matured abandoned checkouts ordered anyway within 10 days with no flow"
     },
     "entrants_on_as_of": 14,
@@ -343,7 +343,7 @@
         "persistent": true,
         "unit": "user",
         "assignment": "persistent, by user: bucket = first 7 hex digits of md5(user_id || ':northfield_coffee_cart_abandon_1h') mod 100; bucket < 10 is the holdout, added as in_holdout to the live checkout_started event by the system that sends it; holdout members enter, then exit at holdout_split, so both arms are the same population",
-        "sizing": "about 351 entrants a month (ESTIMATE), 31.3% return within 10 days with no flow (ESTIMATE), 20% relative lift (6.3 pts) worth acting on: 508 holdout entrants at 10%, 14.5 months of entries plus the 10-day outcome window, so the read lands about 14.8 months after launch (engine/measurement/stats.py feasible --entries-per-month 350.7 --holdout 0.1 --baseline 0.3132 --mde-rel 0.2 --outcome-window-days 10)",
+        "sizing": "about 351 entrants a month (DEMO DATA), 31.3% return within 10 days with no flow (DEMO DATA), 20% relative lift (6.3 pts) worth acting on: 508 holdout entrants at 10%, 14.5 months of entries plus the 10-day outcome window, so the read lands about 14.8 months after launch (engine/measurement/stats.py feasible --entries-per-month 350.7 --holdout 0.1 --baseline 0.3132 --mde-rel 0.2 --outcome-window-days 10)",
         "read": "directional only"
       },
       "frequency": {
@@ -882,7 +882,7 @@
     "primary_metric": "placed an order (order_completed) within 10 days of entry, treatment vs holdout, both arms counted from their entry date",
     "outcome_window_days": 10,
     "read": "directional only",
-    "sizing": "about 351 entrants a month (ESTIMATE), 31.3% return within 10 days with no flow (ESTIMATE), 20% relative lift (6.3 pts) worth acting on: 508 holdout entrants at 10%, 14.5 months of entries plus the 10-day outcome window, so the read lands about 14.8 months after launch (engine/measurement/stats.py feasible --entries-per-month 350.7 --holdout 0.1 --baseline 0.3132 --mde-rel 0.2 --outcome-window-days 10)",
+    "sizing": "about 351 entrants a month (DEMO DATA), 31.3% return within 10 days with no flow (DEMO DATA), 20% relative lift (6.3 pts) worth acting on: 508 holdout entrants at 10%, 14.5 months of entries plus the 10-day outcome window, so the read lands about 14.8 months after launch (engine/measurement/stats.py feasible --entries-per-month 350.7 --holdout 0.1 --baseline 0.3132 --mde-rel 0.2 --outcome-window-days 10)",
     "read_after": "not inside 12 months at this volume (it would take about 15 months): keep the holdout, report against a pre/post baseline, and label every result directional",
     "feasibility": {
       "entries_per_month": 350.7,

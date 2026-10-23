@@ -115,15 +115,17 @@ def email_library(brief: Brief) -> Dict[str, List[Dict[str, Any]]]:
              "headline": "Before you decide",
              "paragraphs": ["Hi {first_name}, people usually stop at checkout for one of three reasons: the shipping cost, when it will "
                             "arrive, or what happens if it is not right.",
-                            "The answers to all three are one click away. Your cart is saved below.", "{product_block}"],
-             "cta_label": "See the answers", "framework": "Objection handling: the specific answer, not reassurance",
+                            "If it is one of those, reply with your question and a person will answer before you decide. Your cart is "
+                            "saved below.", "{product_block}"],
+             "cta_label": "Return to my cart", "framework": "Objection handling: the specific answer, not reassurance",
              "hypothesis": "Answering checkout objections recovers more carts than a second reminder; falsified if B recovers as many or more."},
-            {"subject": "What people who bought these say", "preheader": "About the items in your cart",
+            {"subject": "Not sure it is the right one?", "preheader": "Ask us before you decide",
              "headline": "Still deciding?",
-             "paragraphs": ["Hi {first_name}, if you are weighing whether {item_name} is right for you, the reviews from people who bought "
-                            "it are the fastest way to decide.", "{product_block}"],
-             "cta_label": "Read the reviews", "framework": "Social proof at the point of doubt",
-             "hypothesis": "Pointing to reviews raises recovered orders among hesitant shoppers; falsified if A recovers as many or more."},
+             "paragraphs": ["Hi {first_name}, if you are not sure whether {item_name} is right for you, reply with your question. A person "
+                            "who knows the products will answer.", "If you are already sure, your cart is saved below.", "{product_block}"],
+             "cta_label": "Return to my cart", "framework": "Objection discovery by reply",
+             "hypothesis": "Inviting the specific question recovers more hesitant shoppers than a general answer; falsified if A recovers "
+                           "as many or more."},
         ],
         "cart_last_call": [
             {"subject": "Your cart is still saved", "preheader": "One last reminder from us",
@@ -135,7 +137,7 @@ def email_library(brief: Brief) -> Dict[str, List[Dict[str, Any]]]:
                            "this send's unsubscribe rate exceeds the flow average."},
             {"subject": "Should we keep your cart?", "preheader": "Just checking",
              "headline": "Keep it or let it go?",
-             "paragraphs": ["Hi {first_name}, your cart is still here, with {item_name} in it.",
+             "paragraphs": ["Hi {first_name}, your cart is still here, with {item_name} in it.", "{product_block}",
                             "If you still want it, the button below takes you straight to checkout. If not, simply ignore this email."],
              "cta_label": "Keep my cart", "framework": "Permission framing",
              "hypothesis": "Asking whether to keep the cart lowers unsubscribes versus a reminder at equal recovery; falsified if B's "
@@ -160,8 +162,9 @@ def email_library(brief: Brief) -> Dict[str, List[Dict[str, Any]]]:
             {"subject": "A few options to compare", "preheader": "Side by side",
              "headline": "Compare before you choose",
              "paragraphs": ["Hi {first_name}, people who look at {item_name} often compare it with a couple of others.",
-                            "We put them side by side on one page, so you can choose in a minute."],
-             "cta_label": "Compare them", "framework": "Comparison that ends in a recommendation",
+                            "If you are choosing between it and something else, reply with both and a person will tell you the difference.",
+                            "{product_block}"],
+             "cta_label": "Take another look", "framework": "Comparison that ends in a recommendation",
              "hypothesis": "A side-by-side comparison raises orders among undecided viewers; falsified if B converts as well or better."},
             {"subject": "Most people choose this one", "preheader": "And here is why",
              "headline": "The usual choice",
@@ -441,7 +444,7 @@ def short_library(brief: Brief) -> Dict[str, Dict[str, List[Any]]]:
     do = base_form(core.label or core.event.replace("_", " "))
     Do = do[:1].upper() + do[1:]
     generic = lambda title, body, cta: {  # noqa: E731
-        "sms": [f"{body} {{product_name}}.", f"{title}: {body}"],
+        "sms": [f"{body}.", f"{title}: {body}."],
         "push": [(title, body), (title, body)],
         "in_app": [(title, body, cta), (title, body, cta)]}
     return {
@@ -454,14 +457,14 @@ def short_library(brief: Brief) -> Dict[str, Dict[str, List[Any]]]:
                           "in_app": [("Your cart is saved", "Pick up right where you stopped.", "View cart"),
                                      ("Still deciding?", "Your cart is waiting for you.", "View cart")]},
         "cart_objection": {"sms": ["Questions about shipping or returns? Reply here and we will answer.",
-                                   "Your cart is saved. Shipping and returns answers are on our site."],
-                           "push": [("Questions about your order?", "Shipping, delivery and returns, answered."),
-                                    ("Before you decide", "Read what people who bought it say.")],
-                           "in_app": [("Questions about your order?", "Shipping, delivery and returns, answered.", "See answers"),
-                                      ("Before you decide", "Read what people who bought it say.", "Read reviews")]},
+                                   "Not sure it is the right one? Reply with your question and a person will answer."],
+                           "push": [("Questions about your order?", "Reply to our email and a person will answer."),
+                                    ("Not sure it is the right one?", "Ask us before you decide.")],
+                           "in_app": [("Questions about your order?", "Ask about shipping, delivery or returns.", "Ask us"),
+                                      ("Not sure it is the right one?", "Ask us before you decide. Your cart is saved.", "View cart")]},
         "cart_last_call": generic("Your cart is still saved", "Last reminder about your cart", "Complete order"),
         "browse_reminder": generic("Take another look", "Here is what you were looking at", "See it"),
-        "browse_alternatives": generic("Compare your options", "A few picks people compare side by side", "Compare"),
+        "browse_alternatives": generic("Choosing between two?", "Reply with both and we will tell you the difference", "Take a look"),
         "order_thanks": generic("Thank you", "Thanks for your first order. We will tell you when it ships", "View order"),
         "how_to_use": generic("One tip for your order", "The tip people say made the biggest difference", "See the tip"),
         "review_request": generic("How did we do?", "A short review helps the next customer decide", "Review"),

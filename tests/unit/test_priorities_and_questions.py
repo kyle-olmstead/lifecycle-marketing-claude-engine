@@ -33,7 +33,7 @@ def test_fixes_come_first_and_builds_are_ranked_by_score(ranked):
     assert kinds == sorted(kinds, key=lambda k: k != "fix")             # every fix before every build
     assert r["top"][0].title.startswith("Sunset the unengaged")         # the fixtures' list is RED
     scores = [o.score for o in r["top"] + r["others"] if o.kind == "build"]
-    assert scores == sorted(scores, reverse=True) and len(scores) >= 3
+    assert scores == sorted(scores, reverse=True) and len(scores) >= 2   # software: a win-back and an activation build
 
 
 def test_every_build_is_sized_from_measured_inputs_and_shows_its_assumptions(ranked):
@@ -75,13 +75,13 @@ def test_a_red_domain_is_a_fix_that_outranks_everything():
 
 def test_priorities_reach_the_daily_summary_and_sheet(tmp_path):
     st = daily.run("demo", briefs_dir=tmp_path / "none", out=tmp_path / "out", dry_run=True)
-    assert st["priorities"]["status"] == "ok" and len(st["priorities"]["top"]) == 4      # the fix, then three builds
+    assert st["priorities"]["status"] == "ok" and len(st["priorities"]["top"]) == 3      # the fix, then two builds
     summary = (tmp_path / "out" / "summary.md").read_text()
     assert summary.index("Today's priorities") < summary.index("Engagement tiers")
-    assert "### Fix first: Sunset the unengaged" in summary and "### 3. " in summary
+    assert "### Fix first: Sunset the unengaged" in summary and "### 2. " in summary
     assert "## Tracking health" in summary and st["tracking"]["status"] == "ok"
     rows = (tmp_path / "out" / "sheets" / "priorities.csv").read_text().splitlines()
-    assert rows[0].startswith("as_of,rank,kind,title") and len(rows) == 5
+    assert rows[0].startswith("as_of,rank,kind,title") and len(rows) == 4
     assert set(sheets_sync.TABS["Priorities"]["header"]) >= {"rank", "title", "why", "next_step"}
 
 

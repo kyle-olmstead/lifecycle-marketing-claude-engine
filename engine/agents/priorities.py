@@ -100,11 +100,22 @@ def _variant(base: Brief, flow_type: str, gate: str = "UNKNOWN") -> Optional[Bri
     for k in ("monthly_entrants", "baseline_conversion_rate", "outcome_window_days"):
         data[k] = None
     core = base.core_conversion_event
+    from engine.flows.library import FLOWS, _family
+    store = _family(base.business_model) == "ecommerce"
     if flow_type == "activation":
         data.update(qualifying_event=EventMatch(event="signed_up", label="signed up").model_dump(), touches=3,
                     churn_threshold_days=max(7, min(base.churn_threshold_days, 14)))
         if core.event == "signed_up":
             return None
+    elif flow_type == "welcome":       # a store's new people: signed up, then the first order
+        fd = FLOWS["welcome"]
+        data.update(qualifying_event=EventMatch(event="signed_up", label="signed up").model_dump(), touches=4,
+                    core_conversion_event=EventMatch(event=fd.goal_for(base.business_model), label="placed a first order").model_dump())
+    elif store:                        # a store's lapse: no order since the last one
+        from engine.brief import STORE_LAPSE_DAYS
+        order = EventMatch(event="order_completed", label="placed an order").model_dump()
+        data.update(qualifying_event=order, core_conversion_event=order, touches=5,
+                    churn_threshold_days=base.churn_threshold_days if base.flow_type == "winback" else STORE_LAPSE_DAYS)
     else:
         q = base.qualifying_event if base.flow_type == "winback" else EventMatch(event="activation_reached", label="reached activation")
         if (q.event, q.where) == (core.event, core.where):
@@ -186,8 +197,10 @@ def _build_candidates(briefs: List[Brief], live: List[Brief], data: str, as_of: 
         did = core.label or core.describe()
         # two core actions for one product would give two briefs the same slug: name each by its core action
         suffix = f"_{_core_slug(core)}" if len(cores_by_product[base.product_name]) > 1 else ""
-        for flow_type in ("activation", "winback"):
-            if flow_type in live_types:
+        from engine.flows.library import _family
+        new_flow = "welcome" if _family(base.business_model) == "ecommerce" else "activation"
+        for flow_type in (new_flow, "winback"):
+            if flow_type in live_types or (flow_type == "welcome" and "welcome" in {b.flow_type for b in live}):
                 continue
             b = _variant(base, flow_type, gate)
             if b is None:
@@ -201,7 +214,13 @@ def _build_candidates(briefs: List[Brief], live: List[Brief], data: str, as_of: 
             people, baseline = me.value, br.value
             if not people:
                 continue
-            if flow_type == "activation":
+            if flow_type == "welcome":
+                title = "Welcome series: turn new subscribers into first orders"
+                why = [f"{people:,.0f} people sign up each month ({me.label}); only {baseline:.1%} place a first order within "
+                       f"{window} days on their own ({br.label})" if baseline is not None else
+                       f"{people:,.0f} people sign up each month ({me.label})"]
+                effort, effort_why = "S", "4 emails: welcome, best sellers, social proof, a first-order nudge"
+            elif flow_type == "activation":
                 title = f"Activation flow: get new signups to {core.do}" + (f", aimed at {cohort.leak.split(' (')[0]}" if cohort.leak else "")
                 why = [f"{people:,.0f} people sign up each month ({me.label}); only {baseline:.1%} {did} within "
                        f"{window} days on their own ({br.label})" if baseline is not None else
@@ -210,11 +229,12 @@ def _build_candidates(briefs: List[Brief], live: List[Brief], data: str, as_of: 
                     why.append(f"the largest drop in onboarding: {cohort.leak} ({me.label})")
                 effort, effort_why = "M", "3 touches, email and in-app"
             else:
+                did = b.core_conversion_event.label or did
                 title = f"Win-back: bring back people {b.churn_threshold_days} days after they last {did}"
                 why = [f"{people:,.0f} people a month reach {b.churn_threshold_days} days since they last {did} ({me.label}); "
                        f"{baseline:.1%} come back within {window} days with nothing sent ({br.label})" if baseline is not None else
                        f"{people:,.0f} people a month lapse ({me.label})"]
-                effort, effort_why = "M", "5 touches, email and in-app, ending with re-permission"
+                effort, effort_why = "M", "5 touches ending with re-permission" + (", email and in-app" if "in_app" in b.channels else "")
                 why += _blast_evidence(b, data, as_of)
             why.append("no live flow in briefs/active/ catches them")
             o = Opportunity(key=f"{b.slug}{suffix}", kind="build", title=title, why=why, effort=effort, effort_why=effort_why)
@@ -264,7 +284,7 @@ def _repeat_purchase(con, as_of: date, data_label: str, lift_low: float, lift_hi
     o.measurable = _measurable(people, baseline, lift_high, window)
     o.confirm = ["a second order is the goal (not a subscription renewal or an upgrade)",
                  f"the lift range ({lift_low:.0%} to {lift_high:.0%} relative) is an assumption, not a measurement"]
-    o.next_step = 'ask Claude: "plan a 3-touch post-purchase flow that turns first orders into second orders" (lifecycle-flows)'
+    o.next_step = 'lcm plan --text "a 3-touch post-purchase flow that turns first orders into second orders"'
     return o
 
 
@@ -403,7 +423,7 @@ def run(data: str, briefs: Optional[List[Brief]] = None, live: Optional[List[Bri
     from engine.brief import load_brief
     if live is None:
         from engine import workspace
-        live = [load_brief(p) for p in sorted(workspace.find().active_briefs.glob("*.yaml"))]
+        live = [load_brief(p) for p in sorted(workspace.for_data(data).active_briefs.glob("*.yaml"))]
     briefs = list(briefs or []) + [b for b in live if b not in (briefs or [])]
     if not briefs:
         from engine.paths import DEMO_BRIEF
@@ -450,9 +470,16 @@ def run(data: str, briefs: Optional[List[Brief]] = None, live: Optional[List[Bri
         notes.append("no sending domain was checked today (set LCM_DOMAINS or pass --domain), so a domain problem would not show here")
     gate = todays_gate(engagement, deliverability)
     builds = _build_candidates(briefs, live, data, as_of_date.isoformat(), value, value_label, lift_low, lift_high, out, gate)
-    on_orders = sorted({b.slug for b in briefs if b.core_conversion_event.event == "order_completed"})
+    from engine.flows.library import _family
+    store = any(_family(b.business_model) == "ecommerce" for b in briefs)
+    # flows that start from a completed order already reach first-time buyers; a cart or welcome flow ends at one instead
+    on_orders = sorted({b.slug for b in briefs if b.qualifying_event.event == "order_completed"
+                        and b.flow_type in ("winback", "post_purchase", "replenishment")})
     if on_orders:
-        notes.append(f"no separate post-purchase build: {', '.join(on_orders)} already works on completed orders and would reach the same buyers")
+        notes.append(f"no separate post-purchase build: {', '.join(on_orders)} already starts from completed orders and would reach "
+                     f"the same buyers")
+    elif not store:
+        pass                                   # a post-purchase flow is a store's (docs/FLOW_LIBRARY.md, the Models column)
     else:
         repeat = _repeat_purchase(con, as_of_date, cohort_analyst.data_label(data), lift_low, lift_high,
                                   supplied=value if value_label == "SUPPLIED" else None)
