@@ -261,3 +261,54 @@ def test_a_cap_in_the_sentence_is_read_as_a_cap(sentence, flow, touches, cap):
 def test_cap_text_reads_each_item_and_period(text, caps):
     from engine.policy.contracts import parse_cap_text
     assert [(c.channels, c.max, c.window) for c in parse_cap_text(text)] == caps
+
+
+# ----------------------------------------------------------------------------------------------
+# Finding 9: sentence commands work inside the workspace
+# ----------------------------------------------------------------------------------------------
+
+def test_a_sentence_plan_writes_to_runs_and_uses_the_workspace_data(tmp_path, monkeypatch):
+    import shutil
+    from engine.cli import main as cli
+    ws = tmp_path / "nf"
+    shutil.copytree(NORTHFIELD, ws, ignore=shutil.ignore_patterns("runs", "out"))
+    monkeypatch.chdir(ws)
+    monkeypatch.delenv("LCM_WORKSPACE", raising=False)
+    job = cli.route("plan a 2-touch browse abandonment flow", {"copy_mode": "offline"})
+    assert job.args["out"] == str(ws / "runs") and job.args["data"] == str(ws / "data")
+    assert cli.run(job) == 0
+    assert (ws / "runs" / "northfield_coffee_browse_abandon_2h" / "plan.md").exists() and not (ws / "out").exists()
+    assert "ESTIMATE" in (ws / "runs" / "northfield_coffee_browse_abandon_2h" / "plan.md").read_text()
+    newest = cli.newest_run()
+    assert newest and "browse_abandon" in newest
+    revise = cli.route("make it 3 touches", {})
+    assert revise.args["run"] == newest and revise.args["changes"] == {"touches": 3}
+
+
+def test_plan_text_without_data_uses_the_workspace_data(tmp_path, monkeypatch):
+    import shutil
+    from engine.pipeline import orchestrator as orch
+    ws = tmp_path / "nf"
+    shutil.copytree(NORTHFIELD, ws, ignore=shutil.ignore_patterns("runs", "out"))
+    monkeypatch.chdir(ws)
+    monkeypatch.delenv("LCM_WORKSPACE", raising=False)
+    assert orch._cli(["plan", "--text", "a 2-touch abandoned cart flow", "--copy-mode", "offline"]) in (0, 3)
+    assert "ESTIMATE" in (ws / "runs" / "northfield_coffee_cart_abandon_1h" / "plan.md").read_text()
+
+
+def test_lmm_yaml_data_names_the_folder(tmp_path):
+    (tmp_path / "lmm.yaml").write_text("brand: {name: Acme}\ndata: exports/current\n")
+    (tmp_path / "exports" / "current").mkdir(parents=True)
+    (tmp_path / "exports" / "current" / "users.csv").write_text("user_id\nu1\n")
+    w = workspace.Workspace(tmp_path)
+    assert w.data_dir == tmp_path / "exports" / "current" and w.data() == str(tmp_path / "exports" / "current")
+
+
+@pytest.mark.parametrize("question,kind", [
+    ("how many people are in the win-back flow right now?", "audit"),
+    ("how much revenue did the cart flow drive?", "readout"),
+    ("how many people do I need for a 20% lift on a 10% baseline?", "size"),
+])
+def test_marketer_questions_route_to_the_job_that_answers_them(question, kind):
+    from engine.cli.main import classify
+    assert classify(question) == kind

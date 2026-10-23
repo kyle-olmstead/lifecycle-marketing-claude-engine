@@ -39,7 +39,31 @@ class Workspace:
 
     @property
     def data_dir(self) -> Path:
-        return self.root / "data"
+        """lmm.yaml's data: folder (relative to the workspace, or absolute), else data/."""
+        try:
+            named = self.config().get("data")
+        except (ValueError, OSError, yaml.YAMLError):
+            named = None
+        if not named or not isinstance(named, str) or "://" in named:
+            return self.root / "data"
+        path = Path(named).expanduser()
+        return path if path.is_absolute() else self.root / path
+
+    def data(self) -> Optional[str]:
+        """The data a command uses when none is given: lmm.yaml's data: (a folder holding exports, or a URL prefix), for a
+        real workspace only. None outside a workspace, so the demo's data is never used without asking."""
+        if self.fallback:
+            return None
+        try:
+            named = self.config().get("data")
+        except (ValueError, OSError, yaml.YAMLError):
+            named = None
+        if isinstance(named, str) and "://" in named:
+            return named
+        d = self.data_dir
+        if d.is_dir() and any(f.suffix in (".csv", ".parquet", ".json", ".jsonl") for f in d.rglob("*")):
+            return str(d)
+        return None
 
     @property
     def active_briefs(self) -> Path:

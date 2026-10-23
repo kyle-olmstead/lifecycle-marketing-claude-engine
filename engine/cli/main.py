@@ -65,10 +65,14 @@ INTENTS = (
     ("engagement", r"engagement tier|unengaged|sunset|suppress|re-?permission list|inactive subscribers|stop (emailing|mailing|sending to)|"
                    r"over-?mail|list (health|hygiene)|healthy is our list|dormant"),
     ("blast", r"blast|newsletter|calendar|batch(?:-and-| and )blast|one-off send|scheduled send"),
-    ("audit", r"\baudit\b|health check|cohort health|anomal|unusual|drop(ping)? off in onboarding|onboarding (drop|leak|funnel)|funnel|\bleak"),
+    ("audit", r"\baudit\b|health check|cohort health|anomal|unusual|drop(ping)? off in onboarding|onboarding (drop|leak|funnel)|funnel|\bleak|"
+              r"how many (people|users|customers|subscribers|contacts) (are|is) (in|entering|due|qualifying|eligible)|"
+              r"(who|how many)( people)? (is|are) (due|entering|eligible) (today|now|for)|\bright now\b.*\b(flow|win-?back|series|cart)|"
+              r"\b(flow|win-?back|series|cart)\b.*\bright now\b"),
     ("size", r"sample size|how many (people|users|entrants)|power|minimum detectable|\bmde\b|how long .*holdout|holdout (size|share)|"
              r"how (big|large) .*holdout"),
-    ("readout", r"read ?out|results?\b|incremental|attributed|did (it|the [\w -]*?(flow|campaign|test)) (actually |really )?work|holdout (results?|read|lift)|lift we got|"
+    ("readout", r"read ?out|results?\b|incremental|attributed|how much (revenue|money|sales|lift)\b.*\b(did|has|have|drive|drove|driven|"
+                r"generat\w*|bring|brought|make|made|add|added)\b|(revenue|sales) .*\b(drive|drove|driven|generated|brought in)\b|did (it|the [\w -]*?(flow|campaign|test)) (actually |really )?work|holdout (results?|read|lift)|lift we got|"
                 r"ready to call|call (the|this|my) test|significan|actually add|platform credits|credited|underperform|"
                 r"\broi\b (of|on|from) (the|our|my|this)\b"),
     ("roi", r"\broi\b|business case|program worth|engine worth|worth next year"),
@@ -153,7 +157,9 @@ def route(text: str, opts: Dict[str, Any]) -> Job:
             job.missing.append("what to change (for example: make it 4 touches, add SMS, use a 20% holdout, switch to Klaviyo)")
         return job
     if kind == "plan":
-        job.args = {"text": text, "product": a.get("product"), "data": a.get("data"), "copy_mode": a.get("copy_mode", "auto"), "out": a.get("out", "out")}
+        from engine.pipeline.orchestrator import default_out
+        job.args = {"text": text, "product": a.get("product"), "data": a.get("data") or _ws_data(), "copy_mode": a.get("copy_mode", "auto"),
+                    "out": a.get("out") or default_out()}
         if brief:
             job.args = {"brief": brief, **{k: v for k, v in job.args.items() if k != "text"}}
         elif not a.get("product"):
@@ -166,39 +172,46 @@ def route(text: str, opts: Dict[str, Any]) -> Job:
         job.args = {"domain": a.get("domain") or (domains[0] if domains else None), "selectors": a.get("selectors") or (sel.group(1).replace(" ", "") if sel else None),
                     "signals": a.get("signals"), "envelope": a.get("envelope")}
     elif kind in ("audit", "blast"):
-        job.args = {"brief": brief, "data": a.get("data"), "out": a.get("out", "out")}
+        job.args = {"brief": brief, "data": a.get("data") or _ws_data(), "out": a.get("out", "out")}
         if kind == "blast":
             job.args["dates"] = a.get("dates") or ",".join(re.findall(r"\b20\d\d-\d\d-\d\d\b", text)) or None
         if not brief:
             from engine import workspace
             active = sorted(glob.glob(str(workspace.find().active_briefs / "*.yaml")))
+            if len(active) > 1:                     # "the win-back flow": the live brief of the flow the sentence names
+                from engine.brief import flow_type_of
+                named = flow_type_of(text)[0] or ("winback" if re.search(r"win-?back", low) else None)
+                if named:
+                    import yaml as _yaml
+                    hits = [p for p in active if (_yaml.safe_load(Path(p).read_text(encoding="utf-8")) or {}).get("flow_type", "winback") == named]
+                    active = hits or active
             if len(active) == 1:
                 job.args["brief"] = active[0]
             else:
                 job.missing.append("--brief (which flow's cohort)" + (f"; active briefs: {', '.join(Path(p).name for p in active)}" if active else ""))
     elif kind == "daily":
-        job.args = {"data": a.get("data"), "domains": a.get("domain") or os.environ.get("LCM_DOMAINS") or None, "out": a.get("out", "out")}
+        job.args = {"data": a.get("data") or _ws_data(), "domains": a.get("domain") or os.environ.get("LCM_DOMAINS") or None, "out": a.get("out", "out")}
     elif kind == "tracking":
-        job.args = {"data": a.get("data"), "events_dir": a.get("events_dir") or os.environ.get("LCM_EVENTS_DIR"), "out": a.get("out", "out")}
+        job.args = {"data": a.get("data") or _ws_data(), "events_dir": a.get("events_dir") or os.environ.get("LCM_EVENTS_DIR"), "out": a.get("out", "out")}
     elif kind == "retention":
         by = a.get("by") or next((c for c, pat in (("country", r"countr|region|\bgeo"), ("lifecycle_stage", r"lifecycle stage"),
                                                     ("plan", r"\bplans?\b|tier|enterprise|segment")) if re.search(pat, low)), None)
-        job.args = {"data": a.get("data"), "brief": brief, "by": by, "out": a.get("out", "out")}
+        job.args = {"data": a.get("data") or _ws_data(), "brief": brief, "by": by, "out": a.get("out", "out")}
     elif kind == "roi":
         job.args = {}
     elif kind == "check_data":
         from engine import workspace
         ws = workspace.find()
-        job.args = {"data": a.get("data") or (str(ws.data_dir) if not ws.fallback else None)}
+        job.args = {"data": a.get("data") or ws.data() or (str(ws.data_dir) if not ws.fallback else None)}
     elif kind == "program":
         job.args = {"add": [brief] if brief else []}
     elif kind == "priorities":
         n = re.search(r"\btop\s+(\d+)", low)
-        job.args = {"data": a.get("data"), "brief": a.get("brief"), "top": int(n.group(1)) if n else 3, "value": a.get("value"),
+        job.args = {"data": a.get("data") or _ws_data(), "brief": a.get("brief"), "top": int(n.group(1)) if n else 3, "value": a.get("value"),
                     "domain": a.get("domain"), "out": a.get("out", "out")}
     elif kind == "engagement":
         plat = next((p for p in ("klaviyo", "hubspot", "braze", "customerio", "customer.io") if p in low), None)
-        job.args = {"data": a.get("data"), "platform": a.get("platform") or (plat.replace(".", "") if plat else None), "out": a.get("out", "out")}
+        job.args = {"data": a.get("data") or _ws_data(), "platform": a.get("platform") or (plat.replace(".", "") if plat else None), "out": a.get("out", "out")}
     elif kind == "readout":
         path = a.get("input") or next(iter(JSON_PATH.findall(text)), None)
         job.args = {"input": path}
@@ -211,6 +224,12 @@ def route(text: str, opts: Dict[str, Any]) -> Job:
         job.args = {"baseline": base, "mde_rel": lift, "holdout": hold or 0.15,
                     "entries_per_month": int(entrants.group(1).replace(",", "")) if entrants else None}
     return check(job)
+
+
+def _ws_data() -> Optional[str]:
+    """The workspace's data (lmm.yaml data:), when the command is run inside a workspace that has some."""
+    from engine import workspace
+    return workspace.find().data()
 
 
 def newest_run() -> Optional[str]:

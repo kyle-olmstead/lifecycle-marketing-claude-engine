@@ -229,7 +229,9 @@ def _report(plan: ExecutionPlan, out: Path, run_dir: Optional[Path]) -> None:
     print(f"plan: {out / 'plan.md'}")
     if run_dir:
         print(f"run:  {run_dir}  (this run's own copy: {Path(run_dir) / 'outputs'})")
-        print(f"next: lcm revise --run {run_dir} --set touches=4   |   lcm approve --run {run_dir} --step <step> --variant <id>")
+        b = plan.brief
+        n = b.touches + 1 if b.touches < b.flow.max_touches else b.touches - 1
+        print(f"next: lcm revise --run {run_dir} --set touches={n}   |   lcm approve --run {run_dir} --step <step> --variant <id>")
 
 
 def _value(v: str) -> Any:
@@ -266,7 +268,8 @@ def _cli(argv: Optional[List[str]] = None) -> int:
     pl.add_argument("--product", help="product or brand name, with --text (default: brand.name in lmm.yaml)")
     pl.add_argument("--set", action="append", default=[], metavar="FIELD=VALUE",
                     help="set a brief field, e.g. postal_address=\"1 Main St, Springfield, IL 62701\" or holdout_pct=20 (repeatable)")
-    pl.add_argument("--data", help="folder or URL prefix with users, orders, track_events exports (.csv or .parquet)")
+    pl.add_argument("--data", help="folder or URL prefix with users, orders, track_events exports (.csv or .parquet); default: "
+                                   "the workspace's data: from lmm.yaml, when it holds exports")
     pl.add_argument("--as-of", help="evaluate the cohort on this date (default: the latest complete day in the data)")
     pl.add_argument("--copy-mode", default="auto", choices=["auto", "claude", "handoff", "offline"],
                     help="who writes the copy: auto (Claude when ANTHROPIC_API_KEY is set, else the offline library), claude, "
@@ -356,6 +359,11 @@ def _cli(argv: Optional[List[str]] = None) -> int:
             brief = parse_text(a.text, a.product, changes or None)
         drafts = json.loads(Path(a.drafts).read_text(encoding="utf-8")) if a.drafts else None
         a.out = a.out or default_out()
+        if not a.data:
+            from engine import workspace
+            a.data = workspace.find().data()
+            if a.data:
+                print(f"data: {a.data} (lmm.yaml)", file=sys.stderr)
         r = Run.new(brief, Path(a.out), data=a.data, as_of=a.as_of, copy_mode=a.copy_mode, drafts=drafts)
         plan = r.execute()
     except PipelineError as e:
