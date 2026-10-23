@@ -102,7 +102,7 @@
 
   <constraints>
     <frequency_cap/>                                           <!-- e.g. 1 lifecycle email a day, 3 a week, across all flows -->
-    <quiet_hours/>                                             <!-- in recipient local time, per channel -->
+    <send_windows/>                                            <!-- when each channel may send, recipient local time; lmm.yaml frequency.send_windows is the one code reads -->
     <approvals/>                                               <!-- who must approve copy, offers, or legal language -->
     <do_not_contact/>                                          <!-- suppression lists and segments that never receive marketing -->
   </constraints>

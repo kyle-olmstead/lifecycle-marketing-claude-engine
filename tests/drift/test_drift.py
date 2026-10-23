@@ -52,10 +52,13 @@ def test_every_engine_path_named_exists(path):
     assert not missing, missing
 
 
-@pytest.mark.parametrize("path", PROSE, ids=_rel)
+CONTEXT_XML = sorted((ROOT / "templates").rglob("*.xml")) + sorted((ROOT / "examples").rglob("*.xml"))
+
+
+@pytest.mark.parametrize("path", PROSE + CONTEXT_XML, ids=_rel)
 def test_send_times_are_permitted_windows_not_quiet_hours(path):
     text = path.read_text(encoding="utf-8")
-    assert not re.search(r"quiet hours", text, re.I), "say 'permitted send window' (the engine models allowed_from and allowed_until)"
+    assert not re.search(r"quiet[ _]hours", text, re.I), "say 'permitted send window' (the engine models allowed_from and allowed_until)"
 
 
 def test_the_sms_window_is_stated_the_way_the_rules_file_has_it():
@@ -125,3 +128,37 @@ def test_no_file_carries_a_path_from_the_authors_machine():
 def test_every_test_file_named_exists(path):
     named = set(re.findall(r"\btests/[\w/]+\.py", path.read_text(encoding="utf-8")))
     assert all((ROOT / n).exists() for n in named), sorted(n for n in named if not (ROOT / n).exists())
+
+
+TEMPLATE_FENCES = {"liquid customerio": "customerio", "liquid customerio_legacy": "customerio_legacy", "liquid braze": "braze",
+                   "django klaviyo": "klaviyo", "hubl": "hubl", "ampscript": "ampscript", "handlebars": "handlebars"}
+
+
+@pytest.mark.parametrize("doc", ["docs/LIQUID_CHEATSHEET.md", "prompts/examples/email_writer_five_dialects.md", "prompts/core/syntax_rules.md"])
+def test_every_template_block_in_the_docs_passes_the_linter(doc):
+    """docs/LIQUID_CHEATSHEET.md says every code block on the page passes the linter: hold it to that."""
+    import re
+    from engine.render import template_lint
+    text = (ROOT / doc).read_text(encoding="utf-8")
+    blocks = re.findall(r"^```([^\n`]*)\n(.*?)^```\s*$", text, re.S | re.M)
+    checked = 0
+    for info, body in blocks:
+        dialect = TEMPLATE_FENCES.get(info.strip())
+        if dialect is None:
+            continue
+        errors = template_lint.lint(body, dialect)["errors"]
+        assert not errors, f"{doc}: {info} block: {errors}"
+        checked += 1
+    assert checked or doc != "docs/LIQUID_CHEATSHEET.md"
+
+
+def test_uv_lock_installs_the_versions_ci_verifies():
+    """requirements.txt pins what CI tests; uv.lock is what `uv sync` installs. They name the same versions."""
+    import tomllib
+    lock = {p["name"].lower(): p["version"] for p in tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))["package"]}
+    differ = []
+    for line in (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines():
+        m = re.match(r"([A-Za-z0-9_.-]+)==([\w.]+)", line.strip())
+        if m and lock.get(m.group(1).lower().replace("_", "-")) != m.group(2):
+            differ.append(f"{m.group(1)}: requirements {m.group(2)}, uv.lock {lock.get(m.group(1).lower().replace('_', '-'))}")
+    assert not differ, "align them (uv lock --upgrade-package NAME==VERSION): " + "; ".join(differ)

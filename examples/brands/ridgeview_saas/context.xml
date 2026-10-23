@@ -90,8 +90,8 @@
   </program>
 
   <constraints>
-    <frequency_cap>1 lifecycle email a day and 3 a week across all flows; 1 in-app modal per session</frequency_cap>
-    <quiet_hours>email and push 08:00 to 20:00 recipient local; no SMS until 10DLC registration is approved</quiet_hours>
+    <frequency_cap>3 messages a week across email, SMS and push, across all flows (lmm.yaml); 1 in-app modal per session</frequency_cap>
+    <send_windows>email 08:00 to 21:00, SMS 09:00 to 20:00, push 09:00 to 21:00, recipient local (lmm.yaml); no SMS until 10DLC registration is approved</send_windows>
     <approvals>founder approves any message from a named person</approvals>
     <do_not_contact>customers with an open support escalation</do_not_contact>
   </constraints>

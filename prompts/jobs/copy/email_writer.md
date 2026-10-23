@@ -32,7 +32,7 @@ metric that proves it.
 <sender_identity>{{sender_identity}}</sender_identity>          <!-- person, person at brand, or brand: they read differently -->
 <voice_module>{{voice_module}}</voice_module>                  <!-- binding when present, including its limits on cleverness -->
 <prior_message>{{prior_message}}</prior_message>
-<platform>{{platform}}</platform>                              <!-- customerio | customerio_legacy | braze | klaviyo | hubspot | sfmc -->
+<platform>{{platform}}</platform>                              <!-- customerio | customerio_legacy | braze | klaviyo | hubspot | sfmc | iterable -->
 <available_fields>{{available_fields}}</available_fields>      <!-- attributes and event properties with fill rates; only verified fields get tokens -->
 </inputs>
 
@@ -73,14 +73,14 @@ metric that proves it.
 </execution_protocol>
 
 <dialect_reference>
-| Need | Customer.io (Liquid) | Braze (Liquid) | Klaviyo (Django-style) | HubSpot (HubL) | SFMC (AMPscript) |
-|---|---|---|---|---|---|
-| Custom field | `{{ customer.plan }}` | `{{ custom_attribute.${plan} }}` | `{{ person\|lookup:'Plan' }}` | `{{ contact.plan }}` | `AttributeValue("Plan")` |
-| Trigger event property | `{{ event.plan }}` (event-triggered) or `{{ trigger.plan }}` (API-triggered) | `{{ event_properties.${plan} }}` | `{{ event\|lookup:'plan' }}` | not available in marketing email; use a contact property set by the workflow | data extension field via `AttributeValue` |
-| Conditional | `{% if %}...{% elsif %}...{% endif %}` | same | `{% if %}...{% elif %}...{% endif %}` | `{% if %}...{% elif %}...{% endif %}` | `IF ... THEN ... ELSEIF ... ELSE ... ENDIF` |
-| Loop | `{% for i in event.items limit: 3 %}` | same | `{% for i in event.items\|slice:':3' %}` | `{% for i in list %}` | `FOR @i = 1 TO RowCount(@rows) DO ... NEXT @i` |
-| Unsubscribe | `{% unsubscribe_url %}` | `{{${set_user_to_unsubscribed_url}}}` | `{% unsubscribe %}` | `{{ unsubscribe_link }}` | `%%unsub_center_url%%` |
-| Postal address | literal or a snippet | literal, or `{{${email_footer}}}` | `{{ organization.full_address }}` | `site_settings.company_street_address_1` | `%%member_addr%%` and siblings |
+| Need | Customer.io (Liquid) | Braze (Liquid) | Klaviyo (Django-style) | HubSpot (HubL) | SFMC (AMPscript) | Iterable (Handlebars) |
+|---|---|---|---|---|---|---|
+| Custom field | `{{ customer.plan }}` | `{{ custom_attribute.${plan} }}` | `{{ person\|lookup:'Plan' }}` | `{{ contact.plan }}` | `AttributeValue("Plan")` | `{{plan}}` |
+| Trigger event property | `{{ event.plan }}` (event-triggered) or `{{ trigger.plan }}` (API-triggered) | `{{ event_properties.${plan} }}` | `{{ event\|lookup:'plan' }}` | not available in marketing email; use a contact property set by the workflow | data extension field via `AttributeValue` | `{{plan}}`, in a journey that event triggered |
+| Conditional | `{% if %}...{% elsif %}...{% endif %}` | same | `{% if %}...{% elif %}...{% endif %}` | `{% if %}...{% elif %}...{% endif %}` | `IF ... THEN ... ELSEIF ... ELSE ... ENDIF` | `{{#if plan}}...{{else}}...{{/if}}` |
+| Loop | `{% for i in event.items limit: 3 %}` | same | `{% for i in event.items\|slice:':3' %}` | `{% for i in list %}` | `FOR @i = 1 TO RowCount(@rows) DO ... NEXT @i` | `{{#each items}}...{{/each}}` (no limit: send at most three) |
+| Unsubscribe | `{% unsubscribe_url %}` | `{{${set_user_to_unsubscribed_url}}}` | `{% unsubscribe %}` | `{{ unsubscribe_link }}` | `%%unsub_center_url%%` | `{{unsubscribeUrl}}` |
+| Postal address | literal or a snippet | literal, or `{{${email_footer}}}` | `{{ organization.full_address }}` | `site_settings.company_street_address_1` | `%%member_addr%%` and siblings | `{{physicalAddress}}` |
 
 (Backslashes escape the pipe for Markdown tables; in code it is a plain `|`.) Fallbacks per dialect, including
 legacy Customer.io Liquid: `prompts/core/syntax_rules.md`.
@@ -97,7 +97,7 @@ Conversion goal:    [single action]
 Timing:             [delay from trigger]
 Channel:            email
 From-name:          [name]
-Dialect:            [customerio | braze | klaviyo | hubl | ampscript]
+Dialect:            [customerio | braze | klaviyo | hubl | ampscript | handlebars]
 ```
 
 Then: a variants table (subject, preview text, hypothesis); the body in one fenced block whose info

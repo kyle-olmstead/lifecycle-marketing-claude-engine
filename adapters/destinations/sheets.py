@@ -159,7 +159,10 @@ def _merge(into: Dict[str, List[Dict[str, Any]]], more: Dict[str, List[Dict[str,
 
 def with_retry(fn: Callable[[], Any], attempts: int = 6, sleep: Callable[[float], None] = time.sleep) -> Any:
     """Exponential backoff with jitter on quota (429) and server (5xx) errors from the Sheets API."""
-    from gspread.exceptions import APIError
+    try:
+        from gspread.exceptions import APIError
+    except ImportError:          # no Sheets client installed (the sheets extra): nothing here can raise its API error
+        APIError = ()            # noqa: N806
     for i in range(attempts):
         try:
             return fn()
@@ -236,7 +239,10 @@ def open_sheet(sheet_id: str) -> Any:
 
 
 def worksheet(sh: Any, title: str, cols: int) -> Any:
-    from gspread.exceptions import WorksheetNotFound
+    try:
+        from gspread.exceptions import WorksheetNotFound
+    except ImportError:          # a stand-in spreadsheet without the sheets extra: only its own lookup error can occur
+        WorksheetNotFound = LookupError   # noqa: N806
     try:
         return with_retry(lambda: sh.worksheet(title))
     except WorksheetNotFound:

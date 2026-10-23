@@ -2,9 +2,10 @@
 
 > **In plain English.** "Liquid" gets used as a word for all email personalization code. It isn't.
 > Braze and Customer.io use Liquid. Klaviyo uses its own Django-style language, HubSpot uses HubL,
-> and Salesforce Marketing Cloud uses AMPscript. Code written for one breaks in another, often
+> Salesforce Marketing Cloud uses AMPscript, and Iterable uses Handlebars. Code written for one breaks in another, often
 > silently, so the engine names the dialect on every block and lints it with
-> `engine/render/template_lint.py`. Every code block on this page passes that linter in CI.
+> `engine/render/template_lint.py`. Every code block on this page passes that linter in CI
+> (`tests/drift/test_drift.py`).
 
 Platform facts were read from each vendor's documentation in October 2026. Platforms add tags and
 filters; check their docs for anything not listed here.
@@ -18,16 +19,17 @@ filters; check their docs for anything not listed here.
 | Klaviyo | Django-style template language with Klaviyo tags and filters | `django klaviyo` | `klaviyo` | Django's template engine |
 | HubSpot | HubL (Jinja-derived) | `hubl` | `hubl` | Jinja2 |
 | Salesforce Marketing Cloud | AMPscript | `ampscript` | `ampscript` | structural checks (no public parser) |
+| Iterable | Handlebars, with Iterable's helpers | `handlebars` | `handlebars` | structural checks (no maintained Python parser) |
 
 ## 2. The same five jobs in every dialect
 
-| Job | Customer.io | Braze | Klaviyo | HubSpot | SFMC |
-|---|---|---|---|---|---|
-| First name with fallback | `{{ customer.first_name \| default: "there" }}` | `{{ ${first_name} \| default: 'there' }}` | `{{ first_name\|default:'there' }}` | `{{ personalization_token("contact.firstname", "there") }}` | `IF Empty(@fn) THEN SET @fn = "there" ENDIF` |
-| Custom profile field | `{{ customer.plan }}` | `{{ custom_attribute.${plan} }}` | `{{ person\|lookup:'Plan' }}` | `{{ contact.plan }}` | `AttributeValue("Plan")` |
-| Trigger event property | `{{ event.plan }}` | `{{ event_properties.${plan} }}` | `{{ event\|lookup:'plan' }}` | (none in marketing email) | data extension field |
-| Unsubscribe link | `{% unsubscribe_url %}` | `{{${set_user_to_unsubscribed_url}}}` | `{% unsubscribe %}` or `{% unsubscribe_link %}` | `{{ unsubscribe_link }}` | `%%unsub_center_url%%` |
-| Postal address | literal or snippet | literal, or `{{${email_footer}}}` | `{{ organization.full_address }}` | `site_settings.company_street_address_1` and city, state | `%%member_addr%%` and siblings |
+| Job | Customer.io | Braze | Klaviyo | HubSpot | SFMC | Iterable |
+|---|---|---|---|---|---|---|
+| First name with fallback | `{{ customer.first_name \| default: "there" }}` | `{{ ${first_name} \| default: 'there' }}` | `{{ first_name\|default:'there' }}` | `{{ personalization_token("contact.firstname", "there") }}` | `IF Empty(@fn) THEN SET @fn = "there" ENDIF` | `{{defaultIfEmpty firstName "there"}}` |
+| Custom profile field | `{{ customer.plan }}` | `{{ custom_attribute.${plan} }}` | `{{ person\|lookup:'Plan' }}` | `{{ contact.plan }}` | `AttributeValue("Plan")` | `{{plan}}` |
+| Trigger event property | `{{ event.plan }}` | `{{ event_properties.${plan} }}` | `{{ event\|lookup:'plan' }}` | (none in marketing email) | data extension field | `{{plan}}`, in a journey that event triggered |
+| Unsubscribe link | `{% unsubscribe_url %}` | `{{${set_user_to_unsubscribed_url}}}` | `{% unsubscribe %}` or `{% unsubscribe_link %}` | `{{ unsubscribe_link }}` | `%%unsub_center_url%%` | `{{unsubscribeUrl}}` |
+| Postal address | literal or snippet | literal, or `{{${email_footer}}}` | `{{ organization.full_address }}` | `site_settings.company_street_address_1` and city, state | `%%member_addr%%` and siblings | `{{physicalAddress}}` |
 
 The backslash before each pipe in the table is Markdown escaping; in code the pipe is plain.
 
@@ -151,7 +153,23 @@ Hi %%=v(@fn)=%%,
 - `IF ... ENDIF` and `FOR ... NEXT` must balance across blocks; the linter checks them across the
   whole template.
 
-## 8. Pitfalls that pass a casual review
+## 8. Iterable (Handlebars)
+
+```handlebars
+Hi {{defaultIfEmpty firstName "there"}},
+{{#if loyaltyTier}}Your tier: {{loyaltyTier}}.{{else}}Join the loyalty program any time.{{/if}}
+{{#each items}}<a href="{{url}}">{{defaultIfEmpty name "your item"}}</a> {{quantity}} x {{price}}
+{{/each}}
+<a href="{{unsubscribeUrl}}">Unsubscribe</a>
+{{physicalAddress}}
+```
+
+- Profile fields and the triggering event's fields are both read by name; an event's fields exist only in a journey
+  that event triggered.
+- `{{#each}}` has no limit argument: send at most three items on the event from the system that builds it.
+- `{{physicalAddress}}` is the mailing address on the project's settings page; set it there before a send.
+
+## 9. Pitfalls that pass a casual review
 
 | Pitfall | Where | What happens | Fix |
 |---|---|---|---|
@@ -164,7 +182,7 @@ Hi %%=v(@fn)=%%,
 | Bare `[Field]` | AMPscript | the send errors when the field is absent | `AttributeValue("Field")` |
 | A token with no fallback | every dialect | "Hi ," | a fallback on every token |
 
-## 9. Check any template
+## 10. Check any template
 
 ```text
 python3 engine/render/template_lint.py --dialect customerio email.html          # syntax and fallback rules

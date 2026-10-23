@@ -10,7 +10,7 @@ labels: [flow, bug]
 ## What happened
 
 - **Flow and step** (flow name and step id from the spec):
-- **Platform and template dialect** (customerio, customerio_legacy, braze, klaviyo, hubl, ampscript):
+- **Platform and template dialect** (customerio, customerio_legacy, braze, klaviyo, hubl, ampscript, handlebars):
 - **Symptom** (did not fire, fired twice, wrong people, rendered "Hi ,", wrong branch, other):
 - **When it started and how many people it affected** (labeled LIVE PULL with a date, or ESTIMATE):
 

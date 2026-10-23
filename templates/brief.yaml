@@ -24,7 +24,7 @@ qualifying_event:                      # who is eligible at all
   label: completed onboarding
 touches: 5                             # how many messages at most (1 to 8)
 channels: [email, in_app]              # any of: email, sms, push, in_app (email is always included)
-platform: customerio                   # klaviyo, hubspot, braze, customerio or sfmc
+platform: customerio                   # klaviyo, hubspot, braze, customerio, iterable or sfmc
 business_model: saas                   # saas, subscription, ecommerce, marketplace, services or sales_led_b2b
 
 # ---------------------------------------------------------------- MEASUREMENT

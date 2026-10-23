@@ -12,7 +12,7 @@ plan. Run `lifecycle-setup` for the truth about your workspace.*
 
 | Category | Connector available | No connector found | What the engine reads | What it may write (only with your approval) |
 |---|---|---|---|---|
-| Messaging and ESP | HubSpot, Klaviyo, Braze, Customer.io; also Mailchimp, Brevo, Kit, Resend, OneSignal, Pushwoosh | Salesforce Marketing Cloud | campaign and flow performance, profiles and properties, segments, templates | drafts, templates and properties; never a live send without explicit approval |
+| Messaging and ESP | HubSpot, Klaviyo, Braze, Customer.io; also Mailchimp, Brevo, Kit, Resend, OneSignal, Pushwoosh | Salesforce Marketing Cloud, Iterable (Iterable publishes its own MCP server, in beta) | campaign and flow performance, profiles and properties, segments, templates | drafts, templates and properties; never a live send without explicit approval |
 | Warehouse | BigQuery, Snowflake (Cortex-based), Neon (PostgreSQL), Blaze SQL (any SQL database) | Redshift | schemas, fill rates, query results | nothing; the engine runs read queries only |
 | CDP | none found | Segment, RudderStack | n/a | n/a |
 | Product analytics | Mixpanel, Amplitude, Fullstory | Google Analytics 4 (available only through third-party connectors such as Supermetrics), Heap | event lists, property fill, funnels, experiment results | nothing |

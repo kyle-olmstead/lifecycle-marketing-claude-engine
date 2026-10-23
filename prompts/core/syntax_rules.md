@@ -7,15 +7,16 @@ and `lcm sms` (SMS encoding and segments).
 ## Templates
 
 - Name the dialect on every template block, in the fence info string: `liquid braze`, `liquid customerio`,
-  `liquid customerio_legacy`, `django klaviyo`, `hubl`, `ampscript`. Only Braze and Customer.io use Liquid. Klaviyo
-  uses a Django-style language, HubSpot uses HubL, Salesforce Marketing Cloud uses AMPscript; never call those three
-  "Liquid".
+  `liquid customerio_legacy`, `django klaviyo`, `hubl`, `ampscript`, `handlebars`. Only Braze and Customer.io use
+  Liquid. Klaviyo uses a Django-style language, HubSpot uses HubL, Salesforce Marketing Cloud uses AMPscript, Iterable
+  uses Handlebars; never call those four "Liquid".
 - Every opening tag has its closing tag: Liquid `if/endif`, `unless/endunless`, `for/endfor`, `case/endcase`,
   `capture/endcapture`; Klaviyo and HubL `if/endif`, `for/endfor`; AMPscript `IF/ENDIF`, `FOR/NEXT`, `%%[ ]%%`,
-  `%%= =%%`.
+  `%%= =%%`; Handlebars `{{#if}}/{{/if}}`, `{{#each}}/{{/each}}`.
 - Platform tags are spelled exactly: Braze `{% connected_content <url> :save var %}` and
   `{% abort_message('reason') %}`; Customer.io `{% unsubscribe_url %}`; Klaviyo `{% unsubscribe %}`; HubL
-  `{{ unsubscribe_link }}`; AMPscript `%%unsub_center_url%%`.
+  `{{ unsubscribe_link }}`; AMPscript `%%unsub_center_url%%`; Iterable `{{unsubscribeUrl}}` and the project's
+  mailing address `{{physicalAddress}}`.
 
 ## The fallback rule
 
@@ -34,6 +35,8 @@ attributes (`user_id`, `braze_id`, `email_footer`, the subscription URLs) and Kl
 - Klaviyo: `{{ first_name|default:'there' }}`
 - HubSpot HubL, for contact and company fields: `{{ personalization_token("contact.firstname", "there") }}`
 - Salesforce Marketing Cloud AMPscript: `IF Empty(@fn) THEN SET @fn = "there" ENDIF`, then `%%=v(@fn)=%%`
+- Iterable Handlebars: `{{defaultIfEmpty firstName "there"}}`. Event fields read by name (`{{checkout_url}}`) only in a
+  journey that event triggered; `{{#each items}}` has no limit argument, so send at most three items on the event
 
 `lcm lint --dialect <dialect> FILE` warns on every output that has neither.
 

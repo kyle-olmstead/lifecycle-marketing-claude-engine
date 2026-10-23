@@ -57,7 +57,7 @@ This engine does that work, checks it, and keeps checking every morning.
 ## 2. What it does, in plain English
 
 1. **Plans a whole campaign from one sentence.** It plans ten kinds of flow (welcome, activation, win-back, abandoned cart, browse abandonment, post-purchase, replenishment, failed payment, trial conversion and sunset) and refuses anything else by name rather than bending it into the nearest one. "A 5-touch win-back for users who completed onboarding but haven't created a report in 14 days" becomes: exactly who enters and when they leave, the messages and their timing across email, text, push and in-app, the reasoning behind each choice, and step-by-step build instructions in your platform's own terms. Anything it had to assume is listed for you to confirm.
-2. **Writes the messages in the right code.** Copy rendered for Klaviyo, HubSpot, Braze, Customer.io or Salesforce Marketing Cloud, each in that platform's template language, with a fallback for every personalized field, laid out from your brand kit (logo, colors checked for contrast, fonts, footer, voice rules), with the cart or product shown from the platform's own event fields, and checked by a real parser so nothing breaks on send.
+2. **Writes the messages in the right code.** Copy rendered for Klaviyo, HubSpot, Braze, Customer.io, Iterable or Salesforce Marketing Cloud, each in that platform's template language, with a fallback for every personalized field, laid out from your brand kit (logo, colors checked for contrast, fonts, footer, voice rules), with the cart or product shown from the platform's own event fields, and checked by a real parser so nothing breaks on send.
 3. **Checks the law before anyone presses send.** A compliance review of every plan against the rules where your customers live: US email and texting law (including the stricter state texting laws), Canada, the UK, the EU, Germany and Australia, plus the mailbox providers' own rules. Every rule cites its source. A missing legal requirement blocks the plan.
 4. **Keeps your email in the inbox.** It looks up your domain's authentication records live, reads real email headers, and issues a GREEN, AMBER or RED sending gate with the exact fixes. It finds the people who have stopped engaging and takes them out of marketing sends (reversibly), because they are what pulls a sender into spam.
 5. **Tells you what actually worked.** Every flow ships with a holdout group sized so the result can be read, and a date when it can. Results report three numbers side by side: what the platform credited, what the flow truly added, and the gap.
@@ -76,7 +76,7 @@ This engine does that work, checks it, and keeps checking every morning.
   Email platform     ┐
   (Klaviyo, HubSpot, │      1. Finds the audience in your data, checks the data
    Braze, Customer.io│      2. Decides the shape of the campaign, and says why
-   SFMC)             │      3. Builds the flow and simulates it with test customers
+   Iterable, SFMC)   │      3. Builds the flow and simulates it with test customers
   Data warehouse     ├──►   4. Writes every message in your platform's code     ──►   approve · edit · reject
   Event stream       │      5. Sizes the holdout and sets the read date                     │
   (Segment, GA4)     │      6. Checks the law and the inbox rules                           ▼
@@ -153,10 +153,10 @@ Then make a folder for your own brand and point it at your data:
 ```text
 lcm init ~/acme --name Acme --platform klaviyo        # lmm.yaml (your program) and brand.yaml (your brand kit)
 cd ~/acme
-lcm import shopify ~/Downloads/shopify-export --out data     # or klaviyo, stripe, hubspot, customerio, ga4, segment, rudderstack
+lcm import auto ~/Downloads/exports --out data      # your store's and your email platform's exports, side by side
 lcm check-data data
 lcm deliverability check acme.com --write-gate gate.json     # then set sending_gate: gate.json in lmm.yaml
-lcm plan --text "a 5-touch win-back for customers who have not ordered in 60 days" --data data
+lcm plan --text "a 5-touch win-back for customers who have not ordered in 60 days"   # reads data: from lmm.yaml
 ```
 
 `lcm --help` lists every command; [`docs/COMMANDS.md`](docs/COMMANDS.md) has the full table. Plain English works too: `lcm "check deliverability for example.com"`.
@@ -177,7 +177,7 @@ Three things decide the quality of everything it produces. An hour here is worth
 
 | Role | Connector available today | No connector found (export or paste instead) |
 |---|---|---|
-| Email and messaging platform | HubSpot, Klaviyo, Braze, Customer.io (also Mailchimp, Brevo, Kit, OneSignal) | Salesforce Marketing Cloud |
+| Email and messaging platform | HubSpot, Klaviyo, Braze, Customer.io (also Mailchimp, Brevo, Kit, OneSignal) | Salesforce Marketing Cloud, Iterable (Iterable publishes its own MCP server, in beta) |
 | Data warehouse and CDP | BigQuery, Snowflake, Neon (PostgreSQL), Clay | Segment, RudderStack (the engine includes a receiver for their events) |
 | Analytics | Mixpanel, Amplitude | Google Analytics 4 (use its BigQuery export) |
 
@@ -332,7 +332,7 @@ Every technical document opens with a plain-English summary. Every change with t
 | **Unengaged / sunset** | People who have received many emails and clicked none in six months; sunsetting them stops marketing email until they engage again |
 | **Holdout** | A randomly chosen group that gets no messages, so the difference shows what the flow truly caused |
 | **Attributed vs incremental** | What the platform credits a flow with, versus what the flow actually added |
-| **ESP** | Email service provider: Klaviyo, HubSpot, Braze, Customer.io, Salesforce Marketing Cloud |
+| **ESP** | Email service provider: Klaviyo, HubSpot, Braze, Customer.io, Iterable, Salesforce Marketing Cloud |
 | **CAN-SPAM, TCPA, CASL, PECR** | The US email law, the US texting and calling law, Canada's anti-spam law, and the UK's electronic marketing rules |
 
 ---

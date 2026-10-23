@@ -5,7 +5,7 @@ description: >
   journey", "win-back flow", "reactivation", "abandoned cart", "browse abandonment", "post-purchase",
   "replenishment", "failed payment" or "dunning", "trial conversion", "sunset flow", "re-permission",
   "lapsed customers", "how should users move through automation", or asks for a flow spec in
-  Customer.io, Braze, Klaviyo, HubSpot or Salesforce Marketing Cloud. Produces a build-ready flow:
+  Customer.io, Braze, Klaviyo, HubSpot, Iterable or Salesforce Marketing Cloud. Produces a build-ready flow:
   gate check, data feasibility, the FLOW block, a schema-valid flow JSON, branching rules, cadence,
   copy and a holdout sized to read.
 metadata:

@@ -82,6 +82,7 @@ def test_segment_signature_forms():
 
 
 def test_http_app(tmp_path, monkeypatch):
+    pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
     monkeypatch.setenv("SEGMENT_SHARED_SECRET", "s3cret")
     monkeypatch.setenv("LCM_GA4_TOKEN", "tok")
@@ -105,6 +106,7 @@ def test_http_app(tmp_path, monkeypatch):
 
 def test_forged_batch_and_replays_are_refused(tmp_path, monkeypatch):
     from datetime import datetime, timedelta, timezone
+    pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
     monkeypatch.setenv("SEGMENT_SHARED_SECRET", "s3cret")
     sign = lambda b: hmac.new(b"s3cret", b, hashlib.sha1).hexdigest()  # noqa: E731
@@ -125,6 +127,7 @@ def test_forged_batch_and_replays_are_refused(tmp_path, monkeypatch):
 
 def test_identify_replays_are_refused(tmp_path, monkeypatch):
     from datetime import datetime, timezone
+    pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
     monkeypatch.setenv("SEGMENT_SHARED_SECRET", "s3cret")
     sign = lambda b: hmac.new(b"s3cret", b, hashlib.sha1).hexdigest()  # noqa: E731
@@ -141,6 +144,7 @@ def test_identify_replays_are_refused(tmp_path, monkeypatch):
 
 
 def test_unsigned_traffic_is_refused_by_default(tmp_path, monkeypatch):
+    pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
     monkeypatch.delenv("SEGMENT_SHARED_SECRET", raising=False)
     monkeypatch.delenv("LCM_ALLOW_UNSIGNED", raising=False)
@@ -228,6 +232,7 @@ class FakeSheet:
         self.tabs = {}
 
     def worksheet(self, title):
+        pytest.importorskip("gspread")
         from gspread.exceptions import WorksheetNotFound
         if title not in self.tabs:
             raise WorksheetNotFound(title)
@@ -275,6 +280,7 @@ def test_duplicate_keys_in_one_call_keep_the_last_row():
 
 
 def test_retry_on_quota_errors():
+    pytest.importorskip("gspread")
     from gspread.exceptions import APIError
 
     class Resp:
@@ -305,6 +311,7 @@ def test_dry_run_without_credentials(audit_doc, tmp_path, monkeypatch):
 # ----------------------------------------------------------------------------------------------
 
 def test_mcp_server_tools(tmp_path, monkeypatch):
+    pytest.importorskip("mcp")
     from engine import mcp_server
     monkeypatch.setattr(mcp_server, "OUT", tmp_path)
     names = {t.name for t in asyncio.run(mcp_server.server.list_tools())}
@@ -426,6 +433,7 @@ def test_forwarding_is_off_unless_asked(tmp_path):
 def test_http_app_forwards_after_responding(tmp_path, monkeypatch):
     import httpx
     from datetime import datetime, timezone
+    pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
     sent = []
     fw = webhook_parser.Forwarder([_activation()], tmp_path, env={"KLAVIYO_PRIVATE_KEY": "pk"},
