@@ -2,7 +2,7 @@
 
 **Describe a lifecycle flow in one sentence. Get back a plan your team can launch: who gets it, every email and text written in your platform's own code, the timing, a legal and inbox check, and a holdout that shows what the flow really earned.**
 
-- Works for online stores and software companies, with Klaviyo, HubSpot, Braze, Customer.io, Iterable and Salesforce Marketing Cloud.
+- Works for software companies and online stores, with Klaviyo, HubSpot, Braze, Customer.io, Iterable and Salesforce Marketing Cloud.
 - Every morning it tells you what to fix and what is most worth building next, with an estimated revenue range for each.
 - It never sends a message or changes your accounts unless you approve it.
 - Free and open source. Runs inside Claude, or from a terminal.
@@ -13,65 +13,69 @@
 
 You type:
 
-> *"a 3-touch abandoned cart flow with email and SMS"*
+> *"a 5-touch win-back for users who completed onboarding but haven't created a report in 14 days"*
 
-It returns a plan like this one, made for the sample coffee store in this repository ([the full plan](examples/brands/northfield_dtc/runs/cart_abandon/plan.md)):
+It returns a plan like this one, made for Ridgeview, the sample B2B reporting tool in this repository, which emails from Customer.io ([the full plan](examples/brands/ridgeview_saas/runs/winback_14d/plan.md)):
 
 **Who gets it**
 
 | | |
 |---|---|
-| **Enters** | Started checkout and did not order within 1 hour |
-| **Never enters** | No consent, on your suppression list, or a test account |
-| **Leaves** | The moment they place an order |
-| **How many** | About 351 people a month. 31% order anyway with no emails, so that is the number the flow has to beat |
+| **Enters** | Finished onboarding, then went 14 days without creating a report. Once per lapse, so nobody enters twice for the same quiet stretch |
+| **Never enters** | No consent, on your suppression list, or an internal or test account |
+| **Leaves** | The moment they create a report again, checked before every message |
+| **How many** | About 28 people a month. 17.5% come back on their own with no emails, so that is the number the flow has to beat |
+
+It also writes the query that finds these people every day, for PostgreSQL, Snowflake and BigQuery.
 
 **The flow**
 
 ```mermaid
 flowchart LR
-  A(["Started checkout, no order in 1 hour"]) --> H{"In the holdout?"}
-  H -- "10%: gets nothing" --> X(["Measured, not mailed"])
-  H -- "90%" --> E1["Hour 1: email with their cart"]
-  E1 --> S{"Texting consent?"}
-  S -- "yes" --> T2["Hour 24: text: which grind?"]
-  S -- "no" --> E2["Hour 24: email: which grind?"]
-  T2 --> E3["Day 3: last reminder email"]
-  E2 --> E3
-  O(["Places an order"]) -.-> D(["Leaves the flow at once"])
+  A(["14 days without a report"]) --> H{"In the holdout?"}
+  H -- "15%: gets nothing" --> X(["Measured, not mailed"])
+  H -- "85%" --> E1["Day 0: email"]
+  E1 --> E2["Day 3: email"]
+  E2 --> I3["Day 7: in-app"]
+  I3 --> E4["Day 12: email"]
+  E4 --> E5["Day 18: email"]
+  E5 --> S(["No click by day 32: stop marketing email"])
+  O(["Creates a report"]) -.-> D(["Leaves the flow at once"])
 ```
 
-**The messages**, two versions of each to test, written in Klaviyo's template code with the cart pulled from Shopify's own event:
+**The messages**, two versions of each to test, written in Customer.io's template code:
 
-| When | Version A | Version B |
-|---|---|---|
-| Hour 1, email | Your coffee is still in your cart | Still in your cart: *(the item's name)* |
-| Hour 24, text or email | Not sure which grind to pick? Reply with how you brew and we will tell you. | Shipping shows at checkout before you pay, so there are no surprises. |
-| Day 3, email | Last reminder about your cart | Still want *(the item's name)*? |
+| When | The job | Version A | Version B |
+|---|---|---|---|
+| Day 0, email | Remind them what they had | Your last report is one click away | This week's numbers are ready to pull |
+| Day 3, email | Remove the reason they stopped | The two-minute way to build a report | Want me to build your first report? |
+| Day 7, in-app | Show what is new | New: start a report from a template | Your data sources are still syncing |
+| Day 12, email | Show how others use it | How our support team builds its weekly report | Have your report come to you |
+| Day 18, email | Ask before mailing more | Should I keep sending these? | Last note from me about reports |
+
+That last email is deliberate: people who ignore a whole win-back are the ones who mark it as spam, so it asks, and stops mailing the ones who don't answer.
 
 **Before you build**, the plan also lists:
 - everything it had to assume, for you to confirm;
-- a check against email and texting law where your customers live, and the inbox rules;
-- step-by-step build instructions for your platform;
-- when the holdout can prove a result. Here that is about 15 months at this volume, so it says to read results as directional until then.
+- a check against email and texting law in the six regions in Ridgeview's customer list, and the inbox rules;
+- step-by-step build instructions in Customer.io's own terms;
+- the truth about measurement. At 28 people a month, a holdout would need years to prove a lift, so it keeps one anyway and labels every result "directional" instead of promising a date it cannot keep.
 
-The same works for a software company. "A 5-touch win-back for users who haven't created a report in 14 days" gets the same kind of plan for the sample reporting tool ([the full plan](examples/brands/ridgeview_saas/runs/winback_14d/plan.md)).
+**It works the same for an online store.** For the sample coffee store on Shopify and Klaviyo, *"a 3-touch abandoned cart flow with email and SMS"* returns a flow that shows each person's cart from Shopify's own event. Its buttons go back to that checkout, and the second touch is a text for people with consent, or an email for everyone else, answering the question that stops coffee buyers: which grind? ([the full plan](examples/brands/northfield_dtc/runs/cart_abandon/plan.md))
 
 ---
 
 ## Every morning
 
-It reads your data and tells you what matters today. Here is a morning check on the sample coffee store, trimmed:
+It reads your data and tells you what matters today. Here is a morning check on Ridgeview, trimmed:
 
-> **Fix first: data stopped arriving.** The newest event is 5 days old, so the cart and welcome flows are sending nothing until the sync is fixed.
+> **Fix first: sunset the unengaged before scaling anything.** 62% of the people Ridgeview can email got 5 or more emails in six months and clicked none. That puts the sending gate at RED: mail more and the rest of the list starts landing in spam.
 >
-> **1. Post-purchase flow: turn first orders into second orders.** 83 new customers a month place a first order; 24.9% order again within 60 days with nothing sent. **About $60 to $150 a month.** Effort: small.
+> **1. Win-back at 14 days without a report.** 28 people a month reach it, and no live flow catches them. The monthly newsletter does not do the job: 85% of its sends to these people landed more than a week after they went quiet. **About $41 to $103 a month.** Effort: medium.
 >
-> **2. Win-back at 60 days since the last order.** 102 people a month reach it, and no live flow catches them. **About $48 to $119 a month.** Effort: medium.
->
-> **Also today:** 23% of your list is unengaged. Plan a re-permission email and stop mailing the rest.
+> **2. Activation flow for new signups, aimed at inviting a teammate.** Only 5.3% of new signups create a report within 14 days on their own, and the biggest drop in onboarding is the invite-a-teammate step, where a third of people stop. **About $13 to $33 a month.** Effort: medium.
 
-The audience sizes and baselines are measured from your data; only the lift is an assumption, and it says so. Each idea comes with the one step that turns it into a full plan.
+The revenue ranges are small because the sample company is small (400 users); on your data they scale with your volume and your revenue per customer. The audience sizes and baselines are measured from your data; only the lift is an assumption, and it says so. Each idea comes with the one step that turns it into a full plan.
 
 It also checks that your email still reaches the inbox:
 - your domain's authentication records (SPF, DKIM, DMARC);
@@ -94,14 +98,17 @@ In the repository's worked example, the platform credited a win-back flow with *
 
 | Ask… | You get |
 |---|---|
-| "plan a 3-touch abandoned cart flow with email and SMS" | The full plan above |
-| "make it 4 touches" · "add SMS" · "go with version B" | Only that part changes; approved copy stays approved |
+| "plan a 5-touch win-back for users who haven't created a report in 14 days" | The full plan above |
+| "plan an activation flow for new signups who haven't invited a teammate" | A plan aimed at the onboarding step where most people stall |
+| "make it 4 touches" · "add in-app" · "go with version B" | Only that part changes; approved copy stays approved |
+| "when do customers stop using the product, by plan?" | Where retention drops and where it levels off, for each plan |
 | "what are my top 3 priority builds today and why?" | What to fix first, then the builds most worth doing, with revenue ranges |
 | "what broke overnight?" | The morning check |
 | "check deliverability for example.com" | Your domain's records, a GREEN, AMBER or RED verdict, and the exact fixes |
 | "who should we stop emailing?" | The people who never engage, as a list you can undo |
 | "did the win-back flow actually work?" | What the platform credited, what the flow really added, and how sure that is |
 | "could one person get too many emails a week from all our flows?" | Every live flow checked together against your frequency limits |
+| "plan a 3-touch abandoned cart flow with email and SMS" | The store version: the cart from your store's own event, and a link back to that checkout |
 
 It plans ten kinds of flow: welcome, activation, win-back, abandoned cart, browse abandonment, post-purchase, replenishment, failed payment, trial conversion and sunset. It refuses anything else by name instead of bending it into the nearest one. More questions, by cadence: [the question bank](docs/QUESTION_BANK.md).
 
@@ -136,7 +143,7 @@ It plans ten kinds of flow: welcome, activation, win-back, abandoned cart, brows
 
 **From a terminal.** Clone, install and run your first plan on a sample brand in about fifteen minutes: [QUICKSTART.md](QUICKSTART.md).
 
-Two fictional sample companies come with their data, so you can see real output before connecting anything: a coffee store on Shopify and Klaviyo, and a reporting tool on Customer.io.
+Two fictional sample companies come with their data, so you can see real output before connecting anything: a B2B reporting tool on Customer.io, and a coffee store on Shopify and Klaviyo.
 
 ---
 
@@ -144,7 +151,7 @@ Two fictional sample companies come with their data, so you can see real output 
 
 | Make sure you have… | Because |
 |---|---|
-| **The one action that means a customer is getting value** (for a store, an order; for software, the key action, like "created a report") | Every flow is built around it: who enters, when they leave, how success is measured |
+| **The one action that means a customer is getting value** (for software, the key action, like "created a report"; for a store, an order) | Every flow is built around it: who enters, when they leave, how success is measured |
 | **Consent recorded per person and channel, and each person's country** | Who may be emailed or texted, and which laws apply, come from these |
 | **Your sending domain and postal address** | The inbox checks need the domain; US law needs the address in every marketing email |
 
