@@ -21,7 +21,8 @@ Audit (v2.3); every quick win and systemic enhancement in its roadmap is in here
 **Fixed the silent plan-breakers**
 - Welcome and other new-entrant flows are exempt from the AMBER engaged-only filter (a new subscriber has no
   engagement history yet); each flow has a gate class (new entrant, behavior, lapsed, transactional, remediation).
-- Account-level holdouts hash `account_id` (falling back to `user_id`), so people in one account are never split.
+- Account-level holdouts hash `account_id` (falling back to `user_id`), so people in one account are never split, and
+  plan with or without account data (an ICC the data cannot measure is an assumed design effect, said so).
 - Caps written as days or months ("2 a day", "6 a month") are parsed, not dropped, and each phrase keeps its own
   channel ("2 texts a day and 6 emails a month" is an SMS cap and an email cap); timestamps are validated; the flow
   spec's branch graph is checked for dangling targets (the shipped example had one).
@@ -46,8 +47,9 @@ Audit (v2.3); every quick win and systemic enhancement in its roadmap is in here
   priority, a collision rule), offer policy (offers with real deadlines or none, never in a first touch, exclusions for
   deal hunters) and consent records are typed contracts with JSON Schemas, and tests hold each schema and its model to
   the same answers.
-- `lcm simulate --program` walks people who enter several live flows close together, applies the collision rule, and
-  checks every cap across flows; when a cap breaks it names the rule that would hold it or the platform's own limit.
+- `lcm simulate --program` walks people who enter several live flows close together (every pair and triple at every
+  spacing, larger groups at the worst ones), applies the collision rule, and checks every cap across flows; when a cap
+  breaks it prints WARN, names the rule that would hold it or the platform's own limit, and exits 1.
 
 **The flow library** (`engine/flows/`, `docs/FLOW_LIBRARY.md`)
 - Ten flows: welcome, activation, win-back, abandoned cart, browse abandonment, post-purchase, replenishment, failed
@@ -56,7 +58,7 @@ Audit (v2.3); every quick win and systemic enhancement in its roadmap is in here
   flows record an hours request as an assumption instead of dropping it. Unsupported flows are refused by name.
 - Product blocks show the cart or product from each platform's own event fields (Klaviyo's Shopify events,
   Customer.io and Braze event items, HubSpot and Marketing Cloud contact or entry data), and the button goes back to
-  that checkout or product. The offline copy library covers every flow's roles with no bracketed fill-ins, and
+  that checkout or product on every platform, with the brief's `cta_url` or the brand kit's `website` as the fallback. The offline copy library covers every flow's roles with no bracketed fill-ins, and
   `tests/unit/test_flow_library.py` plans all ten flows on all six platforms with no copy warning.
 - Templates read only the event fields the tracking plan gives the trigger event (`engine/render/fields.py`); the
   check found and closed three gaps (item names, item links and images, and the browse event's single product).
@@ -124,6 +126,27 @@ Audit (v2.3); every quick win and systemic enhancement in its roadmap is in here
   stale, when prose names a command or file that does not exist, says "quiet hours", states a single default holdout,
   or gets the SMS window wrong.
 
+**After an independent review** (each with a regression test in `tests/unit/test_review_fixes.py`)
+- A store is planned as a store: a win-back defaults to orders and a 60-day lapse, the offline copy has store versions
+  of the roles it shares with software, `lcm retention` reads monthly orders, and `lcm priorities` proposes a welcome
+  series and a post-purchase build, never activation. The workspace's stated `business_model` beats words that only
+  imply one, and a flow the library does not build for the business (the Models column) is refused by name.
+- Welcome and trial conversion use the new-qualifier SQL (signed up or started a trial, then the goal), not the
+  win-back lapse query, so their volumes, baselines and read dates are right.
+- Wishlist, cross-sell and upsell requests are refused by name; "a cart flow", "abandoned baskets" and "viewed a
+  product and left" reach their flows. A cap in the sentence ("no more than 2 emails a week") is a cap, never a touch
+  count, and the cap parser reads daily, every N days, twice a week, per-channel lists and push-only caps.
+- A GREEN gate record dated in the future, recorded without observed authentication, carrying a critical finding, or
+  missing the signals a GREEN is issued on reads AMBER with the reason, instead of passing or failing the plan.
+- Sentence commands and `lcm plan` use the workspace: they read `lmm.yaml`'s `data:` and write to `runs/`, so "make it
+  3 touches" revises the plan just made.
+- With no message events in the data, the AMBER audience is reported as not countable (with the import that would
+  count it) instead of blocking the plan; buttons with no deep link go to the brand kit's website.
+- `lcm send` keeps the items a batch rejects inside a 2xx unaccepted so a rerun resends them; `lcm check-data` finds
+  future signups and negative amounts; doctor counts the tables files were found for.
+- `uv.lock` pins the versions CI verifies, CI runs the whole suite on them without the optional extras, and Iterable
+  is named with the other five platforms everywhere, with its Handlebars rules in the copy prompts and cheat sheet.
+
 **Finished examples**: Ridgeview (SaaS win-back on Customer.io) and Northfield Coffee Roasters (Shopify and Klaviyo,
 from raw exports to an abandoned cart plan with two live flows) are complete workspaces, planned from written copy
 with no fill-ins, and held to what the engine writes by `tests/golden/test_golden_runs.py`.
@@ -139,6 +162,13 @@ with no fill-ins, and held to what the engine writes by `tests/golden/test_golde
 - If you created the warehouse ledger in 2.x, add the new column once:
   `ALTER TABLE lcm_flow_entries ADD COLUMN detail VARCHAR;` (Snowflake: `VARCHAR`, BigQuery: `STRING`).
 - `message_events` may now carry `smtp_status` and `diagnostic`; with them, only hard bounces suppress an address.
+- `lcm simulate --program` exits 1 when a cap or a same-day clash needs attention (scripts that ran it should accept 1).
+- A brief's `cta_url` no longer replaces a cart or browse email's link back to the checkout or product; it is the
+  fallback. Set `website` in `brand.yaml` for buttons with no deeper link.
+- A hand-written GREEN gate record needs the signals a GREEN is issued on (`authentication_state: verified`,
+  `complaint_rate`, `hard_bounce_rate`); without them it reads AMBER. Records `lcm deliverability check` writes have them.
+- A store workspace's win-back without a stated event now plans on orders, and an activation or trial flow there is
+  refused (plan a welcome series instead).
 
 ## 2.3.0 (2026-10)
 
