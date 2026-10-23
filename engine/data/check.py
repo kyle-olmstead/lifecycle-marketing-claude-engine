@@ -15,7 +15,8 @@ them with engine/data/schema.py and reports, column by column, what would break 
                 users.timezone a real IANA zone, country ISO 3166-1 alpha-2, currency three capital letters, status and
                 channel values the engine recognizes
   time          consent timestamps not in the future (a future consent would outrank every later unsubscribe),
-                events dated in the future, and freshness: the age of the newest event
+                events and signups dated in the future, and freshness: the age of the newest event
+  amounts       order, line, discount, refund and invoice amounts below zero
 
 Why: a real export rarely matches the canonical shape on the first try, and the engine's own errors name the first
 problem only. This names every problem at once, with the table.column, how many rows, two or three bad values, and the
@@ -93,7 +94,11 @@ ENUMS: Dict[Tuple[str, str], Tuple[str, ...]] = {
 CONSENT_TIMES: Tuple[Tuple[str, str], ...] = (("users", "email_consent_at"), ("users", "sms_consent_at"),
                                               ("consent_events", "occurred_at"))
 EVENT_TIMES: Tuple[Tuple[str, str], ...] = (("track_events", "event_at"), ("message_events", "event_at"),
-                                            ("orders", "order_at"), ("refunds", "refunded_at"))
+                                            ("orders", "order_at"), ("refunds", "refunded_at"), ("users", "created_at"))
+# money that cannot be below zero: a refund is its own row in refunds, never a negative order
+NON_NEGATIVE: Tuple[Tuple[str, str], ...] = (("orders", "gross_amount"), ("orders", "discount_amount"), ("orders", "net_amount"),
+                                             ("line_items", "line_amount"), ("discounts", "amount"), ("refunds", "amount"),
+                                             ("invoices", "amount_due"), ("invoices", "amount_paid"))
 CURRENCY_COLUMNS: Tuple[Tuple[str, str], ...] = (("orders", "currency"), ("subscriptions", "currency"), ("invoices", "currency"))
 
 FUTURE_TOLERANCE = timedelta(minutes=5)
@@ -334,9 +339,16 @@ def _column_checks(t: _Loaded, as_of: datetime) -> List[Tuple[str, str, str, str
                         "fix the source time zone or date format; a consent cannot be captured in the future"))
     for tbl, col in EVENT_TIMES:
         if tbl == name and col in t.columns:
+            what = "signups" if (tbl, col) == ("users", "created_at") else "rows"
             out.append(("warning", "future_event", col, f"TRY_CAST({_q(col)} AS TIMESTAMP) > TIMESTAMP {_lit(cutoff)}",
-                        f"rows dated after {as_of:%Y-%m-%d %H:%M} UTC",
+                        f"{what} dated after {as_of:%Y-%m-%d %H:%M} UTC" + (
+                            ": a future signup enters no flow until that date and skews monthly volumes" if what == "signups" else ""),
                         "check the time zone conversion (local time written as UTC runs ahead by the offset) and test events with fake dates"))
+    for tbl, col in NON_NEGATIVE:
+        if tbl == name and col in t.columns:
+            out.append(("warning", "negative_amount", col, f"TRY_CAST({_q(col)} AS DOUBLE) < 0",
+                        "rows with a negative amount: revenue, order value and the value per conversion would be understated",
+                        "write refunds and credits as their own rows (refunds.amount, positive) and keep order amounts at zero or above"))
     return out
 
 

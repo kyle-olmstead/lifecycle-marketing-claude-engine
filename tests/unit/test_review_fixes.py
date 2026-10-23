@@ -335,3 +335,34 @@ def test_a_button_with_no_deep_link_goes_to_the_brand_website():
     _, p = _plan(NORTHFIELD, "a 3-touch win-back")
     bodies = [body for tc in p.copy_plan for v in tc.variants for k, body in (v.rendered or {}).items() if k.endswith(".html")]
     assert bodies and all(PLACEHOLDER_CTA not in b and "northfieldcoffee.example" in b for b in bodies)
+
+
+# ----------------------------------------------------------------------------------------------
+# Findings 11 and 12: check-data and doctor
+# ----------------------------------------------------------------------------------------------
+
+def test_check_data_finds_future_signups_and_negative_amounts(tmp_path):
+    import csv
+    import shutil
+    from engine.data.check import check_folder
+    shutil.copytree(NORTHFIELD / "data", tmp_path / "d")
+    for name, col, value in (("users", "created_at", "2031-01-01 00:00:00"), ("orders", "net_amount", "-12.50")):
+        path = tmp_path / "d" / f"{name}.csv"
+        rows = list(csv.DictReader(path.open()))
+        rows[0][col] = value
+        with path.open("w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=list(rows[0]))
+            w.writeheader()
+            w.writerows(rows)
+    found = {(f["check"], f["table"], f["column"]) for f in check_folder(tmp_path / "d")["findings"]}
+    assert {("future_event", "users", "created_at"), ("negative_amount", "orders", "net_amount")} <= found
+    clean = {f["check"] for f in check_folder(NORTHFIELD / "data")["findings"]}
+    assert not clean & {"future_event", "negative_amount"}
+
+
+def test_doctor_counts_the_tables_files_were_found_for(monkeypatch):
+    from engine.cli.commands import diagnose
+    monkeypatch.setenv("LCM_WORKSPACE", str(NORTHFIELD))
+    row = next(r for r in diagnose() if r["name"] == "data")
+    files = [p for p in (NORTHFIELD / "data").glob("*.csv")]
+    assert row["detail"].startswith(f"{len(files)} table(s) from files")

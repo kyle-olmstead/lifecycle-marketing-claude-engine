@@ -172,8 +172,13 @@ def diagnose() -> List[Dict[str, str]]:
         try:
             from engine.data.load import connect
             con, notes = connect(str(data))
-            tables = [r[0] for r in con.execute("SELECT table_name FROM information_schema.tables").fetchall()]
-            row("data", "ok", f"{len(tables)} table(s): {', '.join(sorted(tables))}" + (f"; {len(notes)} note(s), see `lcm check-data {data}`" if notes else ""))
+            from engine.data.schema import TABLES
+            # the tables a file was found for; the loader creates the rest empty so every query runs
+            tables = [n for n in TABLES if (data / f"{n}.csv").exists() or (data / f"{n}.parquet").exists()]
+            empty = [n for n in tables if not con.execute(f"SELECT COUNT(*) FROM {n}").fetchone()[0]]
+            row("data", "ok", f"{len(tables)} table(s) from files: {', '.join(tables)}"
+                + (f" ({', '.join(empty)} empty)" if empty else "")
+                + (f"; {len(notes)} note(s), see `lcm check-data {data}`" if notes else ""))
         except Exception as e:  # noqa: BLE001
             row("data", "fail", f"{e}; run `lcm check-data {data}` for the full report")
     briefs = sorted(ws.active_briefs.glob("*.y*ml")) if ws.active_briefs.exists() else []
