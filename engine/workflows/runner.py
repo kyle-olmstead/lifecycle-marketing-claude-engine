@@ -22,7 +22,8 @@ A workflow file (workflows/*.yaml in the repository, or workflows/*.yaml in your
 
 Built-in values: ${workspace} (the workspace folder), ${out} (this run's folder), ${today} (UTC date), ${repo} (the
 engine). Each step's output is saved to <out>/<step id>.txt and the run's table to <out>/summary.md. Exit codes: 0 means
-the step ran clean, 1 means it ran and found something to look at, 2 or more means it could not run.
+the step ran clean, 1 means it ran and found something to look at, 2 or more means it could not run. A step skipped
+because an input was not given (a domain, say) leaves the run OK; one skipped because a step it needs failed does not.
 """
 from __future__ import annotations
 
@@ -154,9 +155,10 @@ def run(wf: Workflow, given: Optional[Dict[str, str]] = None, out_root: Optional
         if stopped:
             rec.update(status="stopped", detail=f"not run: {stopped} failed and is marked on_fail: stop")
         elif missing:
-            rec.update(status="skipped", detail=f"needs {', '.join(missing)} (give it with --set {missing[0]}=...)")
+            # an input nobody gave: skipped by design (the workflow says so), not something that went wrong
+            rec.update(status="skipped", reason="input", detail=f"needs {', '.join(missing)} (give it with --set {missing[0]}=...)")
         elif blocked:
-            rec.update(status="skipped", detail=f"skipped because {', '.join(blocked)} did not run cleanly")
+            rec.update(status="skipped", reason="blocked", detail=f"skipped because {', '.join(blocked)} did not run cleanly")
         elif dry_run:
             rec.update(status="planned", detail="")
         else:
@@ -174,8 +176,9 @@ def run(wf: Workflow, given: Optional[Dict[str, str]] = None, out_root: Optional
                 stopped = s.id
         results[s.id] = rec
     statuses = [r["status"] for r in results.values()]
+    blocked_skips = [r for r in results.values() if r["status"] == "skipped" and r.get("reason") != "input"]
     overall = ("planned" if dry_run else "error" if "error" in statuses or "stopped" in statuses else
-               "attention" if "attention" in statuses or "skipped" in statuses else "ok")
+               "attention" if "attention" in statuses or blocked_skips else "ok")
     report = {"workflow": wf.name, "status": overall, "out": str(out), "inputs": vals, "steps": list(results.values())}
     if not dry_run:
         (out / "summary.md").write_text(render(report), encoding="utf-8")

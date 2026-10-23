@@ -1,6 +1,6 @@
 # Abandoned cart: Northfield Coffee Roasters
 
-**Status: READY WITH ASSUMPTIONS** | Klaviyo | generated 2026-10-23T01:33:39+00:00 | run 1c454f46c864 | LMM Engine 3.0.0
+**Status: READY WITH ASSUMPTIONS** | Klaviyo | generated 2026-10-23T02:04:16+00:00 | run 07cb66780d74 | LMM Engine 3.0.0
 
 ## In one paragraph
 
@@ -150,7 +150,7 @@ Files: `copy/t3_email_A.html`, `copy/t3_email_A.mjml`, `copy/t3_email_A.subject.
 
 | | |
 |---|---|
-| Holdout | 10%, user level, persistent: persistent, by user: bucket = first 7 hex digits of md5(user_id || ':northfield_coffee_cart_abandon_1h') mod 100; bucket < 10 is the holdout, added as in_holdout to the live checkout_started event by the system that sends it; holdout members enter, then exit at holdout_split, so both arms are the same population |
+| Holdout | 10%, user level, persistent: persistent, by user: bucket = first 7 hex digits of md5(user_id \|\| ':northfield_coffee_cart_abandon_1h') mod 100; bucket < 10 is the holdout, added as in_holdout to the live checkout_started event by the system that sends it; holdout members enter, then exit at holdout_split, so both arms are the same population |
 | Primary metric | placed an order (order_completed) within 10 days of entry, treatment vs holdout, both arms counted from their entry date |
 | Sizing | about 351 entrants a month (DEMO DATA), 31.3% return within 10 days with no flow (DEMO DATA), 20% relative lift (6.3 pts) worth acting on: 508 holdout entrants at 10%, 14.5 months of entries plus the 10-day outcome window, so the read lands about 14.8 months after launch (engine/measurement/stats.py feasible --entries-per-month 350.7 --holdout 0.1 --baseline 0.3132 --mde-rel 0.2 --outcome-window-days 10) |
 | Read | directional only: not inside 12 months at this volume (it would take about 15 months): keep the holdout, report against a pre/post baseline, and label every result directional |
@@ -217,7 +217,7 @@ Files: `copy/t3_email_A.html`, `copy/t3_email_A.mjml`, `copy/t3_email_A.subject.
 | simulation: step ids are unique | PASS | unique |
 | simulation: every branch target is a step or an exit | PASS | all resolve |
 | simulation: every step is reachable | PASS | all reachable |
-| simulation: holdout is held out before the first message | PASS | excluded at entry (not in the program-wide global holdout (bucket of md5(user_id // ':lmm_global') under 5)), assigned before entry |
+| simulation: holdout is held out before the first message | PASS | excluded at entry (not in the program-wide global holdout (bucket of md5(user_id \|\| ':lmm_global') under 5)), assigned before entry |
 | simulation: exit on goal is immediate | PASS | goal: placed an order (order_completed) |
 | simulation: t2_sms: people without sms consent are covered | PASS | email fallback follows |
 | simulation: nominal schedule respects the weekly frequency cap | PASS | at most 3 email/sms/push message(s) in any 7 days on any route, cap 4 |

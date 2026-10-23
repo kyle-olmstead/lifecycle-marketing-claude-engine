@@ -363,13 +363,56 @@ class ReceiptLog:
             fh.write(json.dumps({"at": now_iso(), **rec}, default=str) + "\n")
 
 
+def rejected(p: Planned, out: Outcome) -> Optional[set]:
+    """Positions in p.keys that a 2xx response reports as failed: None when it reports no error, every position when it
+    reports errors without saying which items (a HubSpot 207 Multi-Status, a Braze minor error). A batch endpoint can
+    accept a request and still reject some of its items; those must stay unaccepted so the next run resends them."""
+    body = out.body if isinstance(out.body, dict) else {}
+    errors = body.get("errors") if isinstance(body.get("errors"), list) else []
+    if not errors and out.status != 207 and not body.get("numErrors"):
+        return None
+    n = len(p.keys)
+    if p.kind == "braze_track":
+        groups = p.request.get("body") or {}
+        offset, start = 0, {}
+        for g in ("attributes", "events", "purchases"):
+            start[g] = offset
+            offset += len(groups.get(g) or [])
+        found = {start[e["input_array"]] + int(e["index"]) for e in errors
+                 if isinstance(e, dict) and e.get("input_array") in start and isinstance(e.get("index"), int)}
+        return found if found and len(found) == len(errors) else set(range(n))
+    if p.kind in ("hubspot_events_batch", "hubspot_contacts_upsert"):
+        inputs = (p.request.get("body") or {}).get("inputs") or []
+        ids = {str(x) for e in errors if isinstance(e, dict) for x in ((e.get("context") or {}).get("ids") or [])}
+        found = {i for i, item in enumerate(inputs) if str(item.get("id") or item.get("uuid") or "") in ids}
+        return found if found else set(range(n))
+    return set(range(n)) if errors or out.status == 207 else None
+
+
 def send_all(planned: List[Planned], client: SafeClient, log: ReceiptLog, platform: str, retry_5xx: bool = True) -> Dict[str, Any]:
     """Send planned requests in order, logging each. Failures never stop the run: each is reported, and its items stay
-    unaccepted so the next run sends them."""
-    summary: Dict[str, Any] = {"requests_sent": 0, "accepted_requests": 0, "accepted_items": 0, "failed_requests": 0, "failures": []}
+    unaccepted so the next run sends them, including the items a batch endpoint rejects inside a 2xx (rejected())."""
+    summary: Dict[str, Any] = {"requests_sent": 0, "accepted_requests": 0, "accepted_items": 0, "failed_requests": 0, "failures": [],
+                               "partial_requests": 0}
     for i, p in enumerate(planned, 1):
         out = client.request(p.request, retry_5xx=retry_5xx)
         summary["requests_sent"] += 1
+        bad = rejected(p, out) if out.ok else None
+        if bad:
+            good = [k for j, k in enumerate(p.keys) if j not in bad]
+            failed = [k for j, k in enumerate(p.keys) if j in bad]
+            if good:
+                log.append({"platform": platform, "request": i, "kind": p.kind, "url": p.request.get("url"), "items": good,
+                            "status": "accepted", "http": out.status, "attempts": out.attempts, "waits": out.waits, "detail": out.detail})
+            log.append({"platform": platform, "request": i, "kind": p.kind, "url": p.request.get("url"), "items": failed,
+                        "status": "failed", "http": out.status, "attempts": out.attempts, "waits": out.waits,
+                        "detail": f"{out.detail}; the platform rejected {len(failed)} of {len(p.keys)} item(s)"})
+            summary["partial_requests"] += 1
+            summary["accepted_items"] += len(good)
+            summary["failures"].append({"request": i, "kind": p.kind, "http": out.status, "attempts": out.attempts, "items": failed[:5],
+                                        "item_count": len(failed), "detail": f"rejected inside a {out.status}: "
+                                        + json.dumps((out.body or {}).get("errors", [])[:3], default=str)[:300]})
+            continue
         status = "accepted" if out.ok else "failed"
         log.append({"platform": platform, "request": i, "kind": p.kind, "url": p.request.get("url"), "items": p.keys, "status": status,
                     "http": out.status, "attempts": out.attempts, "waits": out.waits, "detail": out.detail})
@@ -556,7 +599,7 @@ def _cli(argv: Optional[List[str]] = None, env: Optional[Mapping[str, str]] = No
             w.writerows(done)
         out["accepted_rows"] = {"count": len(done), "path": str(path), "next": "run cohort/job/mark_<dialect>.sql once per row in it"}
     print(json.dumps(out, indent=2, default=str))
-    return 1 if summary["failed_requests"] else 0
+    return 1 if summary["failed_requests"] or summary.get("partial_requests") else 0
 
 
 if __name__ == "__main__":

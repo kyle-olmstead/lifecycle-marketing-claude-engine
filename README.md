@@ -5,7 +5,7 @@
 **If you read nothing else:**
 - Describe a campaign in one sentence, the way you would to a colleague. It comes back with everything needed to launch it: who gets it, every message written in your email platform's own code, the timing, a legal and inbox check, and an honest plan for proving whether it worked.
 - Every morning it tells you the three things most worth building next, ranked from your own data with the reason and an estimated revenue range for each, and it checks that your emails still reach the inbox, raising a flag the day something breaks rather than the month after.
-- It never sends a message or changes your systems without a person approving it: sending and creating need an explicit `--approve` and your platform's key, and anything it creates in your platform starts as a draft. It is free, open source, and a marketer can install it in about fifteen minutes. A sample company is included so you can watch it work before connecting anything.
+- It never sends a message or changes your systems without a person approving it: sending and creating need an explicit `--approve` and your platform's key, and any flow it creates in your platform starts switched off (the templates and segments it creates beside it send nothing until a flow you turn on uses them). It is free, open source, and a marketer can install it in about fifteen minutes. A sample company is included so you can watch it work before connecting anything.
 
 ---
 
@@ -227,7 +227,7 @@ A team that only reads the morning check still catches the expensive problems ea
 
 ## 9. Two worked examples
 
-*Both companies are made up. The reasoning is exactly what the engine does, and both runs are regenerated and checked by the test suite.*
+*Both companies are made up. The reasoning is exactly what the engine does, and both runs are regenerated and checked by the test suite. Their copy was written against the engine's copy briefs; with no API key and no written copy, a plan uses the engine's own starter copy instead, and `lcm plan --text "..." --copy-mode offline` shows you exactly that.*
 
 **Ridgeview, a B2B reporting tool on Customer.io**, wants to win back users who finished onboarding but stopped creating reports. Full output: [`examples/brands/ridgeview_saas/runs/winback_14d/plan.md`](examples/brands/ridgeview_saas/runs/winback_14d/plan.md). The engine:
 
@@ -245,7 +245,7 @@ The morning check on Ridgeview's data finds that 62% of the people Ridgeview can
 
 ## 10. Trust and control
 
-- **You approve everything.** The engine writes plans, copy, request files and a build pack per flow ([docs/ESP_BUILD_PACKS.md](docs/ESP_BUILD_PACKS.md)). Two commands can reach your platform, and both are dry runs that print exactly what they would send unless you add `--approve` with your platform's key in the environment: `lcm send` pushes trigger events and profile updates (batched to the platform's limits, with idempotency keys, retries and a receipt log so a rerun sends nothing twice), and `lcm build --create` creates the flow as a draft (a Klaviyo flow in Draft, a HubSpot workflow that is off, a Marketing Cloud journey in Draft) for a person to review and turn on. It never sends a message to a customer itself: your platform does, once you switch the flow on.
+- **You approve everything.** The engine writes plans, copy, request files and a build pack per flow ([docs/ESP_BUILD_PACKS.md](docs/ESP_BUILD_PACKS.md)). Two commands can reach your platform, and both are dry runs that print exactly what they would send unless you add `--approve` with your platform's key in the environment: `lcm send` pushes trigger events and profile updates (batched to the platform's limits, with idempotency keys, retries and a receipt log so a rerun sends nothing twice), and `lcm build --create` creates the flow switched off (a Klaviyo flow in Draft, a HubSpot workflow that is off, a Marketing Cloud journey in Draft) for a person to review and turn on. The email templates and segments it creates with the flow are live objects in your account, but they send nothing until a flow that is on uses them. It never sends a message to a customer itself: your platform does, once you switch the flow on.
 - **Every number has a label.** LIVE PULL (looked up, dated), SUPPLIED (you provided it), ESTIMATE, DEMO DATA or UNKNOWN. Missing data becomes a flag and lower confidence, never a guess.
 - **Measurement stays honest.** A result the sample cannot support is labeled "directional" or "not readable", never presented as proof.
 - **Compliance is a checklist with sources, not legal advice.** It blocks what clearly breaks a tracked rule and turns everything else into a question for your counsel.
@@ -343,7 +343,7 @@ Every technical document opens with a plain-English summary. Every change with t
 
 **Does it work with our email platform?** Klaviyo, HubSpot, Braze, Customer.io, Iterable and Salesforce Marketing Cloud are built in, each in its own template language, with a build pack for each ([docs/ESP_BUILD_PACKS.md](docs/ESP_BUILD_PACKS.md)). Others work from exports, through the same rules.
 
-**Will it ever email or text our customers?** Not by itself. Your platform sends the messages, after a person turns the flow on. `lcm send --approve` pushes the events and profile updates that start or stop a flow, and `lcm build --create --approve` creates the flow as a draft; without `--approve` and your platform's key in the environment, both only print what they would do.
+**Will it ever email or text our customers?** Not by itself. Your platform sends the messages, after a person turns the flow on. `lcm send --approve` pushes the events and profile updates that start or stop a flow, and `lcm build --create --approve` creates the flow switched off (its templates and segments send nothing on their own); without `--approve` and your platform's key in the environment, both only print what they would do.
 
 **Is the compliance check legal advice?** No. It is a checklist of specific rules, each with its source, that blocks clear violations and turns everything else into questions for your counsel.
 

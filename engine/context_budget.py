@@ -11,6 +11,10 @@ The typical load of a skill is
   + every file the skill marks always-read (read on every invocation)
   + the mean size of the job prompts it routes to (one job per invocation)
 
+What it leaves out: the output of the lcm commands a skill then runs and reads (a plan.md is about 9,000 tokens), and
+whatever the user pastes. Those are the same work in v2.3 and now, just done by code instead of by prompts, so the
+budget measures the instructions a skill carries, not a whole session.
+
 Tokens are approximated as characters / 4 (rounded). It is the usual rule of thumb for English prose and
 code; the real tokenizer differs by a few percent either way, the same way for the baseline and for now,
 so the change between them is what to read.

@@ -7,9 +7,10 @@ that creates it as a draft. Where it does not (Braze, Customer.io, Iterable), th
 person follows. A second command, `lcm send`, pushes the events and profile updates a flow needs, safely.
 
 Nothing reaches your platform unless you add `--approve` and your platform's key is set in the environment. Without
-them, both commands print exactly what they would do. Whatever `lcm build --create` makes starts switched off: a
-Klaviyo flow in Draft, a HubSpot workflow that is off, a Marketing Cloud journey in Draft. Your platform sends to
-customers only after a person turns the flow on.
+them, both commands print exactly what they would do. The flow `lcm build --create` makes starts switched off: a
+Klaviyo flow in Draft, a HubSpot workflow that is off, a Marketing Cloud journey in Draft. The email templates and
+segments it creates with the flow are live objects in your account (a segment starts counting members at once), but
+none of them sends anything. Your platform sends to customers only after a person turns the flow on.
 
 ```text
 lcm build --run out/northfield_cart_abandon_1h                          # writes out/northfield_cart_abandon_1h/build/

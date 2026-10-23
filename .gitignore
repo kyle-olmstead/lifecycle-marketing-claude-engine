@@ -13,3 +13,4 @@ __pycache__/
 examples/brands/northfield_dtc/runs/northfield_*/
 examples/brands/ridgeview_saas/runs/ridgeview_*/
 examples/brands/*/runs/workflows/
+examples/brands/*/out/

@@ -4,7 +4,7 @@
   "flow_type": "cart_abandon",
   "flow": "Abandoned cart: Northfield Coffee Roasters",
   "slug": "northfield_coffee_cart_abandon_1h",
-  "run_id": "1c454f46c864",
+  "run_id": "07cb66780d74",
   "status": "READY WITH WARNINGS",
   "blocked_reasons": [],
   "mode": "native_event",

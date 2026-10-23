@@ -12,6 +12,8 @@ and prints a sensitivity grid so the marketer can see what volume a read would n
 """
 from __future__ import annotations
 
+import math
+
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
@@ -93,8 +95,8 @@ def design(brief: Brief, cohort: CohortDefinition) -> ExperimentDesign:
         if read in ("causal", "causal, slow"):
             read_after = f"{feas['required_holdout_n']:,} holdout entrants have each completed {w} days (about {months} months after launch)"
         elif read == "directional only":
-            read_after = (f"not inside 12 months at this volume (it would take about {months:.0f} months): keep the holdout, report against a "
-                          f"pre/post baseline, and label every result directional")
+            read_after = (f"not inside 12 months at this volume ({f"it would take about {math.ceil(months)} months" if months else "longer than a year"}): keep the holdout, report "
+                          f"against a pre/post baseline, and label every result directional")
         else:
             read_after = "never at this volume: report counts qualitatively and do not compute a lift percentage"
         for horizon in (3, 6, 12):

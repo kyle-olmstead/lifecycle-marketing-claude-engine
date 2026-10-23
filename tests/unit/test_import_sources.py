@@ -360,8 +360,19 @@ def test_northfield_behaves_like_a_coffee_store():
 
 
 def test_northfield_folder_stays_small():
-    def committed(p):          # runs/ holds the one finished run; anything else there is a local try-out (gitignored)
-        parts = p.relative_to(BRAND).parts
-        return "__pycache__" not in parts and not (parts[0] == "runs" and len(parts) > 1 and parts[1] not in ("cart_abandon", "README.md"))
-    size = sum(p.stat().st_size for p in BRAND.rglob("*") if p.is_file() and committed(p))
+    """What the repository ships for the sample store: the files git tracks (a local try-out, out/ or runs/ of a demo,
+    is ignored and not counted); without git, the same rule by path."""
+    import subprocess
+    try:
+        listed = subprocess.run(["git", "ls-files", "-z", "--", str(BRAND)], cwd=ROOT, capture_output=True, check=True).stdout
+        files = [ROOT / f for f in listed.decode().split("\0") if f]
+    except (OSError, subprocess.CalledProcessError):
+        files = []
+    if not files:
+        def committed(p):
+            parts = p.relative_to(BRAND).parts
+            return ("__pycache__" not in parts and parts[0] != "out"
+                    and not (parts[0] == "runs" and len(parts) > 1 and parts[1] not in ("cart_abandon", "README.md")))
+        files = [p for p in BRAND.rglob("*") if p.is_file() and committed(p)]
+    size = sum(p.stat().st_size for p in files if p.is_file())
     assert size < 8 * 1024 * 1024, size

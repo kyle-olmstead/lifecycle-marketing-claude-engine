@@ -61,6 +61,11 @@ def _pct(v: Optional[float]) -> str:
     return "unknown" if v is None else f"{v:.1%}"
 
 
+def _cell(x: Any) -> str:
+    """A Markdown table cell: a pipe in the text (SQL's || concatenation) is escaped so it cannot end the cell."""
+    return str(x).replace("|", "\\|")
+
+
 def render_plan(p: ExecutionPlan) -> str:
     b, c, f, e = p.brief, p.cohort, p.flow, p.experiment
     core = b.core_conversion_event
@@ -86,17 +91,17 @@ def render_plan(p: ExecutionPlan) -> str:
         L += ["## Confirm before you build", ""] + confirm + [""]
     if p.decisions:
         L += ["## Why the plan looks like this", "", "| Agent | Decision | Why |", "|---|---|---|"]
-        L += [f"| {d.stage} | {d.decision} | {d.why.replace('|', '/')} |" for d in p.decisions] + [""]
+        L += [f"| {_cell(d.stage)} | {_cell(d.decision)} | {_cell(d.why)} |" for d in p.decisions] + [""]
     L += ["## Who enters", "", "| | |", "|---|---|",
-          f"| Entry | {'; '.join(c.entry_rules)} |", f"| Never enters | {'; '.join(c.exclusions)} |", f"| Exit | {c.exit_rule} |",
-          f"| Trigger | {c.trigger_event}: {c.platform_pattern} |",
-          f"| Monthly entrants | {'unknown' if c.monthly_entrants.value is None else format(c.monthly_entrants.value, ',.0f')} ({c.monthly_entrants.label}: {c.monthly_entrants.basis}) |",
-          f"| {'Come back with no flow' if b.flow_type == 'winback' else 'Reach the core action with no flow'} | "
+          f"| Entry | {_cell('; '.join(c.entry_rules))} |", f"| Never enters | {_cell('; '.join(c.exclusions))} |", f"| Exit | {_cell(c.exit_rule)} |",
+          f"| Trigger | {_cell(c.trigger_event)}: {_cell(c.platform_pattern)} |",
+          f"| Monthly entrants | {_cell('unknown' if c.monthly_entrants.value is None else format(c.monthly_entrants.value, ',.0f'))} ({_cell(c.monthly_entrants.label)}: {_cell(c.monthly_entrants.basis)}) |",
+          f"| {_cell('Come back with no flow' if b.flow_type == 'winback' else 'Reach the core action with no flow')} | "
           f"{_pct(c.baseline_conversion_rate.value)} ({c.baseline_conversion_rate.label}: {c.baseline_conversion_rate.basis}) |"]
     if c.entrants_on_as_of is not None:
-        L.append(f"| Entering on {c.as_of} | {c.entrants_on_as_of} |")
+        L.append(f"| Entering on {_cell(c.as_of)} | {_cell(c.entrants_on_as_of)} |")
     L += ["", "| Data dependency | Kind | Status | Fill | Note |", "|---|---|---|---|---|"]
-    L += [f"| {d.name} | {d.kind} | {d.status} | {'' if d.fill_rate is None else format(d.fill_rate, '.0%')} | {d.note or ''} |" for d in c.data_dependencies]
+    L += [f"| {_cell(d.name)} | {_cell(d.kind)} | {_cell(d.status)} | {_cell('' if d.fill_rate is None else format(d.fill_rate, '.0%'))} | {_cell(d.note or '')} |" for d in c.data_dependencies]
     if b.flow_type == "winback":
         d = b.warehouse_dialect
         L += ["", f"The daily job ({d}), in `cohort/job/`: create the ledger once (`ledger_{d}.sql`); then each day queue who is due "
@@ -108,13 +113,13 @@ def render_plan(p: ExecutionPlan) -> str:
         L += ["", f"The trigger is the live {b.qualifying_event.event} event. `cohort/entry_{b.warehouse_dialect}.sql` backfills and audits it; "
                   f"the history query (`cohort/history_*.sql`) measured the volume and unaided rate above.", ""]
     L += ["## The flow", "", "```mermaid", f.mermaid, "```", "", "| Day | Step | Channel | Job | Only if |", "|---:|---|---|---|---|"]
-    L += [f"| {t.day} | {t.step_id} | {t.channel.replace('_', '-')} | {t.job} | {t.condition or ''} |" for t in f.touches]
+    L += [f"| {_cell(t.day)} | {_cell(t.step_id)} | {_cell(t.channel.replace('_', '-'))} | {_cell(t.job)} | {_cell(t.condition or '')} |" for t in f.touches]
     windows = "; ".join(f"{w['channel']} {w['allowed_from']} to {w['allowed_until']}" for w in spec["frequency"].get("send_windows", []))
     L += ["", f"Every step: {'; '.join(x['condition'] for x in spec['ongoing_filters'])}. Frequency: {spec['frequency']['cap']}. "
               f"Permitted send windows, recipient local: {windows}.", ""]
     if p.strategy:
         L += ["| Touch | Why this job and channel |", "|---|---|"]
-        L += [f"| {t.index}. day {t.day}, {t.role.replace('_', ' ')}, {t.channel.replace('_', '-')} | {t.why} |" for t in p.strategy.touches] + [""]
+        L += [f"| {_cell(t.index)}. day {_cell(t.day)}, {_cell(t.role.replace('_', ' '))}, {_cell(t.channel.replace('_', '-'))} | {_cell(t.why)} |" for t in p.strategy.touches] + [""]
     L += [f"## Build it in {PLATFORM_LABEL[b.platform]}", ""] + [f"{i}. {s}" for i, s in enumerate(f.build_steps, 1)] + [""]
     L += ["## The copy", ""]
     for tc in p.copy_plan:
@@ -135,18 +140,18 @@ def render_plan(p: ExecutionPlan) -> str:
                 copy_txt = f"**{v.fields.get('title')}** / {v.fields.get('body')}"
             else:
                 copy_txt = f"**{v.fields.get('headline')}** / {v.fields.get('body')} [{v.fields.get('cta_label')}]"
-            copy_txt = copy_txt.replace("{product_name}", b.product_name).replace("{first_name}", "[first name]").replace("|", "/")
+            copy_txt = copy_txt.replace("{product_name}", b.product_name).replace("{first_name}", "[first name]")
             label = f"{v.variant_id} (approved)" if approved == v.variant_id else v.variant_id
-            L.append(f"| {label} | {copy_txt} | {v.framework} | {v.hypothesis} |")
+            L.append(f"| {_cell(label)} | {_cell(copy_txt)} | {_cell(v.framework)} | {_cell(v.hypothesis)} |")
         files = sorted({k for v in tc.variants for k in v.rendered})
         L += ["", "Files: " + ", ".join(f"`copy/{x}`" for x in files), ""]
-    L += ["## Measurement", "", "| | |", "|---|---|", f"| Holdout | {e.holdout_pct:g}%, {e.unit} level, persistent: {e.assignment_rule} |",
-          f"| Primary metric | {e.primary_metric} |", f"| Sizing | {e.sizing} |", f"| Read | {e.read}: {e.read_after} |",
-          f"| Decision rule | {e.decision_rule} |", f"| Sample ratio | {e.srm_rule} |", f"| Peeking | {e.peeking_policy} |",
-          f"| Guardrails | {'; '.join(e.guardrail_metrics)} |", f"| Copy tests | {' '.join(e.variant_tests)} |", ""]
+    L += ["## Measurement", "", "| | |", "|---|---|", f"| Holdout | {e.holdout_pct:g}%, {_cell(e.unit)} level, persistent: {_cell(e.assignment_rule)} |",
+          f"| Primary metric | {_cell(e.primary_metric)} |", f"| Sizing | {_cell(e.sizing)} |", f"| Read | {_cell(e.read)}: {_cell(e.read_after)} |",
+          f"| Decision rule | {_cell(e.decision_rule)} |", f"| Sample ratio | {_cell(e.srm_rule)} |", f"| Peeking | {_cell(e.peeking_policy)} |",
+          f"| Guardrails | {_cell('; '.join(e.guardrail_metrics))} |", f"| Copy tests | {_cell(' '.join(e.variant_tests))} |", ""]
     if e.mde_by_horizon:
         L += ["| Months of entries | Holdout n | Treatment n | Smallest detectable lift |", "|---:|---:|---:|---|"]
-        L += [f"| {m['months_of_entries']} | {m['holdout_n']:,} | {m['treatment_n']:,} | "
+        L += [f"| {_cell(m['months_of_entries'])} | {m['holdout_n']:,} | {m['treatment_n']:,} | "
               + ("not reachable" if m["mde_abs_pts"] is None else f"{m['mde_abs_pts']} pts ({m['mde_rel']:.0%} relative)") + " |" for m in e.mde_by_horizon]
         L.append("")
     if e.sensitivity:
@@ -154,7 +159,7 @@ def render_plan(p: ExecutionPlan) -> str:
               "| Entrants a month | 5% come back alone | 10% | 20% |", "|---:|---:|---:|---:|"]
         for n in sorted({g["entrants_per_month"] for g in e.sensitivity}):
             row = [g for g in e.sensitivity if g["entrants_per_month"] == n]
-            L.append(f"| {n:,} | " + " | ".join("never" if g["months_to_read"] is None else f"{g['months_to_read']}" for g in row) + " |")
+            L.append(f"| {n:,} | " + " | ".join("never" if g["months_to_read"] is None else f"{_cell(g['months_to_read'])}" for g in row) + " |")
         L.append("")
     L += ["## Deliverability guardrails", "", f"- Gate: {p.gate_policy['note']}. Audience: {p.gate_policy['audience']}."]
     L += [f"- Suppressed: {s}" for s in spec["suppressions"]]
@@ -165,9 +170,9 @@ def render_plan(p: ExecutionPlan) -> str:
         cp = p.compliance
         L += ["## Compliance", "", f"**{cp.status.upper()}** for {', '.join(cp.jurisdictions)}. {cp.note}", "",
               "| Rule | Jurisdiction | Result | Detail | Source |", "|---|---|---|---|---|"]
-        L += [f"| {x.rule} | {x.jurisdiction} | {x.status.upper()} | {x.detail.replace('|', '/')} | {x.source or ''} |" for x in cp.findings] + [""]
+        L += [f"| {_cell(x.rule)} | {_cell(x.jurisdiction)} | {_cell(x.status.upper())} | {_cell(x.detail)} | {_cell(x.source or '')} |" for x in cp.findings] + [""]
     L += ["## QA", "", "| Check | Result | Detail |", "|---|---|---|"]
-    L += [f"| {k.name} | {k.status.upper()} | {k.detail.replace('|', '/')} |" for k in p.qa.checks]
+    L += [f"| {_cell(k.name)} | {_cell(k.status.upper())} | {_cell(k.detail)} |" for k in p.qa.checks]
     L += ["", "## Files", "", "- `flow_spec.json`: the flow, valid against `schemas/flow_spec.schema.json`",
           "- `simulation.json`: rules for `python3 engine/policy/simulator.py flow_spec.json`",
           "- `cohort/`: entry and history SQL for postgres, snowflake, bigquery and duckdb",

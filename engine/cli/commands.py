@@ -227,12 +227,32 @@ def simulate(argv: List[str]) -> int:
               "       lcm simulate --program [--briefs DIR] [--add BRIEF ...] [--json]\n\n"
               "One flow: walk synthetic people through a flow spec and check caps, send windows, exits and payloads.\n"
               "--program: every live brief in briefs/active/ at once, against the workspace's one frequency policy.")
+        from engine.policy import program, simulator
+        print(_flags("One flow (lcm simulate FLOW_SPEC)", simulator.main, ["--help"]) +
+              _flags("Every live flow (lcm simulate --program)", program._cli, ["--help"]))
         return 0
     from engine.policy import simulator
     return int(simulator.main(argv) or 0)
 
 
 STATS_SUBS = ("size", "mde", "feasible", "readout", "incrementality")
+
+
+def _flags(title: str, fn: Callable[[List[str]], Any], argv: List[str]) -> str:
+    """The options section of a wrapped command's own --help, so lcm X --help describes every flag it passes on."""
+    import contextlib
+    import io
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+        try:
+            fn(argv)
+        except SystemExit:
+            pass
+    text = buf.getvalue()
+    i = text.find("options:")
+    body = text[i + len("options:"):] if i >= 0 else text
+    lines = [ln for ln in body.splitlines() if ln.strip() and not ln.strip().startswith(("-h, --help", "show this help"))]
+    return f"\n{title}:\n" + "\n".join(lines) + "\n"
 
 
 def size(argv: List[str]) -> int:
@@ -244,7 +264,10 @@ def size(argv: List[str]) -> int:
         print("usage: lcm size --baseline RATE (--mde-rel R | --mde-abs A) [--holdout SHARE] [--entries-per-month N] "
               "[--outcome-window-days D] [--json]\n       lcm size mde --baseline RATE --nc N --nt N\n\n"
               "With --entries-per-month, says how many months the holdout takes to read and what a larger holdout would buy.\n"
-              "Rates are shares: --baseline 0.10 is 10%. `lcm size size --help` lists every flag.")
+              "Rates are shares: --baseline 0.10 is 10%.")
+        print(_flags("Sizing one holdout", stats._cli, ["size", "--help"]) +
+              _flags("With --entries-per-month (how long it takes to read)", stats._cli, ["feasible", "--help"]) +
+              _flags("lcm size mde (the smallest lift a sample can read)", stats._cli, ["mde", "--help"]))
         return 0
     return stats._cli((["feasible"] if "--entries-per-month" in argv else ["size"]) + argv)
 
@@ -259,6 +282,8 @@ def readout(argv: List[str]) -> int:
     if not argv or argv[0] in ("-h", "--help"):
         print("usage: lcm readout RESULTS.json [--json]\n       lcm readout --xt N --nt N --xc N --nc N [--expected-holdout SHARE] [--json]\n\n"
               "A results file reads incremental against attributed conversions; four counts read one holdout.")
+        print(_flags("Four counts (lcm readout --xt ...)", stats._cli, ["readout", "--help"]) +
+              _flags("A results file (lcm readout RESULTS.json)", stats._cli, ["incrementality", "--help"]))
         return 0
     return stats._cli(["readout"] + argv)
 

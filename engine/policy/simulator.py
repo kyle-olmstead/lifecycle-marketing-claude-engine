@@ -472,7 +472,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("flow_spec")
     ap.add_argument("--rules", help="simulation.json written by the teammate (default: next to the flow spec, if present)")
     ap.add_argument("--payloads", help="folder of ESP request bodies to validate")
-    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--json", action="store_true", help="print every check and journey as JSON")
     a = ap.parse_args(argv)
     spec_path = Path(a.flow_spec)
     spec = json.loads(spec_path.read_text(encoding="utf-8"))

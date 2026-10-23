@@ -316,3 +316,11 @@ def test_the_workspace_esp_block_is_the_default_account(tmp_path, monkeypatch, c
     out = json.loads(capsys.readouterr().out)
     assert out["status"] == "BLOCKED" and any("Account tier is starter" in b for b in out["blocked"])
     assert build_cli._cli(["--run", str(folder), "--tier", "enterprise", "--json"], env={}, transport=_no_network()) == 0
+
+
+def test_create_approve_without_the_key_is_refused_with_a_nonzero_exit(tmp_path, capsys):
+    from adapters.destinations.build import cli
+    rc = cli._cli(["--run", str(ROOT / "examples/brands/northfield_dtc/runs/cart_abandon"), "--create", "--approve",
+                   "--out", str(tmp_path / "build"), "--json"], env={})
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 2 and "KLAVIYO_PRIVATE_KEY" in out["create"]["refused"]

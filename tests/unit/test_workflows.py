@@ -68,3 +68,15 @@ def test_morning_check_runs_on_the_northfield_workspace(tmp_path, monkeypatch):
     out = tmp_path / "workflows" / "morning_check"
     run_dir = next(out.iterdir())
     assert (run_dir / "summary.md").exists() and (run_dir / "tracking.txt").read_text().startswith("$ lcm tracking")
+
+
+def test_a_step_skipped_for_a_missing_input_leaves_the_run_ok(tmp_path, monkeypatch):
+    monkeypatch.setenv("LCM_WORKSPACE", str(NORTHFIELD))
+    wf = tmp_path / "wf.yaml"
+    wf.write_text("name: wf\ninputs:\n  domain: {help: the sending domain}\nsteps:\n"
+                  "  - {id: version, run: doctor --json, help: the install}\n"
+                  "  - id: auth\n    run: deliverability check ${domain}\n    help: needs a domain\n")
+    r = runner.run(runner.load(wf), {}, tmp_path / "out")
+    steps = {s["id"]: s for s in r["steps"]}
+    assert steps["auth"]["status"] == "skipped" and steps["auth"]["reason"] == "input"
+    assert r["status"] == ("ok" if steps["version"]["status"] == "ok" else steps["version"]["status"])

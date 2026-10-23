@@ -196,3 +196,40 @@ def test_receipt_log_reads_only_accepted_items(tmp_path):
     log.append({"status": "accepted", "items": ["a", "b"]})
     log.append({"status": "failed", "items": ["c"]})
     assert log.accepted() == {"a", "b"}
+
+
+class Partial(Recorder):
+    """Answers the first request with a body that rejects some items inside a 2xx."""
+
+    def __init__(self, status, body):
+        super().__init__(default=200)
+        self.first = (status, body)
+
+    def __call__(self, request):
+        self.requests.append(request)
+        if len(self.requests) == 1:
+            return httpx.Response(self.first[0], json=self.first[1])
+        return httpx.Response(200, json={"message": "success"})
+
+
+def test_items_a_batch_rejects_inside_a_2xx_are_resent_and_the_rest_are_not(tmp_path, capsys):
+    rows = _write_rows(tmp_path, _rows(3))
+    rec = Partial(201, {"message": "success", "errors": [{"type": "invalid", "input_array": "events", "index": 1}]})
+    rc = send._cli(_args(tmp_path, rows, "braze", "--approve"), env=KEYS, transport=rec.transport)
+    capsys.readouterr()
+    assert rc == 1
+    log = ReceiptLog(tmp_path / "send" / "receipts.jsonl")
+    sent = json.loads(rec.requests[0].content)
+    assert len(log.accepted()) == len(sent.get("events", [])) + len(sent.get("attributes", [])) - 1
+    rec2 = Recorder(default=201)
+    send._cli(_args(tmp_path, rows, "braze", "--approve"), env=KEYS, transport=rec2.transport)
+    again = json.loads(rec2.requests[0].content)
+    assert len(rec2.requests) == 1 and len(again.get("events", [])) + len(again.get("attributes", [])) == 1
+
+
+def test_a_hubspot_207_without_item_detail_accepts_nothing(tmp_path, capsys):
+    rows = _write_rows(tmp_path, _rows(2))
+    rec = Partial(207, {"status": "COMPLETE", "results": [], "numErrors": 1, "errors": [{"status": "error", "message": "bad property"}]})
+    rc = send._cli(_args(tmp_path, rows, "hubspot", "--approve"), env=KEYS, transport=rec.transport)
+    capsys.readouterr()
+    assert rc == 1 and ReceiptLog(tmp_path / "send" / "receipts.jsonl").accepted() == set()
