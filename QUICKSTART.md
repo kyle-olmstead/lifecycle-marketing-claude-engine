@@ -1,6 +1,6 @@
 # Quickstart
 
-Ten minutes from a clone to a checked plan on a sample brand, then your own. You need Python 3.12 or later and
+About fifteen minutes from a clone to a checked plan on a sample brand, then your own. You need Python 3.12 or later and
 [uv](https://docs.astral.sh/uv/) (or plain `pip`; both paths are below). Nothing here sends a message or touches a
 platform.
 
@@ -54,20 +54,29 @@ cd ~/acme
 ```
 
 `lcm init` writes `lmm.yaml` (your program: platform, warehouse dialect, sending gate, one frequency policy, offer
-policy, measurement settings) and `brand.yaml` (logo, colors, fonts, footer, voice). Open both and fill in the blanks:
-at least `brand.postal_address`, `sender_name` and your colors. Every plan in this folder starts from them.
+policy, measurement settings, and `business_model`, which decides the flows and copy you get) and `brand.yaml` (logo,
+colors, fonts, footer, voice). Open both and fill in the blanks: at least `brand.postal_address`, `sender_name`,
+`website` in `brand.yaml` (every button without a deeper link goes there) and your colors. Every plan in this folder
+starts from them.
+
+Put your store's exports and your email platform's exports side by side in one folder, then:
 
 ```text
-lcm import shopify ~/Downloads/shopify-export --out data     # or: klaviyo, stripe, hubspot, customerio, ga4, segment,
-                                                             # rudderstack, or auto to detect each folder
+lcm import auto ~/Downloads/exports --out data               # finds each export it recognizes: Shopify, Klaviyo, Stripe,
+                                                             # HubSpot, Customer.io, GA4, Segment, RudderStack
 lcm check-data data                                          # missing, late, malformed or future-dated rows, with fixes
 lcm deliverability check acme.com --write-gate gate.json     # then set  sending_gate: gate.json  in lmm.yaml
 lcm doctor
-lcm plan --text "a 5-touch win-back for customers who have not ordered in 60 days" --data data
+lcm plan --text "a 5-touch win-back for customers who have not ordered in 60 days"
 ```
 
-Without a gate on record (or with one older than 30 days) plans run as AMBER and mail engaged people only; typing
-GREEN by hand also runs as AMBER, because only an observed check can open the full audience.
+Inside the workspace, `lcm plan` reads the data from `lmm.yaml` (`data: data`) and writes to `runs/`.
+
+Import your email platform's exports along with the store's. A store export (Shopify) has customers and orders but no
+message events, and without a gate on record (or with one older than 30 days) plans run as AMBER and mail engaged
+people only: people who clicked or replied in the last 90 days, which only your platform's message events show. With
+the store's export alone the plan says it cannot count that audience; your platform still applies the filter when it
+sends. Typing GREEN by hand also runs as AMBER, because only an observed check can open the full audience.
 
 ## 4. Where to go next
 

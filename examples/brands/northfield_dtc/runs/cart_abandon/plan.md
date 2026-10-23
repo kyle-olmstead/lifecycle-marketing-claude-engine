@@ -1,6 +1,6 @@
 # Abandoned cart: Northfield Coffee Roasters
 
-**Status: READY WITH ASSUMPTIONS** | Klaviyo | generated 2026-10-23T00:51:41+00:00 | run cae8d56179e8 | LMM Engine 3.0.0
+**Status: READY WITH ASSUMPTIONS** | Klaviyo | generated 2026-10-23T01:33:39+00:00 | run 1c454f46c864 | LMM Engine 3.0.0
 
 ## In one paragraph
 

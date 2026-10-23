@@ -4,7 +4,7 @@
   "flow_type": "winback",
   "flow": "Win-back: Ridgeview, 14 days since the core action (created a report)",
   "slug": "ridgeview_winback_14d",
-  "run_id": "3856530dd693",
+  "run_id": "8a05199335fe",
   "status": "READY WITH WARNINGS",
   "blocked_reasons": [],
   "mode": "native_segment",

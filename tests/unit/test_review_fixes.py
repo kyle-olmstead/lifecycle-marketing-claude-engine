@@ -312,3 +312,26 @@ def test_lmm_yaml_data_names_the_folder(tmp_path):
 def test_marketer_questions_route_to_the_job_that_answers_them(question, kind):
     from engine.cli.main import classify
     assert classify(question) == kind
+
+
+# ----------------------------------------------------------------------------------------------
+# Finding 10: a store's export alone (no message events) does not block a win-back on AMBER
+# ----------------------------------------------------------------------------------------------
+
+def test_no_message_events_is_a_warning_that_says_why(tmp_path):
+    import shutil
+    shutil.copytree(NORTHFIELD / "data", tmp_path / "data")
+    (tmp_path / "data" / "message_events.csv").unlink()
+    b = parse_text("a 5-touch win-back for customers who have not ordered in 60 days",
+                   defaults=workspace.brief_defaults(workspace.Workspace(NORTHFIELD)))
+    p = orchestrator.run(b, str(tmp_path / "data"), copy_mode="offline")
+    aud = next(c for c in p.qa.checks if c.name == "audience after the gate")
+    assert aud.status == "warn" and "no message events" in aud.detail and "lcm import" in aud.detail
+    assert p.qa.status != "BLOCKED"
+
+
+def test_a_button_with_no_deep_link_goes_to_the_brand_website():
+    from engine.agents.copywriter import PLACEHOLDER_CTA
+    _, p = _plan(NORTHFIELD, "a 3-touch win-back")
+    bodies = [body for tc in p.copy_plan for v in tc.variants for k, body in (v.rendered or {}).items() if k.endswith(".html")]
+    assert bodies and all(PLACEHOLDER_CTA not in b and "northfieldcoffee.example" in b for b in bodies)

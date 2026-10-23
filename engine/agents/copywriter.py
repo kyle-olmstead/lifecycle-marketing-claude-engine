@@ -200,7 +200,7 @@ def render_email_mjml(f: Dict[str, Any], brief: Brief, step_id: str, brand: Opti
         # so no UTM is appended here; turn on the platform's UTM tracking for the flow instead
         href = back
     else:
-        url = brief.cta_url or PLACEHOLDER_CTA
+        url = brief.cta_url or kit.website or PLACEHOLDER_CTA        # a deep link, else the brand's home page, else a placeholder
         sep = "&" if "?" in url else "?"
         href = html.escape(f"{url}{sep}utm_source=lifecycle&utm_medium=email&utm_campaign={brief.slug}&utm_content={step_id}")
     head = AMPSCRIPT_HEAD if d == "ampscript" else ""   # declared before first use, including the <title>
@@ -259,7 +259,7 @@ def render_short(channel: str, f: Dict[str, Any], brief: Brief) -> Dict[str, Any
         wants_link = "{link}" in text
         text = re.sub(r"\s*\{link\}", "", text).strip()
         url = product_blocks.return_url(brief, d, brief.cta_url or brand_for(brief).website) or (
-            (brief.cta_url or PLACEHOLDER_CTA) if wants_link else None)
+            (brief.cta_url or brand_for(brief).website or PLACEHOLDER_CTA) if wants_link else None)
         tail = "" if has_opt_out(text) else " Reply STOP to opt out."
         rendered = _tokens(text, d, brief, escape=False, inline=True) + (f" {url}" if url else "") + tail
         return {"text": rendered, "preview": _preview(text + (f" {SMS_LINK_PREVIEW}" if url else "") + tail, brief)}
@@ -348,7 +348,8 @@ def check_variant(channel: str, f: Dict[str, Any], brief: Brief, step_id: str, v
             if "POSTAL ADDRESS REQUIRED" in body:
                 warnings.append("no postal address: CAN-SPAM requires one; add postal_address to the brief")
             if PLACEHOLDER_CTA in body:
-                warnings.append("the button links to a placeholder; set cta_url in the brief to a deep link on your own domain")
+                warnings.append("the button links to a placeholder; set website in brand.yaml (your home page), or cta_url in the "
+                                "brief for a deep link to the core action")
             warnings += _no_fallback(brief)
             subj = subject_lines(f, brief)
             lint_s = template_lint.lint(subj, brief.template_dialect)
@@ -366,7 +367,8 @@ def check_variant(channel: str, f: Dict[str, Any], brief: Brief, step_id: str, v
         lint = template_lint.lint(r["text"], brief.template_dialect)
         errors += [f"template: {x}" for x in lint["errors"]]
         if PLACEHOLDER_CTA in r["text"]:
-            warnings.append("the text links to a placeholder; set cta_url in the brief to a deep link on your own domain")
+            warnings.append("the text links to a placeholder; set website in brand.yaml (your home page), or cta_url in the "
+                            "brief for a deep link to the core action")
         warnings += _no_fallback(brief)
         rendered = {f"{step_id}_{vid}.json": json.dumps(r, indent=2, ensure_ascii=False)}
     else:

@@ -163,7 +163,14 @@ def qa_report(brief: Brief, pol: Dict[str, Any], cohort, flow, copy_plan, exp, d
                         detail=pol["note"]))
     aud = getattr(cohort, "audience_after_gate", None)
     if aud and aud.get("entrants"):
-        if aud["kept"] == 0:
+        if aud.get("message_events") is False and brief.flow.gate_class == "lapsed":
+            # no message events at all: the data cannot show who is engaged, which is not the same as nobody being engaged
+            checks.append(Check(name="audience after the gate", status="warn",
+                                detail=f"the gate's entry filter ({aud['rule']}) cannot be counted: the data has no message events, so "
+                                       f"none of today's {aud['entrants']} would-be entrants can be shown to be engaged. Your platform "
+                                       f"applies the filter at send time from its own engagement data; to count it here, import its "
+                                       f"message events too (lcm import klaviyo, or lcm import auto on a folder of exports)"))
+        elif aud["kept"] == 0:
             checks.append(Check(name="audience after the gate", status="fail",
                                 detail=f"the gate's entry filter ({aud['rule']}) keeps none of today's {aud['entrants']} would-be entrants: "
                                        f"the flow would enroll nobody. Lift the gate (lcm deliverability) or change who the flow is for"))

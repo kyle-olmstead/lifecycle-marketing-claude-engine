@@ -22,7 +22,8 @@ brand_name: Your Brand
 # pick a voice. Default: en.
 lang: en
 
-# Your home page, starting with https://. The logo links here.
+# Your home page, starting with https://. The logo links here, and so does every button that has no deeper link
+# (a brief's cta_url, or the cart or product a cart or browse email returns to).
 # website: https://www.example.com
 
 # The logo at the top of every email. Leave this section out and emails open with the headline.

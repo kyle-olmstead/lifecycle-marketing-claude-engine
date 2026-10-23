@@ -760,7 +760,9 @@ def _gate_audience(brief: Brief, con, as_of: date, entrants: Optional[int]) -> O
         return {"rule": rule, "entrants": 0, "kept": 0, "share": None}
     ids = {r["user_id"] for r in rows}
     kept = {r[0] for r in con.execute(keep).fetchall()} & ids
-    return {"rule": rule, "entrants": len(ids), "kept": len(kept), "share": round(len(kept) / len(ids), 4)}
+    has_messages = bool(con.execute("SELECT COUNT(*) FROM message_events").fetchone()[0])
+    return {"rule": rule, "entrants": len(ids), "kept": len(kept), "share": round(len(kept) / len(ids), 4),
+            "message_events": has_messages}
 
 
 def _flow_text(brief: Brief, trigger: str, days: Optional[int]) -> Tuple[str, List[str], str]:
