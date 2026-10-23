@@ -180,6 +180,15 @@ class EventMatch(BaseModel):
         return f"{self.event}" + (f" ({cond})" if cond else "")
 
 
+def default_frequency(cap_per_week: int = 3) -> FrequencyPolicy:
+    """The engine's frequency policy when neither the brief nor the workspace gives one: one weekly cap across email, SMS
+    and push; email 08:00 to 21:00, SMS from the sourced rules file, push 09:00 to 21:00, recipient local time."""
+    return FrequencyPolicy(caps=[Cap(channels=["email", "sms", "push"], max=cap_per_week, window="P7D")],
+                           send_windows=[SendWindow(channel="email", allowed_from="08:00", allowed_until="21:00", source="engine default"),
+                                         sms_window_from_rules(),
+                                         SendWindow(channel="push", allowed_from="09:00", allowed_until="21:00", source="engine default")])
+
+
 class Brief(BaseModel):
     """What a marketer fills in (templates/brief.yaml) or says in one sentence.
 
@@ -330,6 +339,8 @@ class Brief(BaseModel):
         sourced rules file, and push 09:00 to 21:00."""
         if self.frequency is not None:
             return self.frequency
+        if not self.quiet_hours:
+            return default_frequency(self.frequency_cap_per_week)
         email = SendWindow(channel="email", allowed_from="08:00", allowed_until="21:00", source="engine default")
         if self.quiet_hours:
             quiet = parse_quiet_hours(self.quiet_hours)

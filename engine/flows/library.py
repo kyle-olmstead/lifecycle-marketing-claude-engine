@@ -221,7 +221,17 @@ UNSUPPORTED: Dict[str, Tuple[str, str]] = {
                                                                            "plans customer lifecycle flows"),
     "loyalty": (r"loyalty|vip tier|points balance", "loyalty and VIP tier flows need a loyalty program source"),
     "survey": (r"\bnps\b|survey", "survey flows are not built yet; send them from your survey tool"),
+    "wishlist": (r"wish ?lists?|saved for later|saved items|favou?rites list",
+                 "wishlist reminders need a wishlist event (added_to_wishlist) from the store, which the tracking plan does not carry yet"),
+    "cross_sell": (r"cross[- ]?sell\w*", "a cross-sell flow needs product affinity data the engine does not read yet; a post-purchase flow's "
+                                        "last touch suggests the next product after an order (\"a 3-touch post-purchase flow\")"),
+    "upsell": (r"\bup[- ]?sell\w*|\bupgrade (them |people |users |customers )?(to|into) (an? |the )?(annual|yearly|higher|bigger|premium|pro|"
+               r"business|enterprise)\b|\bexpansion (flow|campaign|revenue)",
+               "upsell and plan-upgrade flows need plan and usage data the engine does not read yet; a trial conversion flow covers "
+               "free to paid"),
 }
+# checked before the library's own flow names, which would otherwise read these as a post-purchase or trial flow
+UNSUPPORTED_FIRST = ("wishlist", "cross_sell", "upsell")
 
 
 def get(flow_type: str) -> FlowDef:

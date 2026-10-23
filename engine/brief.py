@@ -68,9 +68,14 @@ CORE_PHRASES: List[Tuple[str, EventMatch, str]] = [
 FLOW_PATTERNS: List[Tuple[str, str]] = [
     ("dunning", r"dunning|failed (payment|charge|renewal)|payment (failure|failed|declined)|card (declined|expired|failed)|"
                 r"involuntary churn|past[- ]due|update (their|your) (card|payment)"),
-    ("cart_abandon", r"abandon\w* (cart|checkout)|(cart|checkout) abandon\w*|left (items |something |it )?in (their|the|a) cart|"
-                     r"cart recovery|started (a )?checkout but"),
-    ("browse_abandon", r"browse abandon\w*|abandon\w* brows\w*|viewed (a )?products? (but|and (didn't|did not|never))|"
+    ("cart_abandon", r"abandon\w* (carts?|checkouts?|baskets?)|(cart|checkout|basket) abandon\w*|"
+                     r"left (items |something |it )?in (their|the|a) (cart|basket)|(cart|basket|checkout) recovery|"
+                     r"recover\w* (abandoned |their |lost )?(carts?|baskets?|checkouts?)|started (a )?checkout but|"
+                     r"\b(cart|basket) (flow|series|emails?|sequence|reminders?|messages?)\b|"
+                     r"added (items |something |it |products? )?to (their |the |a )?(cart|basket)"),
+    ("browse_abandon", r"browse abandon\w*|abandon\w* brows\w*|"
+                       r"(viewed|looked at|browsed) (a |the )?products? (but|and (didn't|did not|never|left))|"
+                       r"(viewed|looked at|browsed) (a |the )?products? (without|then left)|"
                        r"looked at (a )?products?|product views? (but|without)"),
     ("replenishment", r"replenish\w*|re-?order reminder|run(ning)? (low|out)|refill|restock reminder|reorder"),
     ("post_purchase", r"post[- ]purchase|after (their|the|a) (first )?(order|purchase)|first[- ]time (buyers?|customers?|purchasers?)|"
@@ -88,6 +93,13 @@ def flow_type_of(text: str) -> Tuple[Optional[str], Optional[str]]:
     """(flow type, None), or (None, why) for a flow the engine recognizes but does not build. Rules, not a model."""
     from engine.flows.library import UNSUPPORTED
     low = " ".join(text.lower().replace("’", "'").split())
+    from engine.flows.library import UNSUPPORTED_FIRST
+    for key in UNSUPPORTED_FIRST:       # names a library flow would otherwise swallow ("a cross-sell flow after their order")
+        pattern, why = UNSUPPORTED[key]
+        if key == "cross_sell" and re.search(r"post[- ]purchase", low):
+            continue                    # a post-purchase flow's own cross-sell touch
+        if re.search(pattern, low):
+            return None, why
     for ft, pattern in FLOW_PATTERNS:
         if re.search(pattern, low):
             if ft == "welcome" and re.search(r"connect\w* (a |your |their )?data|invit\w* (a )?(teammate|colleague)|report|log(ged)? ?in", low):
@@ -110,6 +122,12 @@ def parse_text(text: str, product_name: Optional[str] = None, overrides: Optiona
     workspace when None), then the engine's defaults; values that came from none of these become recorded assumptions."""
     t = " ".join(text.split())
     low = t.lower().replace("’", "'")
+    from engine.policy.contracts import cap_phrases, parse_cap_text
+    stated_caps = parse_cap_text(low)
+    # a cap is not a touch count or a lapse: "no more than 2 emails a week" is not a 2-touch flow, "every 3 days" no threshold
+    bare = low
+    for s, e, _items, _w in cap_phrases(low):
+        bare = bare[:s] + " " * (e - s) + bare[e:]
     data: Dict[str, Any] = {}
     assumptions: List[Assumption] = []
 
@@ -143,7 +161,7 @@ def parse_text(text: str, product_name: Optional[str] = None, overrides: Optiona
     # touches
     from engine.flows.library import FLOWS
     fd = FLOWS[data.get("flow_type", "winback")]
-    m = re.search(r"\b(\d+|one|two|three|four|five|six|seven|eight)[- ](touch|step|message|email|text|part)", low)
+    m = re.search(r"\b(\d+|one|two|three|four|five|six|seven|eight)[- ](touch|step|message|email|text|part)", bare)
     if m:
         n = _num(m.group(1)) or fd.default_touches
         if n > fd.max_touches:
@@ -155,7 +173,7 @@ def parse_text(text: str, product_name: Optional[str] = None, overrides: Optiona
         assume("touches", fd.default_touches, "number of touches not stated")
 
     # hours: cart and browse flows wait in hours; any other flow cannot, and says so instead of dropping the number
-    hm = HOURS.search(low)
+    hm = HOURS.search(bare)
     if hm:
         qty = _num(hm.group(1)) if not hm.group(1).replace(".", "").isdigit() else float(hm.group(1))
         hrs = (qty or 0) / (60 if hm.group(2).startswith("min") else 1)
@@ -167,7 +185,7 @@ def parse_text(text: str, product_name: Optional[str] = None, overrides: Optiona
                                               f"the hours were not used. Abandoned cart and browse flows wait in hours"))
 
     # inactivity threshold
-    m = re.search(r"\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(day|week|month)s?\b", low)
+    m = re.search(r"\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(day|week|month)s?\b", bare)
     ft = data.get("flow_type", "winback")
     if m and ft in ("winback", "sunset", "activation", "welcome"):
         n = _num(m.group(1)) or 14
@@ -279,6 +297,8 @@ def parse_text(text: str, product_name: Optional[str] = None, overrides: Optiona
     for k, v in (overrides or {}).items():
         data[k] = v
         assumptions = [a for a in assumptions if a.field != k]
+    if stated_caps:
+        data["frequency"] = with_caps(data.get("frequency"), stated_caps)
     assumptions = fit_to_business_model(data, assumptions)
     from engine.flows.library import _family
     if (data.get("flow_type") == "activation" and _family(data.get("business_model") or "saas") == "ecommerce"
@@ -299,6 +319,16 @@ def parse_text(text: str, product_name: Optional[str] = None, overrides: Optiona
 
 
 STORE_LAPSE_DAYS = 60
+
+
+def with_caps(base: Any, caps: List[Any]) -> Any:
+    """The frequency policy with the sentence's caps: each replaces a cap on the same channels and window, others stay. With
+    no policy yet, the engine's default (3 a week across email, SMS and push, and the default send windows) is the base."""
+    from engine.models import default_frequency
+    from engine.policy.contracts import FrequencyPolicy
+    policy = FrequencyPolicy.model_validate(base) if isinstance(base, dict) else (base or default_frequency())
+    keep = [c for c in policy.caps if all((sorted(c.channels), c.window) != (sorted(n.channels), n.window) for n in caps)]
+    return policy.model_copy(update={"caps": keep + list(caps)})
 
 
 def fit_to_business_model(data: Dict[str, Any], assumptions: List[Assumption]) -> List[Assumption]:

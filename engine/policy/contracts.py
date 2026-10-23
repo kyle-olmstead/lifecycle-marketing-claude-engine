@@ -295,31 +295,80 @@ class FrequencyPolicy(BaseModel):
         return "; ".join(c.describe() for c in self.caps)
 
 
-CAP_TEXT = re.compile(r"(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:[\w/-]+\s+){0,4}?(?:per|a|each|every)\s+"
-                      r"(day|24 hours|week|7 days|month|30 days|fortnight|two weeks)\b")
-CAP_DAILY = re.compile(r"\b(daily|weekly|monthly)\b")
-WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+_N = r"\d+|one|two|three|four|five|six|seven|eight|nine|ten|once|twice|thrice"
+WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+         "once": 1, "twice": 2, "thrice": 3}
 WINDOW_FOR = {"day": "P1D", "24 hours": "P1D", "week": "P7D", "7 days": "P7D", "fortnight": "P14D", "two weeks": "P14D",
-              "month": "P30D", "30 days": "P30D"}
+              "month": "P30D", "30 days": "P30D", "daily": "P1D", "weekly": "P7D", "monthly": "P30D"}
+# the period a cap is counted over: "a week", "per day", "each month", "daily", "every 3 days", "every other day"
+CAP_PERIOD = re.compile(r"\b(?:(?:per|a|an|each|every)\s+(day|24 hours|week|7 days|month|30 days|fortnight|two weeks)|"
+                        rf"every\s+({_N}|other)\s+(days?|weeks?)|(daily|weekly|monthly))\b")
+CAP_CHANNEL = (r"e-?mails?|sms(?:es)?|texts?|text messages?|push(?:es)?(?: notifications?)?|notifications?|messages?|touch(?:es)?|"
+               r"sends?|times")
+# one "N things" item before a period: "2 emails", "1 lifecycle email", "twice"; the list "2 emails and 1 text" is two items
+CAP_ITEM = re.compile(rf"\b({_N})\s+(?:(?!(?:{_N})\b)[a-z/-]+\s+){{0,3}}?({CAP_CHANNEL})\b|\b({_N})\s*$")
+# where the words that state a cap start: everything before them in the clause is about something else
+CAP_LEAD = re.compile(r"[,;:.(]|\b(?:with|but|max(?:imum)?|at most|no more than|not more than|up to|cap(?:ped)?(?: at| of)?|"
+                      r"limit(?:ed)?(?: to| of)?|only|never more than)\b")
+CAP_DAILY = re.compile(r"\b(daily|weekly|monthly)\b")     # kept for callers; CAP_PERIOD reads these too
+
+
+def _qty(token: str) -> int:
+    return int(token) if token.isdigit() else WORDS[token]
+
+
+def cap_phrases(text: str) -> List[Tuple[int, int, List[Tuple[int, Optional[str]]], str]]:
+    """Each cap a sentence states: (start, end, [(max, channel word or None)], window). One period can carry several items:
+    '2 emails and 1 text a day' is two caps, one per channel."""
+    low = (text or "").lower()
+    out = []
+    prev = 0
+    for m in CAP_PERIOD.finditer(low):
+        if m.group(1) or m.group(4):
+            window = WINDOW_FOR[m.group(1) or m.group(4)]
+        else:
+            k = 2 if m.group(2) == "other" else _qty(m.group(2))
+            window = f"P{k * (7 if m.group(3).startswith('week') else 1)}D"
+        seg_start = prev
+        for lead in CAP_LEAD.finditer(low, prev, m.start()):
+            seg_start = lead.end() if lead.group(0) in ",;:.(" else lead.start()
+        segment = low[seg_start:m.start()]
+        items = []
+        for it in CAP_ITEM.finditer(segment):
+            if it.group(3):
+                items.append((_qty(it.group(3)), None))
+            else:
+                items.append((_qty(it.group(1)), it.group(2)))
+        if items:
+            first = seg_start + next(CAP_ITEM.finditer(segment)).start()
+            out.append((first, m.end(), items, window))
+        prev = m.end()
+    return out
 
 
 def parse_cap_text(text: str, channels: Optional[List[str]] = None) -> List[Cap]:
-    """'at most 1 lifecycle email per day' -> [Cap(email, 1, P1D)]; 'three messages a week' -> [Cap(email,sms,push, 3, P7D)].
-    Days, weeks, fortnights and months are understood; v2 read only 'per week'."""
+    """'at most 1 lifecycle email per day' -> [Cap(email, 1, P1D)]; 'three messages a week' -> [Cap(email,sms,push, 3, P7D)];
+    '2 emails and 1 text a day' -> [Cap(email, 2, P1D), Cap(sms, 1, P1D)]; 'one email every 3 days' -> [Cap(email, 1, P3D)];
+    'twice a week' and '2 SMS daily' too. A number with no channel word takes `channels`, else the sentence's own channel
+    when it names only emails, else every capped channel."""
     low = (text or "").lower()
-    default = channels or (["email"] if re.search(r"\bemails?\b", low) and not re.search(r"\bmessages?\b", low) else ["email", "sms", "push"])
+    default = channels or (["email"] if re.search(r"\bemails?\b", low) and not re.search(r"\b(messages?|texts?|sms|push)\b", low)
+                           else ["email", "sms", "push"])
     out: List[Cap] = []
-    for m in CAP_TEXT.finditer(low):
-        n = int(m.group(1)) if m.group(1).isdigit() else WORDS[m.group(1)]
-        out.append(Cap(channels=channels or _cap_channels(m.group(0)) or default, max=n, window=WINDOW_FOR[m.group(2)]))
+    for _s, _e, items, window in cap_phrases(text):
+        for n, word in items:
+            chans = channels or (_cap_channels(word) if word else None) or default
+            out.append(Cap(channels=chans, max=n, window=window))
     return out
 
 
 def _cap_channels(phrase: str) -> List[str]:
-    """The channels one cap phrase names: '2 texts a day' is SMS, '6 emails a month' email, '3 messages a week' all three."""
-    if re.search(r"\b(messages?|touch(es)?|sends?|notifications?)\b", phrase):
+    """The channels one cap item names: '2 texts' is SMS, '6 emails' email, '4 push notifications' push, '3 messages' all three."""
+    if re.search(r"\bpush\b", phrase):
+        return ["push"]
+    if re.search(r"\b(messages?|touch(es)?|sends?|notifications?|times)\b", phrase):
         return ["email", "sms", "push"]
-    found = [ch for ch, pat in (("email", r"\be-?mails?\b"), ("sms", r"\b(sms|texts?|text messages?)\b"), ("push", r"\bpush(es)?\b"))
+    found = [ch for ch, pat in (("email", r"\be-?mails?\b"), ("sms", r"\b(sms(es)?|texts?|text messages?)\b"))
              if re.search(pat, phrase)]
     return found
 

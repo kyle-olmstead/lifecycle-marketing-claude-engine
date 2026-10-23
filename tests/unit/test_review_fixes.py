@@ -213,3 +213,51 @@ def test_a_supplied_green_plans_as_amber_instead_of_failing():
     p = orchestrator.run(b, str(DEMO / "data"), copy_mode="offline")
     gate = next(c for c in p.qa.checks if c.name == "sending gate")
     assert gate.status == "warn" and "reads AMBER" in gate.detail
+
+
+# ----------------------------------------------------------------------------------------------
+# Finding 7: flows the engine does not build are refused; synonyms reach the flow they name
+# ----------------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("sentence,flow", [
+    ("a wishlist reminder", None), ("a cross-sell flow after purchase", None), ("a cross-sell flow after their first order", None),
+    ("an upsell to annual plan", None), ("a cart flow", "cart_abandon"), ("recover abandoned baskets", "cart_abandon"),
+    ("a flow for people who added to cart but did not buy", "cart_abandon"),
+    ("people who viewed a product and left", "browse_abandon"), ("a post-purchase flow with a cross-sell touch", "post_purchase"),
+])
+def test_flow_names_are_refused_or_mapped(sentence, flow):
+    from engine.brief import flow_type_of
+    found, refusal = flow_type_of(sentence)
+    if flow is None:
+        assert found is None and refusal
+        with pytest.raises(ValueError, match="not supported yet"):
+            parse_text(sentence, "Acme", defaults={})
+    else:
+        assert found == flow and refusal is None
+
+
+# ----------------------------------------------------------------------------------------------
+# Finding 8: a cap in a sentence is a cap, never a touch count or a lapse
+# ----------------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("sentence,flow,touches,cap", [
+    ("a win-back flow, no more than 2 emails a week", "winback", 5, (["email"], 2, "P7D")),
+    ("a cart flow with sms, max 1 text per day", "cart_abandon", 3, (["sms"], 1, "P1D")),
+    ("a 3-touch win-back, one email every 3 days", "winback", 3, (["email"], 1, "P3D")),
+])
+def test_a_cap_in_the_sentence_is_read_as_a_cap(sentence, flow, touches, cap):
+    b = parse_text(sentence, "Acme", defaults={})
+    assert (b.flow_type, b.touches, b.churn_threshold_days) == (flow, touches, 14)
+    assert cap in [(c.channels, c.max, c.window) for c in b.freq.caps]
+
+
+@pytest.mark.parametrize("text,caps", [
+    ("2 SMS daily", [(["sms"], 2, "P1D")]),
+    ("one email every 3 days", [(["email"], 1, "P3D")]),
+    ("twice a week", [(["email", "sms", "push"], 2, "P7D")]),
+    ("2 emails and 1 text a day", [(["email"], 2, "P1D"), (["sms"], 1, "P1D")]),
+    ("4 push notifications a week", [(["push"], 4, "P7D")]),
+])
+def test_cap_text_reads_each_item_and_period(text, caps):
+    from engine.policy.contracts import parse_cap_text
+    assert [(c.channels, c.max, c.window) for c in parse_cap_text(text)] == caps
